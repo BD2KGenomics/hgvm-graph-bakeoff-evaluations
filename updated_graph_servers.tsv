@@ -1,0 +1,10 @@
+region	url	algorithm	source	contributor	updated_yyyy-mm-dd
+brca1	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/curoverse-brca1/	curoverse	GRCh38	abram@curoverse.com	2015-09-18
+brca2	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/curoverse-brca2/	curoverse	GRCh38	abram@curoverse.com	2015-09-18
+#brca1	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-brca1/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+#brca2	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-brca2/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+#sma	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-sma/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+#lrc_kir	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-lrc_kir/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+#mhc	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-mhc/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+#cenx	http://ec2-54-149-188-244.us-west-2.compute.amazonaws.com/sbg-cenx/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-09-30
+
