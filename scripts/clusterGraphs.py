@@ -131,7 +131,10 @@ def compute_matrix(options):
             label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[1:])
             if label == "":
                 label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[0])
-                label = label.split("-")[0]
+                toks = label.split("-")
+                label = toks[0]
+                if label == "debruijn":
+                    label += "-{}".format(toks[-1])
             label = dir_tag(graph, options) + label
 
             # hack (original_cactus -> cactus_original)
