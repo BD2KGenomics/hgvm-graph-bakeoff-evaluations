@@ -678,6 +678,8 @@ def parse_args(args):
     parser.add_argument("--bin_url",
         default="https://hgvm.blob.core.windows.net/hgvm-bin",
         help="URL to download sg2vg and vg binaries from, without Docker")
+    parser.add_argument("--use_path_binaries", action="store_true",
+        help="use system vg and sg2vg instead of downloading them")
     parser.add_argument("--overwrite", default=False, action="store_true",
         help="overwrite existing result files")
     parser.add_argument("--reindex", default=False, action="store_true",
@@ -702,23 +704,27 @@ def run_all_alignments(job, options):
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Retrieve binaries we need
-    RealTimeLogger.get().info("Retrieving binaries from {}".format(
-        options.bin_url))
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    robust_makedirs(bin_dir)
-    subprocess.check_call(["wget", "{}/sg2vg".format(options.bin_url),
-        "-O", "{}/sg2vg".format(bin_dir)])
-    subprocess.check_call(["wget", "{}/vg".format(options.bin_url),
-        "-O", "{}/vg".format(bin_dir)])
+    if options.use_path_binaries:
+        # We don't download any bianries and don't maintain a bin_dir
+        bin_dir_id = None
+    else:
+        # Retrieve binaries we need
+        RealTimeLogger.get().info("Retrieving binaries from {}".format(
+            options.bin_url))
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        robust_makedirs(bin_dir)
+        subprocess.check_call(["wget", "{}/sg2vg".format(options.bin_url),
+            "-O", "{}/sg2vg".format(bin_dir)])
+        subprocess.check_call(["wget", "{}/vg".format(options.bin_url),
+            "-O", "{}/vg".format(bin_dir)])
+            
+        # Make them executable
+        os.chmod("{}/sg2vg".format(bin_dir), 0o744)
+        os.chmod("{}/vg".format(bin_dir), 0o744)
         
-    # Make them executable
-    os.chmod("{}/sg2vg".format(bin_dir), 0o744)
-    os.chmod("{}/vg".format(bin_dir), 0o744)
-    
-    # Upload the bin directory to the file store
-    bin_dir_id = write_global_directory(job.fileStore, bin_dir,
-        cleanup=True)
+        # Upload the bin directory to the file store
+        bin_dir_id = write_global_directory(job.fileStore, bin_dir,
+            cleanup=True)
     
     # Make sure we skip the header
     is_first = True
@@ -766,9 +772,15 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Download the binaries
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get either
+        # the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
     
     # Get graph basename (last URL component) from URL
     basename = re.match(".*/(.*)/$", url).group(1)
@@ -858,20 +870,20 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             tasks = []
             
             # Do the download
-            tasks.append(subprocess.Popen(["{}/sg2vg".format(bin_dir),
+            tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
                 versioned_url, "-u"], stdout=subprocess.PIPE))
             
             # Pipe through zcat
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "view",
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "view",
                 "-Jv", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
             
             # And cut
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "mod",
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
                 "-X100", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
                 
             # And uniq
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "ids", "-s",
-                "-"], stdin=tasks[-1].stdout, stdout=output_file))
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "ids",
+                "-s", "-"], stdin=tasks[-1].stdout, stdout=output_file))
                 
             # Did we make it through all the tasks OK?
             for task in tasks:
@@ -882,7 +894,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Now run the indexer.
         # TODO: support both indexing modes
         RealTimeLogger.get().info("Indexing {}".format(graph_filename))
-        subprocess.check_call(["{}/vg".format(bin_dir), "index", "-s", "-k",
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
             str(options.kmer_size), "-e", str(options.edge_max),
             "-t", str(job.cores), graph_filename])
             
@@ -954,9 +966,15 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Download the binaries
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get either
+        # the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
     
     # Download the indexed graph to a directory we can use
     graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
@@ -982,9 +1000,9 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
         # Start the aligner and have it write to the file
         
         # Plan out what to run
-        vg_parts = ["{}/vg".format(bin_dir), "map", "-f", fastq_file, "-i",
-            "-n3", "-M2", "-t", str(job.cores), "-k", str(options.kmer_size),
-            graph_file]
+        vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
+            "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
+            str(options.kmer_size), graph_file]
         
         RealTimeLogger.get().info("Running VG: {}".format(" ".join(vg_parts)))
         
@@ -1005,7 +1023,7 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
     RealTimeLogger.get().info("Aligned {}".format(output_file))
            
     # Read the alignments in in JSON-line format
-    view = subprocess.Popen(["{}/vg".format(bin_dir), "view", "-aj",
+    view = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
         output_file], stdout=subprocess.PIPE)
        
     # Count up the stats: total reads, total mapped at all, total multimapped,
