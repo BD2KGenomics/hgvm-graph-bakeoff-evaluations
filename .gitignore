@@ -55,3 +55,11 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Example data
+low_coverage_reads/
+high_coverage_reads/
+low_coverage_alignments/
+high_coverage_alignments/
+tree/
+

@@ -13,6 +13,9 @@ import time, select
 from toil.job import Job
 import tsv
 
+# This is a script, but we import itand call main to make sure it's going to be available on Toil, and to make sure that it's going to 
+import smartSam2Fastq
+
 def parse_args(args):
     """
     Takes in the command-line arguments list (args), and returns a nice argparse
@@ -746,9 +749,19 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     # View the sam and pipe it through the sort of smart converter
     view = subprocess.Popen(["samtools", "view", "{}.bam".format(sort_prefix)],
         stdout=subprocess.PIPE)
-    subprocess.check_call(["./smartSam2Fastq.py", "--interleaved", "--fq1",
-        fastq_filename], stdin=view.stdout)
+        
+    # We import the converter so Toil will take care of finding it for us.
+    # Configure the SAM to FASTQ converter
+    convert_options = smartSam2Fastq.parse_args(["smartSam2Fastq.py",
+        "--interleaved", "--fq1", fastq_filename])
+    # Make it read from the samtools view command instead of our own stdin. We
+    # do it this way because we don't want to give it a filename (FIFO?) or
+    # adjust our own stdin. Or read BAM ourselves.
+    convert_options.input_sam = view.stdout
     
+    # Do the conversion
+    smartSam2Fastq.run(convert_options)
+        
     # Wait and detect errors
     view.wait()
     assert(view.returncode == 0)
