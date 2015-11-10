@@ -268,32 +268,57 @@ def explore_path(ftp, path, pattern):
         # List of everything to recurse into
         to_recurse_on = []
         
-        try:
-            listing = ftp.nlst()
-        except ftplib.error_proto:
-            # For some reason this built-in function sometimes doesn't work. Try
-            # doing it ourselves.
-            
-            RealTimeLogger.get().warning("FTPlib nlst on {} failed. Clearing "
-                "and retrying.".format(path))
-            
-            while True:
-                # Clear out any crap that may be coming over the ftp connection.
-                # Use a 2 second timeout
-                flags = select.select([ftp.sock], [], [], 2)
+        retries_remaining = 3
+        
+        while retries_remaining > 0:
+            retries_remaining -= 1
+            try:
+                listing = ftp.nlst()
+                break
+            except ftplib.error_proto:
+                # For some reason this built-in function sometimes doesn't work.
+                # Try doing it ourselves.
                 
-                if not flags[0]:
-                    # Nothing came
-                    break
+                RealTimeLogger.get().warning("FTPlib nlst on {} failed. "
+                    "Clearing and retrying.".format(path))
+                
+                while True:
+                    # Clear out any crap that may be coming over the ftp
+                    # connection. Use a 2 second timeout
+                    flags = select.select([ftp.sock], [], [], 2)
                     
-                # Otherwise read some data and select again
-                got = ftp.sock.recv(1024)
-                RealTimeLogger.get().warning("Extra data: {}".format(got))
-            
-            
-            # Now manually do the listing
-            listing = []
-            ftp.retrlines("NLST", lambda line: listing.append(line))
+                    if not flags[0]:
+                        # Nothing came
+                        break
+                        
+                    # Otherwise read some data and select again
+                    got = ftp.sock.recv(1024)
+                    RealTimeLogger.get().warning("Extra data: {}".format(got))
+                
+                # Now manually do the listing
+                listing = []
+                try:
+                    ftp.retrlines("NLST", lambda line: listing.append(line))
+                    break
+                except error_reply:
+                    RealTimeLogger.get().warning("Manual NLST on {} failed. "
+                        "Clearing and retrying.".format(path))
+                
+                    # The server... replied to a PASV wrong or something? Maybe
+                    # we're out of sync. Try syncing up again.
+                    while True:
+                        # Clear out any crap that may be coming over the ftp
+                        # connection. Use a 2 second timeout
+                        flags = select.select([ftp.sock], [], [], 2)
+                        
+                        if not flags[0]:
+                            # Nothing came
+                            break
+                            
+                        # Otherwise read some data and select again
+                        got = ftp.sock.recv(1024)
+                        RealTimeLogger.get().warning("Extra data: {}".format(
+                            got))
         
         for subitem in listing:
             # We don't know if these are files or directories.
