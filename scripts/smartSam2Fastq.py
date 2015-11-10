@@ -51,10 +51,10 @@ def parse_args(args):
         help="input SAM in name-sorted order.")
     parser.add_argument("--fq1", type=argparse.FileType("w"),
         default=sys.stdout,
-        help="FASTQ file to save all the READ1 reads in")
+        help="FASTQ file to save the READ1 reads in (+READ2 if interleaved)")
     parser.add_argument("--fq2", type=argparse.FileType("w"),
         default=sys.stdout,
-        help="FASTQ file to save all the READ2 reads in")
+        help="FASTQ file to save the READ2 reads in")
     parser.add_argument("--interleaved", action="store_true",
         help="write interleaved FASTQ to fq1")
     
@@ -417,6 +417,17 @@ def run(options):
             write_fastq(options.fq1, reads_by_end[2])
         else:
             write_fastq(options.fq2, reads_by_end[2])
+            
+    # Flush and close the streams
+    options.fq1.flush()
+    if options.fq1 != sys.stdout:
+        options.fq1.close()
+    options.fq2.flush()
+    if options.fq2 != sys.stdout:
+        options.fq2.close()
+        
+    # Announce that we're totally done.
+    sys.stderr.write("Finished converting from BAM to FASTQ.")
         
     
     
