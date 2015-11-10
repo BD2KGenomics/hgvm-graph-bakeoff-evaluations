@@ -23,7 +23,39 @@ Submodules and/or Docker may be the way to go here?
 
 ## Graph Variant Calling Comparison
 
-### Expected Input Location
+One evaluation that we perform is to test how well each graph works as a reference for calling variants against.
+
+### Performing Initial Alignments
+
+This evaluation depends on having alignments of 1000 Genomes Project high-coverage reads to each graph.
+
+#### Obtaining High Coverage Reads
+
+The alignments, in turn, are created from reads. Reads are downloaded from the 1000 Genomes FTP using the `scripts/getAltReads.py` script.
+
+For example, to download all of the available high coverage samples to the `high_coverage_reads` directory, running only on the local machine, you can do this:
+
+```
+# Remove any previous Toil job store
+rm -Rf tree
+# Run the download
+time scripts/getAltReads.py ./tree high_coverage_reads --batchSystem=singleMachine --sample_ftp_root "ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/hgsv_sv_discovery/data/" --population_pattern="*" --sample_pattern "*" --file_pattern "*.high_coverage.cram"  2>&1 | tee log.txt
+```
+
+#### Aligning High Coverage Reads
+
+Currently the easiest way to produce the alignments needed for the variant calling evaluation is to run the read alignment evaluation script on the high coverage samples. If you used the command above to download the reads, this can be accomplished thusly:
+
+```
+# Remove any previous Toil job store
+rm -Rf tree
+# Run the alignment
+scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_reads ./high_coverage_alignments --batchSystem=singleMachine --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
+```
+
+It might be wise to parallelize this step across a cluster; Microsoft Azure Storage is supported for the input and output directories, using a syntax similar to that used for Toil job stores (`azure:<account>:<container>/<prefix>`).
+
+### Expected Alignment Location
 
 The mapping comparison must be run before the variant calling comparison.  In particular the following directory structure it outputs is required (top-level names and locations are generally flexible)
 
