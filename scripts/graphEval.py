@@ -1,67 +1,194 @@
 #!/usr/bin/env python
-from __future__ import print_function,division
-import urllib2, json, argparse, sys, glob
+from __future__ import print_function,division, unicode_literals
+import urllib, urllib2,requests, json, argparse, sys, glob, string, codecs, os, socket, time, contextlib, tarfile
 from collections import OrderedDict, defaultdict
 from itertools import izip
 
-def getAlleles(url):
-	"""
-	Sends a series of get-allele requests to the server url specified by the user, starting
-	with an allele id of 0 and incrementing the id until the get request fails.  Returns
-	all alleles in the dictionary alleleDict, in which allele names are the key and
-	allele path items (stored as a list of dicts) are values.
 
-	Currently assumes that all alt IDs are greater than the ref ID, and only starts
-	storing alleles once the ref allele is reached.  This is so that ancestral
-	alleles (which somtimes precede the ref) are skipped.
+def getReferenceID(url):
+	"""
+	Returns a reference set ID from the server at the given URL.
+	"""
+	url+='/referencesets/search'
+	req={
+      "accessions": [],
+      "assemblyId": '',
+      "md5checksums": [],
+      "pageSize": 100, 
+      "pageToken": '0'
+	}
+	header={'Content-Type':'application/json'}
+	res=requests.post(url,data=json.dumps(req, encoding='utf-8'),headers=header)
+	thePage=res.text
+	thePage=json.loads(thePage)
+	#If the server returned no reference sets, just use '0'
+	try:
+		referenceSetId=thePage['referenceSets'][0]['id']
+	except IndexError:
+		referenceSetId='0'
+	return referenceSetId
+
+
+def getSequenceDict(url,referenceSetId=0,wantBases=False):
+	sequenceDict={}
+	baseDict={}
+	url+='/sequences/search'
+	req={
+      "pageSize": 100,
+      "pageToken": '0',
+      "referenceSetId": referenceSetId, 
+      "variantSetId": "null",
+      "listBases":wantBases}
+	nextPageToken=True
+	header={'Content-Type':'application/json'}
+	while nextPageToken:
+		res=requests.post(url,data=json.dumps(req),headers=header)
+		thePage=json.loads(res.text)
+		nextPageToken=thePage['nextPageToken']
+		req['pageToken']=nextPageToken
+		sequenceList=thePage['sequences']
+		for sequence in sequenceList:
+			id_=sequence['id']
+			length=int(sequence['length'])
+			sequenceDict[id_]=length
+			if wantBases:
+				bases=sequence['bases']
+				baseDict[id_]=bases
+	if wantBases:
+		return sequenceDict, baseDict
+	else:
+			return sequenceDict
+
+
+def getJoinDict(url,referenceSetId=0):
+	"""
+	Returns a dict containing all the joins in the specified server.
+	
+		Key: seq
+		Value: {(pos,strand):[(seq,pos,strand),(seq,pos,strand),...]}
+	"""
+	def defaultList():
+		return defaultdict(list)
+	joinDict=defaultdict(defaultList)
+	url+='/joins/search'
+	req={
+      "length": None, 
+      "pageSize": 100, 
+      "pageToken": '0', 
+      "referenceSetId": str(referenceSetId), 
+      "sequenceId": '', 
+      "start": None, 
+      "strand": None, 
+      "variantSetId": ''
+	}
+	nextPageToken=True
+	header={'Content-Type':'application/json'}
+	while nextPageToken:
+		res=requests.post(url,data=json.dumps(req),headers=header)
+		thePage=json.loads(res.text)
+		nextPageToken=thePage['nextPageToken']
+		req['pageToken']=nextPageToken
+		joins=thePage['joins']
+		for join in joins:
+			side1=join['side1']
+			side2=join['side2']
+			base1=side1['base']
+			base2=side2['base']
+			seq1=base1['sequenceId']
+			seq2=base2['sequenceId']
+			pos1=int(base1['position'])
+			pos2=int(base2['position'])
+			strand1=side1['strand']
+			strand2=side2['strand']
+			joinDict[seq1][(pos1,strand1)].append((seq2,pos2,strand2))
+			joinDict[seq2][(pos2,strand2)].append((seq1,pos1,strand1))
+	return joinDict
+
+def getAlleleIDDict(url):
+	"""
+	Uses the alleles/search endpoint of the ga4gh server to get a dict
+	of ID:name allele pairs.
+	"""
+	alleleIDDict={}
+	url+='/alleles/search'
+	req={	
+		"pageSize": 100,
+		"pageToken": '0', 
+		"start": 0, 
+		"end": 10, 
+		"sequenceId": "", 
+		"variantSetIds": []
+		}
+	nextPageToken=True
+	header={'Content-Type':'application/json'}
+	while nextPageToken:
+		res=requests.post(url,data=json.dumps(req),headers=header)
+		thePage=json.loads(res.text)
+		nextPageToken=thePage['nextPageToken']
+		req['pageToken']=nextPageToken
+		alleles=thePage['alleles']
+		for allele in alleles:
+			id_=allele['id']
+			name=allele['name']
+			alleleIDDict[id_]=name
+	return alleleIDDict
+
+def getAlleleDict(url,alleleIDDict):
+	"""
+	Sends a series of get-allele requests to the server url specified by the user.  
+	Requests the allele IDs contained in the keys of alleleIDDict. 
+	Returns all alleles in the dictionary alleleDict, in which allele names are the key and
+	allele path items (stored as a list of dicts) are values.
 	"""
 	print("Getting alleles from server...")
 	alleleDict=OrderedDict()
-	success=True
-	alleleNumber=-1
-	refReached=False
-	while success==True:
-		alleleNumber+=1
+	def getAlleles(url,tries):
+		if tries==5:
+			return 'Tries'
 		try:
-			text=urllib2.urlopen(url+'/alleles/'+str(alleleNumber)).read()
+			return urllib2.urlopen(url).read()
+		except urllib2.HTTPError:
+			return 'Fail'
+		except socket.error:
+			print('Server timed out.  Trying again after 5 second break.')
+			time.sleep(5)
+			return getAlleles(url,tries+1)
+
+	for id_,name in alleleIDDict.items():
+			text=getAlleles(url+'/alleles/'+str(id_),0)
+			if text=='Tries':
+				print('Server timed out 5 times.  Skipping server.')
+				return False
+			elif text=='Fail':
+				print('Error retrieving allele {} from server.  Skipping server.'.format(id_))
+				return False
+
 			json_=json.loads(text)
 			id_=int(json_['id'])
-			name=json_['name'].split('.')[-1]
-			print(name)
-			if name in ['ref','GRCh38:0','GRCh38_2c5:0']:
-				refReached=True
-				name='ref'
-			# elif not name.startswith('hu'):
-			# 	pass
-			# else:
-			# 	break
-			if refReached: #and not name.startswith('hu'):
-				variantSetID=json_['variantSetId']
-				path=json_['path']
-				segments=path['segments']
-				allelePathItemList=[]
-				for segment in segments:
-					allelePathItem={}
-					length=int(segment['length'])
-					start=segment['start']
-					strand=start['strand']
-					base=start['base']
-					pos=int(base['position'])
-					seqId=int(base['sequenceId'])
-					allelePathItem['seq']=seqId
-					allelePathItem['strand']=strand
-					allelePathItem['pos']=pos
-					allelePathItem['length']=length
-					allelePathItemList.append(allelePathItem)
-				alleleDict[name]=allelePathItemList
-		except urllib2.HTTPError:
-			if alleleNumber>0:
-				success=False
+			name=json_['name']
+			variantSetID=json_['variantSetId']
+			path=json_['path']
+			segments=path['segments']
+			allelePathItemList=[]
+			for segment in segments:
+				allelePathItem={}
+				length=int(segment['length'])
+				start=segment['start']
+				strand=start['strand']
+				base=start['base']
+				pos=int(base['position'])
+				seqId=int(base['sequenceId'])
+				allelePathItem['seq']=seqId
+				allelePathItem['strand']=strand
+				allelePathItem['pos']=pos
+				allelePathItem['length']=length
+				allelePathItemList.append(allelePathItem)
+			alleleDict[name]=allelePathItemList
 	return alleleDict
 
-def maf2Indices(inputFile):
+def maf2Indices(inFile):
 	"""
-	Extracts from the maf file input by the user a dictionary containing
+	Extracts from a maf file a dictionary containing
 	allele names as keys. Values are lists of integers with lengths equal to
 	the lengths of the allele sequences; integers correspond to the 1-based index of
 	the reference base that the allele base is aligned to (or 0 if the
@@ -78,23 +205,24 @@ def maf2Indices(inputFile):
 	infoList=[]
 	sequenceList=[]
 	seqID=-1
-	for line in inputFile:
-		line=line.strip().split()
-		if line and line[0]=='s':
-			seqID+=1
-			name,start,length,strand,sourceLength,sequence=line[1:]
-			start=int(start)
-			sourceLength=int(sourceLength)
-			infoList.append([name,strand,seqID])
-			sequenceList.append(sequence)
-			if strand=='+':
-				cursorDict[seqID]=start
-			elif strand=='-':
-				cursorDict[seqID]=sourceLength-start-1
-			else:
-				raise Exception("strand is not '+' or '-'.")
-			if name not in altDict and name!='ref':
-				altDict[name]=[0]*sourceLength
+	with open(inFile) as inFile:
+		for line in inFile:
+			line=line.strip().split()
+			if line and line[0]=='s':
+				seqID+=1
+				name,start,length,strand,sourceLength,sequence=line[1:]
+				start=int(start)
+				sourceLength=int(sourceLength)
+				infoList.append([name,strand,seqID])
+				sequenceList.append(sequence)
+				if strand=='+':
+					cursorDict[seqID]=start
+				elif strand=='-':
+					cursorDict[seqID]=sourceLength-start-1
+				else:
+					raise Exception("strand is not '+' or '-'.")
+				if name not in altDict and name!='ref':
+					altDict[name]=[0]*sourceLength
 	refIndex=0
 	for letterList in izip(*sequenceList):
 		if letterList[0]!='-':refIndex+=1
@@ -203,7 +331,7 @@ def mergeRefItems(refPathList):
 	for seq,rangeList in unmergedRefDict.iteritems():
 		for begin,end in sorted(rangeList):
 		    if refDict[seq] and refDict[seq][-1][1] >= begin - 1:
-		        refDict[seq][-1] = (refDict[seq][-1][0], end)
+		        refDict[seq][-1] = (refDict[seq][-1][0], max(end,refDict[seq][-1][1]))
 		    else:
 		        refDict[seq].append((begin, end))
 	return refDict
@@ -252,8 +380,8 @@ def getGenesFromBed(bedFile):
 	a dict where keys are indices and values are lists of genes.
 	"""
 	geneMap=defaultdict(set)
-	with open(bedFile) as inputFile:
-		for line in inputFile:
+	with open(bedFile) as inFile:
+		for line in inFile:
 			line=line.strip().split()
 			start=int(line[1])
 			end=int(line[2])
@@ -262,103 +390,369 @@ def getGenesFromBed(bedFile):
 				geneMap[index].add(gene)
 	return geneMap
 
+def countJoins(joinDict):
+	"""
+	Counts the joins in joinDict, which is structured as follows:	
+		Key: seq
+		Value: {(pos,strand):[(seq,pos,strand),(seq,pos,strand),...]}
+	"""
+	joinCount=0
+	for seq in joinDict:
+		for tuple_ in joinDict[seq]:
+			for otherSide in joinDict[seq][tuple_]:
+				joinCount+=1
+	joinCount/=2
+	return joinCount
+
+
+def countSegments(sequenceDict,joinDict):
+	"""
+	Count all the segments in the graph by splitting up
+	sequences at points where joins attach to them.  Return the
+	count as an integer.
+	"""
+	segmentCount=len(sequenceDict)
+	#A set of (int,int) tuples marking the (seq,index) of locations
+	#of split-points of sequences.  Each of these will increase the 
+	#total number of segments by one.
+	#For example: (1,0) means there is a split in sequence 1 AFTER
+	#the first (index 0) base.
+	#Indices in the second position should be at most length-1.
+	nonEndJoinSet=set()
+	for seq in joinDict:
+		if seq!='0':
+			for pos,strand in joinDict[seq]:
+				length=sequenceDict[seq]
+				if not ((pos==0 and strand=='POS_STRAND') or (pos==length-1 and strand=='NEG_STRAND') or length==1):
+					if strand=='NEG_STRAND':
+						nonEndJoinSet.add((seq,pos))
+					else:
+						nonEndJoinSet.add((seq,pos-1))
+	segmentCount+=len(nonEndJoinSet)
+	return segmentCount
+
+@contextlib.contextmanager
+def smartOpen(filename=None):
+	if filename and filename != '-':
+		fh = open(filename, 'w')
+	else:
+		fh = sys.stdout
+
+	try:
+		yield fh
+	finally:
+		if fh is not sys.stdout:
+			fh.close()
+
+
 def parseArgs():
 	parser = argparse.ArgumentParser(description="""Performs the specified evaluation on a specified graph server.
 		Requires a url to be supplied from the user.""")
-	parser.add_argument('url',type=str,help="""A string containing the url of the graph server to be evaluated.
-		  Must include a version number at the end of the url, e.g. 'v0.6.g' """)
-	parser.add_argument('--align2ref', action='store_const', const=True,
+	evaluation=parser.add_mutually_exclusive_group()
+	target=parser.add_mutually_exclusive_group()
+	target.add_argument('--list',help="""A tab-separated file, with a header line, containing a list of all
+		servers to be evaluated.  First four columns must be: region, url, algorithm, source.""")
+	target.add_argument('--url',help="""The url of the graph to be evaluated.  Make sure url starts with "http://" and
+		ends with the "/" preceding the server version.  This and the --list argument are mutually exclusive.""")
+	evaluation.add_argument('--align2ref', action='store_true',
 		help="""Compares each allele returned by the server to the reference allele, returning a percent overlap.
 		Assumes that the reference allele is named "ref", or "ref.ref".""")
-	parser.add_argument('--maf',type=file, help="""Compares the graph-alignments of each allele to the reference, 
+	evaluation.add_argument('--maf', action='store_true', help="""Compares the graph-alignments of each allele to the reference, 
 		to the corresponding graph-alignments in a separate MAF file.  Requires the name of the maf file.  
 		Assumes the reference allele is named 'ref' or 'ref.ref'.  Also currently assumes the MAF only contains
 		a single block.""")
-	parser.add_argument('--gene',help="""For each alignment-column in a graph, and given
+	evaluation.add_argument('--gene',action='store_true',help="""For each alignment-column in a graph, and given
 		a directory containing a bed file for each path in the graph, computes the number of ortholog and paralog alignments.""")
+	parser.add_argument('--stats',action='store_true',help="""Compute general stats about the graph, such as number of positions and number of seqs/joins.""")
+	parser.add_argument('--out',help="""The name of an output file.""")
 	args = parser.parse_args()
 	return args
 
+
+
 def main():
 	args=parseArgs()
+	if args.list:
+		serverDict=defaultdict(list)
+		with open(args.list) as inFile:
+			for line in inFile:
+				if line and not line.startswith('#'):
+					line=line.strip().split('\t')
+					try:
+						region,url,algo,source=line[:4]
+					except:
+						print(line)
+					if region!='region':
+						serverDict[region].append([url,algo,source])
+	elif args.url:
+		serverDict={None:[[args.url,None,None]]}
+	else:
+		sys.exit('Please specify a file listing servers to be evaluated using the --list or --url options.')
+	
 	if args.align2ref:
-		alleleDict=getAlleles(args.url)
-		refAllele=alleleDict['ref']
-		refDict=mergeRefItems(refAllele)
-		print("Computing overlap with reference allele...")
-		for id_,allele in sorted(alleleDict.items()):
-			refOverlapFraction=getRefOverlap(allele,refDict)
-			print("{}\t{}".format(id_,refOverlapFraction))
+		with smartOpen(args.out) as outFile:
+			for region in serverDict:
+				if region!='cenx':
+					if args.list:
+						outFile.write('$'+region+'\n')
+					for url,algo,source in serverDict[region]:
+						url+='v0.6.g'
+						print("Processing "+url)
+						#Get a dict of id:name pairs
+						alleleIDDict=getAlleleIDDict(url)
+						if 'ref' not in alleleIDDict.values() and 'GRCh38_2c5:0' not in alleleIDDict.values() and 'GRCh38_247:0' not in alleleIDDict.values():
+							print("Skipping... graph does not contain an allele called either 'ref' or 'GRCh38_2c5:0' or 'GRCh38_247:0'.")
+							continue
+						else:
+							alleleDict=getAlleleDict(url,alleleIDDict)
+							if not alleleDict:
+								continue
+							if args.list:
+								outFile.write('@'+algo+' '+source+'\n')
+							#Special case for curoverse, since both brca1 and brca2 are in the same graph
+							if algo=='curoverse':
+								if region=='brca1':
+									total=0
+									for allelePathItemList in alleleDict.values():
+										total+=sum([pathItem['length'] for pathItem in allelePathItemList])
+									print(total)
+									break
+									refAllele=alleleDict['GRCh38_2c5:0']
+									alleleDict={'GRCh38_2c5:0':alleleDict['GRCh38_2c5:0'],
+												'GI262359905_rc:0':alleleDict['GI262359905_rc:0'],
+												'GI528476558:0':alleleDict['GI528476558:0']}
+								elif region=='brca2':
+									total=0
+									for allelePathItemList in alleleDict.values():
+										total+=sum([pathItem['length'] for pathItem in allelePathItemList])
+									print(total)
+									break
+									refAllele=alleleDict['GRCh38_247:0']
+									alleleDict={'GRCh38_247:0':alleleDict['GRCh38_247:0'],
+												'GI388428999:0':alleleDict['GI388428999:0'],
+												'GI528476586:0':alleleDict['GI528476586:0']}
+								else:
+									print("Curoverse servers in non-brca regions not supported.  Skipping.")
+									continue
+							else:
+								refAllele=alleleDict['ref']
+							#Make sure the server only has one reference allele
+							if len([name for name in alleleDict.keys() if name in ['ref','GRCh38_2c5:0','GRCh38_247:0']])>1:
+								print("Skipping because server has more than one reference allele.")
+								continue
+							#Make sure the server has more than just a reference allele
+							if len([name for name in alleleDict.keys() if name not in ['ref','GRCh38_2c5:0','GRCh38_247:0']])==0:
+								print("Skipping because server only has reference allele.")
+								continue
+							refDict=mergeRefItems(refAllele)
+							print("Computing overlap with reference allele...")
+							totalOverlap=0
+							for name,allele in sorted(alleleDict.items()):
+								if not name in ['ref','GRCh38_2c5:0','GRCh38_247:0']:
+									refOverlapFraction=getRefOverlap(allele,refDict)
+									totalOverlap+=refOverlapFraction
+									outFile.write("{}\t{}\n".format(name,refOverlapFraction))
+							averageOverlap=totalOverlap/(len(alleleDict)-1)
+							outFile.write('average\t'+str(averageOverlap)+'\n')
+
+
 	elif args.maf:
-		alleleDict=getAlleles(args.url)
-		graphAltDict=graph2Indices(alleleDict)
-		mafAltDict=maf2Indices(args.maf)
-		assert set(mafAltDict.keys())==set(graphAltDict.keys())
-		for alt in mafAltDict:
-			assert len(mafAltDict[alt])==len(graphAltDict[alt])
-		print("Computing precision and recall...\n")
-		totalMatchCount=0
-		totalNumMafAlignedBases=0
-		totalNumGraphAlignedBases=0
-		for alt in mafAltDict:
-			mafAlt=mafAltDict[alt]
-			graphAlt=graphAltDict[alt]
-			matchCount=sum(map(lambda n:1 if n[0]!=0 and n[0]==n[1] else 0,izip(mafAlt,graphAlt)))
-			numMafAlignedBases=len([i for i in mafAlt if i!=0])
-			numGraphAlignedBases=len([i for i in graphAlt if i!=0])
-			totalMatchCount+=matchCount
-			totalNumMafAlignedBases+=numMafAlignedBases
-			totalNumGraphAlignedBases+=numGraphAlignedBases
-			try: precision=matchCount/numGraphAlignedBases
-			except ZeroDivisionError:
-				precision=0
-				print("ZeroDivisionError when computing precision for {}.".format(alt))
-			try: recall=matchCount/numMafAlignedBases
-			except ZeroDivisionError:
-				recall=0
-				print("ZeroDivisionError when computing recall for {}.".format(alt))
-			print("Allele: {}\nPrecision: {:.3f}\nRecall: {:.3f}\n".format(alt,precision,recall))
-		try: avePrecision=totalMatchCount/totalNumGraphAlignedBases
-		except ZeroDivisionError:
-			avePrecision=0
-			print("ZeroDivisionError when computing average precision.")
-		try: aveRecall=totalMatchCount/totalNumMafAlignedBases
-		except ZeroDivisionError:
-			aveRecall=0
-			print("ZeroDivisionError when computing average recall.")
-		print("Overall\nPrecision: {:.3f}\nRecall: {:.3f}".format(avePrecision,aveRecall))
-	elif args.gene:
-		alleleDict=getAlleles(args.url)
-		graphAltDict=graph2Indices(alleleDict)
-		refGeneDict=getGenesFromBed(args.gene+'/'+'ref'+'/genes.bed')
-		for allele,indexList in graphAltDict.iteritems():
-			altGeneDict=getGenesFromBed(args.gene+'/'+allele+'/genes.bed')
-			# print(allele+":")
-			#For each base in the alt
-			#	check if there are any genes in the alt, and any genes in the index of the ref it's aligned to
-			#	If there are genes in both
-			#		If they're the same genes (or perhaps more), then count it as an ortholog alignment
-			#		If they're different genes, then count it as a paralog alignment
-			paralogCount=0
-			orthologCount=0
-			for altIndex,refIndex in enumerate(indexList):
-				if refIndex<0:
-					refIndex=-refIndex
-				refIndex-=1
-				if altIndex in altGeneDict and refIndex in refGeneDict:
-					altGenes=altGeneDict[altIndex]
-					refGenes=refGeneDict[refIndex]
-					if altGenes&refGenes:
-						orthologCount+=1
+		#Check for the existence of maf files in the data directory
+		mafDir='../data/alignments/'
+		if not os.path.isdir(mafDir):
+			if not os.path.exists("../data/alignments.tar.gz"):
+				sys.exit("This evaluation needs 'alignments.tar.gz' in the data directory.")
+			else:
+				os.chdir('../data')
+				tf=tarfile.open('alignments.tar.gz')
+				tf.extractall()
+				tf.close()
+				os.chdir('../scripts')
+		#Get maf alt dicts for all regions before opening any servers
+		#Store in mafMasterDict
+		lrc_kirMaf=mafDir+"LRC_KIR_GRCAlignment.maf"
+		smaMaf=mafDir+"SMA_GRCAlignment.maf"
+		mhcMaf=mafDir+"MHC_GRCAlignment.maf"
+		mafMasterDict={
+			'lrc_kir':maf2Indices(lrc_kirMaf),
+			'mhc':maf2Indices(mhcMaf),
+			'sma':maf2Indices(smaMaf)
+		}
+		with smartOpen(args.out) as outFile:
+			for region in ['sma','mhc','lrc_kir']:
+				outFile.write('$'+region+'\n')
+				for url,algo,source in serverDict[region]:
+					url+='v0.6.g'
+					print("Processing "+url)
+					
+					#Get a dict of id:name pairs
+					alleleIDDict=getAlleleIDDict(url)
+					if 'ref' not in alleleIDDict.values() and 'GRCh38_2c5:0' not in alleleIDDict.values():
+						print("Skipping... graph does not contain an allele called either 'ref' or 'GRCh38_2c5:0'.")
+						continue
 					else:
-						paralogCount+=1
-			# print("Number bases with orthologous ref mappings:"+str(orthologCount))
-			# print("Number bases with paralogous ref mappings:"+str(paralogCount))
-			print(allele+'\t'+str(orthologCount)+'\t'+str(paralogCount))
+						alleleDict=getAlleleDict(url,alleleIDDict)
+
+						#Check if the server has any alleles (and if not, skip to the next one)
+						if not alleleDict:
+							continue
+
+						#Make sure the server only has one reference allele
+						if len([name for name in alleleDict.keys() if name in ['ref','GRCh38_2c5:0','GRCh38_247:0']])>1:
+							print("Skipping because server has more than one reference allele.")
+							continue
+						#Make sure the server has more than just a reference allele
+						if len([name for name in alleleDict.keys() if name not in ['ref','GRCh38_2c5:0','GRCh38_247:0']])==0:
+							print("Skipping because server only has reference allele.")
+							continue
+						graphAltDict=graph2Indices(alleleDict)
+						mafAltDict=mafMasterDict[region]
+						if set(mafAltDict.keys())!=set(graphAltDict.keys()):
+							print("Skipping because maf alleles:\n{}\naren't the same as graph alleles:\n{}".format(mafAltDict.keys(),graphAltDict.keys()))
+							continue
+						stop=False
+						for alt in mafAltDict:
+							if len(mafAltDict[alt])!=len(graphAltDict[alt]):
+								print("""Skipping because corresponding {} alleles in maf and graph don't have the same length.
+									Maf alt has length {} while graph alt has length {}.""".format(alt,len(mafAltDict[alt]),len(graphAltDict[alt])))
+								stop=True
+						if stop:
+							continue
+						print("Computing precision and recall...\n")
+						totalMatchCount=0
+						totalNumMafAlignedBases=0
+						totalNumGraphAlignedBases=0
+						for alt in mafAltDict:
+							if alt!='ref':
+								mafAlt=mafAltDict[alt]
+								graphAlt=graphAltDict[alt]
+								matchCount=sum(map(lambda n:1 if n[0]!=0 and n[0]==n[1] else 0,izip(mafAlt,graphAlt)))
+								numMafAlignedBases=len([i for i in mafAlt if i!=0])
+								numGraphAlignedBases=len([i for i in graphAlt if i!=0])
+								totalMatchCount+=matchCount
+								totalNumMafAlignedBases+=numMafAlignedBases
+								totalNumGraphAlignedBases+=numGraphAlignedBases
+						try: avePrecision=totalMatchCount/totalNumGraphAlignedBases
+						except ZeroDivisionError:
+							avePrecision=0
+							print("Skipping due to ZeroDivisionError when computing average precision.")
+							continue
+						try: aveRecall=totalMatchCount/totalNumMafAlignedBases
+						except ZeroDivisionError:
+							aveRecall=0
+							print("Skipping due to ZeroDivisionError when computing average recall.")
+							continue
+						outFile.write('@'+algo+'\t'+source+'\n')
+						outFile.write("average\t{}\t{}\n".format(avePrecision,aveRecall))
+	
+
+	elif args.gene:
+		with smartOpen(args.out) as outFile:
+			for region in ['sma','mhc','lrc_kir']:
+				outFile.write('$'+region+'\n')
+				bedDir="../data/genes/"+region.upper()+'/'
+				if not os.path.isdir(bedDir):
+					if not os.path.exists("../data/genes.tar.gz"):
+						sys.exit("This evaluation needs 'genes.tar.gz' in the data directory.")
+					else:
+						os.chdir('../data')
+						tf=tarfile.open('genes.tar.gz')
+						tf.extractall()
+						tf.close()
+						os.chdir('../scripts')
+
+				print("Reading reference bed file for {}...".format(region))
+				refGeneDict=getGenesFromBed(bedDir+'ref/genes.bed')
+				for url,algo,source in serverDict[region]:
+					url+='v0.6.g'
+					print("Processing "+url)
+					
+					#Get a dict of id:name pairs
+					alleleIDDict=getAlleleIDDict(url)
+					if 'ref' not in alleleIDDict.values() and 'GRCh38_2c5:0' not in alleleIDDict.values():
+						print("Skipping... graph does not contain an allele called either 'ref' or 'GRCh38_2c5:0'.")
+						continue
+					else:
+						alleleDict=getAlleleDict(url,alleleIDDict)
+
+						#Check if the server has any alleles (and if not, skip to the next one)
+						if not alleleDict:
+							continue
+
+						#Make sure the server only has one reference allele
+						if len([name for name in alleleDict.keys() if name in ['ref','GRCh38_2c5:0','GRCh38_247:0']])>1:
+							print("Skipping because server has more than one reference allele.")
+							continue
+						#Make sure the server has more than just a reference allele
+						if len([name for name in alleleDict.keys() if name not in ['ref','GRCh38_2c5:0','GRCh38_247:0']])==0:
+							print("Skipping because server only has reference allele.")
+							continue
+						outFile.write('@'+algo+'\t'+source+'\n')
+						graphAltDict=graph2Indices(alleleDict)
+						totalOrthologCount=0
+						totalParalogCount=0
+						for allele,indexList in graphAltDict.iteritems():
+							altGeneDict=getGenesFromBed(bedDir+allele+'/genes.bed')
+							# print(allele+":")
+							#For each base in the alt
+							#	check if there are any genes in the alt, and any genes in the index of the ref it's aligned to
+							#	If there are genes in both
+							#		If they're the same genes (or perhaps more), then count it as an ortholog alignment
+							#		If they're different genes, then count it as a paralog alignment
+							paralogCount=0
+							orthologCount=0
+							for altIndex,refIndex in enumerate(indexList):
+								if refIndex<0:
+									refIndex=-refIndex
+								refIndex-=1
+								if altIndex in altGeneDict and refIndex in refGeneDict:
+									altGenes=altGeneDict[altIndex]
+									refGenes=refGeneDict[refIndex]
+									if altGenes&refGenes:
+										orthologCount+=1
+									else:
+										paralogCount+=1
+							totalOrthologCount+=orthologCount
+							totalParalogCount+=paralogCount
+							# print("Number bases with orthologous ref mappings:"+str(orthologCount))
+							# print("Number bases with paralogous ref mappings:"+str(paralogCount))
+							outFile.write(allele+'\t'+str(orthologCount)+'\t'+str(paralogCount)+'\n')
+						outFile.write("total\t"+str(totalOrthologCount)+'\t'+str(totalParalogCount)+'\n')
+
+
+	elif args.stats:
+		with smartOpen(args.out) as outFile:
+			for region in serverDict:
+				outFile.write('$'+region+'\n')
+				for url,algo,source in serverDict[region]:
+					url+='v0.6.g'
+					print("Processing "+url)
+					print('Getting referenceSetId...')
+					referenceSetId=getReferenceID(url)
+					print('Getting sequences...')
+					sequenceDict=getSequenceDict(url,'0')
+					print('Getting joins...')
+					joinDict=getJoinDict(url,'0')
+					print('Computing stats...')
+					# Report general features of the graph:
+						# Number of sequences
+					print("There are {} sequences in the graph".format(len(sequenceDict)))
+						# Number of joins
+					joinCount=countJoins(joinDict)
+					print("There are {} joins in the graph".format(joinCount))
+						# Number of positions
+					positionSum=sum(sequenceDict.values())
+					print("There are {} positions in the graph.".format(positionSum))
+					# 	Number of segments (split up by joins)
+					segmentCount=countSegments(sequenceDict,joinDict)
+					print("There are {} segments in the graph.".format(segmentCount))
+					# 	Number of joins (in split-up graph)
+					fullJoinCount=joinCount+(segmentCount-len(sequenceDict))
+					print("There are {} joins in the segmentized graph.".format(fullJoinCount))
+					outFile.write(algo+'\t'+str(positionSum)+'\n')
 
 	else:
 		print("Please specify an evaluation option.")
-
 
 if __name__ == '__main__':
 	main()
