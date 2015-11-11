@@ -48,7 +48,7 @@ def parse_args(args):
     # General options
     parser.add_argument("--input_sam", type=argparse.FileType("r"),
         default=sys.stdin,
-        help="input SAM in name-sorted order. Cannot be standard input.")
+        help="input SAM in name-sorted order.")
     parser.add_argument("--fq1", type=argparse.FileType("w"),
         default=sys.stdout,
         help="FASTQ file to save all the READ1 reads in")
@@ -394,6 +394,15 @@ def main(args):
         return doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     
     options = parse_args(args) # This holds the nicely-parsed options object
+    
+    # Actually do the work. We structure it like this so we can use it as a
+    # script or a module.
+    run(options)
+    
+def run(options):
+    """
+    Do the actual work of the program.
+    """
     
     for reads_by_end in parse_and_deduplicate_sam(options.input_sam):
         if not (reads_by_end.has_key(1) and reads_by_end.has_key(2)):

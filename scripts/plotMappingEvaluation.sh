@@ -66,19 +66,19 @@ do
     ./boxplot.py "${MAPPING_FILE}" \
         --title "$(printf "Mapped (<=2 mismatches)\nreads in ${REGION^^}")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${MAPPING_PLOT}" \
-        --x_sideways --hline_median trivial \
+        --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
     ./boxplot.py "${PERFECT_FILE}" \
         --title "$(printf "Perfectly mapped\nreads in ${REGION^^}")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${PERFECT_PLOT}" \
-        --x_sideways --hline_median trivial \
+        --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
     ./boxplot.py "${ONE_ERROR_FILE}" \
         --title "$(printf "One-error (<=1 mismatch)\nreads in ${REGION^^}")" \
         --x_label "Graph" --y_label "Portion" --save "${ONE_ERROR_PLOT}" \
-        --x_sideways --hline_median trivial \
+        --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
     ./boxplot.py "${SINGLE_MAPPING_FILE}" \
