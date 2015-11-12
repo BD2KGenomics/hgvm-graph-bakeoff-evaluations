@@ -186,9 +186,9 @@ def plotHeatMap(inputArray, rowNames, colNames, outFile, leftTree = False, topTr
     # make sure array is a numpy
     array = np.array(inputArray, dtype=np.float)
     
-    width=10
+    width=10.6
     height= 9
-    sX = -0.15
+    sX = -0.17
     sY = 0.15
     pdf = pltBack.PdfPages(outFile)
     fig = plt.figure(figsize=(width, height))

@@ -38,7 +38,7 @@ def parse_args(args):
                         help="overwrite files if dont exist")
     parser.add_argument("--kmer", type=int, default=27,
                         help="kmer size for comparison")
-    parser.add_argument("--edge_max", type=int, default=7,
+    parser.add_argument("--edge_max", type=int, default=5,
                         help="edge-max parameter for vg kmer index")
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands")
