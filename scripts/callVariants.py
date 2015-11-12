@@ -271,14 +271,14 @@ def compute_vg_variants(job, input_gam, options):
 
     if do_call:
         robust_makedirs(os.path.dirname(out_sample_vg_path))
-        run("vg call {} {} -r 0.001 -d 50 -e 150 -s 25 -t {} | vg ids -c - | vg ids -s -  > {}".format(input_graph_path,
+        run("vg call {} {} -r 0.001 -d 20 -s 20 -t {} | vg ids -c - | vg ids -s -  > {}".format(input_graph_path,
                                                                                                        out_pileup_path,
                                                                                                        options.vg_cores,
                                                                                                        out_sample_vg_path))
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
-        run("vg call {} {} -r 0.001 -d 50 -e 150 -s 25 -t {} -l | vg ids -c - | vg ids -s - > {}".format(input_graph_path,
+        run("vg call {} {} -r 0.001 -d 20 -s 20 -t {} -l | vg ids -c - | vg ids -s - > {}".format(input_graph_path,
                                                                                                          out_pileup_path,
                                                                                                          options.vg_cores,
                                                                                                          out_augmented_vg_path))

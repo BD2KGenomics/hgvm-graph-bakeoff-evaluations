@@ -32,7 +32,7 @@ def parse_args(args):
                         help="directory to which results will be written.")
     parser.add_argument("--kmer", type=int, default=27,
                         help="kmer size for comparison")
-    parser.add_argument("--edge_max", type=int, default=7,
+    parser.add_argument("--edge_max", type=int, default=5,
                         help="edge-max parameter for vg kmer index")    
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="overwrite existing files")
