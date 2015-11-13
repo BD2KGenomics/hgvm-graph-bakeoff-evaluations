@@ -1,7 +1,10 @@
 #!/usr/bin/env python2.7
 """
-Cluster some graphs (using vg compare for pairwise distances) based on their similarity.
-Current implementation : upgma tree using Jaccard distance matrix
+Do an all-to-all comparison of all input graphs.  Two distance measures are used:
+1)kmer set jaccard 
+2)corg overlap
+Heatmaps and trees are created for each metric in the output directory.  
+Several heatmap versions are written with various combinations of scaling and ymax values
 """
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
@@ -17,6 +20,7 @@ from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
 from heatmap import plotHeatMap
 from callVariants import alignment_sample_tag
+from callStats import vg_length
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -90,15 +94,31 @@ def comp_path(graph1, graph2, options):
     
     return os.path.join(options.out_dir, "compare", name1 + "_vs_" + name2 + ".json")
 
+def corg_path(graph1, graph2, options):
+    """ get the path for the distance computed via corg lengths
+    """
+    name1 = dir_tag(graph1, options) + os.path.splitext(os.path.basename(graph1))[0]
+    name2 = dir_tag(graph2, options) + os.path.splitext(os.path.basename(graph2))[0]
+    
+    return os.path.join(options.out_dir, "corg", name1 + "_vs_" + name2 + ".txt")
+
+def corg_graph_path(graph1, graph2, options):
+    """ get the path for vg output of corg
+    """
+    name1 = dir_tag(graph1, options) + os.path.splitext(os.path.basename(graph1))[0]
+    name2 = dir_tag(graph2, options) + os.path.splitext(os.path.basename(graph2))[0]
+    
+    return os.path.join(options.out_dir, "corg", name1 + "_vs_" + name2 + ".vg")
+
 def mat_path(options):
     """ get the path of the distance matrix
     """
     return os.path.join(options.out_dir, "distmat.tsv")
 
-def tree_path(options):
+def tree_path(options, tag=""):
     """ path for newick tree
     """
-    return os.path.join(options.out_dir, "tree.newick")
+    return os.path.join(options.out_dir, "tree{}.newick".format(tag))
 
 def heatmap_path(options, tag=""):
     """ path for heatmap
@@ -122,8 +142,31 @@ def draw_len(weight):
     else:
         return 1.6 + weight
 
-def compute_matrix(options):
+def jaccard_dist_fn(graph1, graph2, options):
+    """ scrape jaccard dist from vg compare output
+    """
+    jpath = comp_path(graph1, graph2, options)
+    jaccard = -1.
+    with open(jpath) as f:
+        j = json.loads(f.read())
+        if float(j["union"]) == 0:
+            jaccard = 2.
+        else:
+            jaccard = float(j["intersection"]) / float(j["union"])
+        return 1. - jaccard
+
+def corg_dist_fn(graph1, graph2, options):
+    """ scrape corg dist from corg output 
+    """
+    cpath = corg_path(graph1, graph2, options)
+    with open(cpath) as f:
+        c = f.readline().strip()
+        dist = float(c)
+        return dist
+    
+def compute_matrix(options, dist_fn):
     """ make a distance matrix (dictionary), also write it to file
+     dist_fn takes (graph1, graph2, options) and returns a float
     """
     def label_fn(graph):
         if options.avg_samples:
@@ -157,16 +200,9 @@ def compute_matrix(options):
     for graph1 in options.graphs:
         for graph2 in options.graphs:
             if graph1 <= graph2:
-                jpath = comp_path(graph1, graph2, options)
-                jaccard = -1.
-                with open(jpath) as f:
-                    j = json.loads(f.read())
-                    if float(j["union"]) == 0:
-                        jaccard = 2.
-                    else:
-                        jaccard = float(j["intersection"]) / float(j["union"])
-                mat[label_fn(graph1)][label_fn(graph2)] += 1. - jaccard
-                mat[label_fn(graph2)][label_fn(graph1)] += 1. - jaccard
+                val = dist_fn(graph1, graph2, options)
+                mat[label_fn(graph1)][label_fn(graph2)] += val
+                mat[label_fn(graph2)][label_fn(graph1)] += val
                 counts[label_fn(graph1)][label_fn(graph2)] += 1.
                 counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
@@ -177,7 +213,7 @@ def compute_matrix(options):
 
     return mat, list(set(map(label_fn, options.graphs)))
 
-def compute_tree(options, mat, names):
+def compute_tree(options, mat, names, tag):
     """ make upgma hierarchical clustering and write it as png and
     graphviz dot
     """
@@ -201,7 +237,7 @@ def compute_tree(options, mat, names):
     constructor = DistanceTreeConstructor()
     tree = constructor.upgma(dm)
     robust_makedirs(os.path.dirname(tree_path(options)))
-    Phylo.write(tree, tree_path(options), "newick")
+    Phylo.write(tree, tree_path(options, tag), "newick")
 
     # png tree -- note : doesn't work in toil
     def f(x):
@@ -210,7 +246,7 @@ def compute_tree(options, mat, names):
         else:
             return x
     Phylo.draw_graphviz(tree, label_func = f, node_size=1000, node_shape="s", font_size=10)
-    pylab.savefig(tree_path(options).replace("newick", "png"))
+    pylab.savefig(tree_path(options, tag).replace("newick", "png"))
 
     # graphviz
     # get networkx graph
@@ -240,9 +276,9 @@ def compute_tree(options, mat, names):
         edge["label"] = "{0:.3g}".format(float(weight) * 100.)
         edge["fontsize"] = 14
         edge["len"] = draw_len(weight)
-    nx.write_dot(nxgraph, tree_path(options).replace("newick", "dot"))
+    nx.write_dot(nxgraph, tree_path(options, tag).replace("newick", "dot"))
         
-def compute_heatmap(options, mat, names):
+def compute_heatmap(options, mat, names, tag):
     """ make a pdf heatmap out of the matrix
     """
     array_mat = []
@@ -252,43 +288,44 @@ def compute_heatmap(options, mat, names):
             array_mat[-1].append(mat[graph1][graph2])
 
     plotHeatMap(array_mat, names, names,
-                heatmap_path(options),
+                heatmap_path(options, tag),
                 leftTree=True,
                 topTree=True,
                 logNorm=False)
 
     plotHeatMap(array_mat, names, names,
-                heatmap_path(options, "_log"),
+                heatmap_path(options, "_log" + tag),
                 leftTree=True,
                 topTree=True,
                 logNorm=True)
 
     plotHeatMap(array_mat, names, names,
-                heatmap_path(options, "_vm1"),
+                heatmap_path(options, "_vm1" + tag),
                 leftTree=True,
                 topTree=True,
                 logNorm=False,
                 vmax=1.0)
 
     plotHeatMap(array_mat, names, names,
-                heatmap_path(options, "_log_vm1"),
+                heatmap_path(options, "_log_vm1" + tag),
                 leftTree=True,
                 topTree=True,
                 logNorm=True,
                 vmax=1.0)
 
 
-def cluster_comparisons(options):
+def cluster_comparisons(options, dist_fn, tag):
     """ write a (tsv) distance matrix
               a graphviz dot upgma tree (and png)
               a heatmap (pdf)
-        all based on distance = 1 - jaccard index
+    dist_fn is used to make the matrix, and the tag string
+    is tacked on to the results files. 
     """
-    mat, names = compute_matrix(options)
+    mat, names = compute_matrix(options, dist_fn)
 
-    compute_tree(options, mat, names)
+    compute_tree(options, mat, names, tag)
 
-    compute_heatmap(options, mat, names)
+    compute_heatmap(options, mat, names, tag)
 
     
 def compute_kmer_comparison(job, graph1, graph2, options):
@@ -307,6 +344,27 @@ def compute_kmer_comparison(job, graph1, graph2, options):
         os.system("vg compare {} {} -t {} > {}".format(graph1, graph2,
                                                        min(options.vg_cores, 2), out_path))
 
+def compute_corg_comparison(job, graph1, graph2, options):
+    """ run corg on the graphs.  store the output in a text file
+    """
+    out_path = corg_path(graph1, graph2, options)
+    corg_vg = corg_graph_path(graph1, graph2, options)
+    do_comp = options.overwrite or not os.path.exists(out_path)
+    corg_val = -1
+    if do_comp:
+        robust_makedirs(os.path.dirname(out_path))
+        try:
+            os.system("corg {} {} > {}".format(graph1, graph2, corg_vg))
+            len1 = vg_length(graph1, options)
+            len2 = vg_length(graph2, options)
+            lenC = vg_length(corg_vg, options)
+            corg_val = (2. * lenC) / float(len1 + len2) -1. 
+        except:
+            pass
+    with open(out_path, "w") as f:
+        f.write("{}\n".format(corg_val))
+    return corg_val
+
 def compute_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
@@ -316,6 +374,8 @@ def compute_comparisons(job, options):
             if graph1 <= graph2:
                 job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
                                   cores=min(options.vg_cores, 2))
+                job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
+                                  cores=1)
 
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
@@ -356,7 +416,8 @@ def main(args):
     RealTimeLogger.stop_master()
 
     # Do the drawing outside toil to get around weird import problems
-    cluster_comparisons(options)
+    cluster_comparisons(options, jaccard_dist_fn, "kmer")
+    cluster_comparisons(options, corg_dist_fn, "corg")
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
