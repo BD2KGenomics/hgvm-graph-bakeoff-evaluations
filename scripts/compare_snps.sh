@@ -68,7 +68,7 @@ do
 	 done
 
 	 # tables
-	 rm -rf ${TOIL_DIR} ; ./compareCalls.py ./${TOIL_DIR} ${BASELINE} ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS}
+	 ./callStats.py ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS}
 
 	 cp ${VARIANTS}/compare/${i}/*.tsv ${OUT_DIR}/${i}
 	 
