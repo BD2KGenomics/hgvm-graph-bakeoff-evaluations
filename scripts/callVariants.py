@@ -44,7 +44,7 @@ def parse_args(args):
                         help="extension to find input grpah index")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="overwrite files if dont exist")
-    parser.add_argument("--fa_path", type=str, default="./altRegions",
+    parser.add_argument("--fa_path", type=str, default="data/altRegions",
                         help="path to search for reference sequences. expects "
                         "references to be in <fa_path>/BRCA1/ref.fa, etc. "
                         " [TODO: support different ref versions?]" )
@@ -195,7 +195,7 @@ def compute_linear_variants(job, input_gam, options):
 
     # can only do this if there is a "ref" path in the vg graph
     res_path = temp_path(options)
-    run("./vgHasPath.sh {} {} > {}".format(input_graph_path, "ref", res_path))
+    run("scripts/vgHasPath.sh {} {} > {}".format(input_graph_path, "ref", res_path))
     has_ref = False
     with open(res_path) as res_file:
         has_ref = res_file.read()[0] == "1"
