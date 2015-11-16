@@ -416,8 +416,8 @@ def main(args):
     RealTimeLogger.stop_master()
 
     # Do the drawing outside toil to get around weird import problems
-    cluster_comparisons(options, jaccard_dist_fn, "kmer")
-    cluster_comparisons(options, corg_dist_fn, "corg")
+    cluster_comparisons(options, jaccard_dist_fn, "_kmer")
+    cluster_comparisons(options, corg_dist_fn, "_corg")
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

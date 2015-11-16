@@ -96,6 +96,10 @@ The mapping steps above will result make a directory, `./high_coverage_alignment
 	  
 ### Calling Variants
 
+The variant calling scripts require the original FASTA inputs.  If you haven't already, unpack them:
+
+     tar xzf data/altRegions.tar.gz
+
 To run both the vg and samtools variant calling pipeline on all samples, use the following script
 
      ./scripts/call_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants

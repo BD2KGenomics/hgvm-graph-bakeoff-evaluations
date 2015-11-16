@@ -42,7 +42,14 @@ def parse_args(args):
         
     return parser.parse_args(args)
 
-
+def compare_out_path(options):
+    """ get root output dir for comparison output
+    """
+    tag = ""
+    if len(options.out_sub) > 0:
+        tag += os.path.join(tag, options.out_sub)
+    return os.path.join(options.out_dir, tag)
+    
 def count_tsv_path(options):
     tag = ""
     if len(options.out_sub) > 0:
@@ -88,7 +95,7 @@ def count_vcf_snps(vcf, options):
     """
     if not os.path.exists(vcf):
         return -1
-    cmd = "./vcfCountSnps.sh {}".format(vcf)
+    cmd = "scripts/vcfCountSnps.sh {}".format(vcf)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
                          stderr=sys.stderr, bufsize=-1)
     output, _ = p.communicate()
