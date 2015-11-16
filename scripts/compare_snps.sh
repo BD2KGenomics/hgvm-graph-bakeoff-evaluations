@@ -74,11 +74,7 @@ do
 	 done
 
 	 # tables
-<<<<<<< HEAD
 	 scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS}
-=======
-	 ./callStats.py ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS}
->>>>>>> small cleanup of variants scripts. add corg to comparison logic
 
 	 cp ${VARIANTS}/compare/${i}/*.tsv ${OUT_DIR}/${i}
 	 
