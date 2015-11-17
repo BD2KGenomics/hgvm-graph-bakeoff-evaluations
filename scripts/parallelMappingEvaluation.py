@@ -283,7 +283,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Add a child to actually save the graph to the output. Hack our own job
         # so that the actual alignment targets get added as a child of this, so
         # they happen after. TODO: massive hack!
-        job.addChildJobFn(save_indexed_graph, options, index_dir_id,
+        job = job.addChildJobFn(save_indexed_graph, options, index_dir_id,
             index_key, cores=1, memory="10G", disk="50G")
             
     RealTimeLogger.get().info("Done making children")
@@ -303,9 +303,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     
         # Go and bang that input fastq against the correct indexed graph.
         # Its output will go to the right place in the output store.
-        job.addChildJobFn(run_alignment, options, bin_dir_id, region,
-            index_dir_id, sample_fastq, alignment_file_key, stats_file_key,
-            cores=16, memory="100G", disk="50G")
+        job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
+            graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
+            stats_file_key, cores=16, memory="100G", disk="50G")
             
 def save_indexed_graph(job, options, index_dir_id, output_key):
     """
@@ -329,8 +329,8 @@ def save_indexed_graph(job, options, index_dir_id, output_key):
     out_store.write_output_file(local_path, output_key)
     
    
-def run_alignment(job, options, bin_dir_id, region, index_dir_id,
-    sample_fastq_key, alignment_file_key, stats_file_key):
+def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
+    index_dir_id, sample_fastq_key, alignment_file_key, stats_file_key):
     """
     Align the the given fastq from the input store against the given indexed
     graph (in the file store as a directory) and put the GAM and statistics in
@@ -381,7 +381,8 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
             "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
             str(options.kmer_size), graph_file]
         
-        RealTimeLogger.get().info("Running VG: {}".format(" ".join(vg_parts)))
+        RealTimeLogger.get().info("Running VG for {} against {} {}: {}".format(
+            sample, graph_name, region, " ".join(vg_parts)))
         
         # Mark when we start the alignment
         start_time = timeit.default_timer()
