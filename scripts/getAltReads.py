@@ -622,7 +622,7 @@ def downloadAllReads(job, options):
             # it to save the results to a file on a shared filesystem.
             job.addChildJobFn(downloadRegion, options, region_name, 
                 sample_url, ranges_by_region[region_name], bam_filename, 
-                cores=1, memory="1G", disk=0)
+                cores=1, memory="1G", disk="4G")
                 
     RealTimeLogger.get().info("Done making children")
    
@@ -818,7 +818,7 @@ def main():
     
     # Make the root job
     root_job = Job.wrapJobFn(downloadAllReads, options, 
-        cores=1, memory="1G", disk=0)
+        cores=1, memory="1G", disk="4G")
         
     print("Sending log from master")
     logger.info("This is the master")
