@@ -775,8 +775,8 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     RealTimeLogger.get().info("Creating {}.sam".format(output_filename))
     
     # View the bam to a sam
-    subprocess.check_call(["samtools", "view", "{}.bam".format(sort_prefix)],
-        "-o", sam_filename)
+    subprocess.check_call(["samtools", "view", "{}.bam".format(sort_prefix),
+        "-o", sam_filename])
         
     # Convert to FASTQ
     # Decide on the temp filename
