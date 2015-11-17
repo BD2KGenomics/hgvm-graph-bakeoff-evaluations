@@ -9,6 +9,7 @@ import argparse, sys, os, os.path, random, collections, shutil, itertools, glob
 import urllib2, urlparse, ftplib, fnmatch, subprocess
 import json, logging, logging.handlers, SocketServer, struct, socket, threading
 import time, select
+import traceback
 
 from toil.job import Job
 import tsv
@@ -682,8 +683,11 @@ def downloadRange(job, options, file_url, range_string):
             # Try running the download
             RealTimeLogger.get().info("Trying to download {} from {}".format(
                 range_string, file_url))
-            subprocess.check_call(["samtools", "view", "-b", "-o", bam_filename,
-                file_url, range_string])
+            samtools_args = ["samtools", "view", "-b", "-o", bam_filename,
+                file_url, range_string]
+            RealTimeLogger.get().info("Running: {}".format(" ".join(
+                samtools_args)))
+            subprocess.check_call(samtools_args)
                 
             # Make sure there's actually reads in its file.
             lines = subprocess.check_output(["samtools", "flagstat",
@@ -706,7 +710,8 @@ def downloadRange(job, options, file_url, range_string):
         except subprocess.CalledProcessError as e:
                 # Complain we need to retry
                 RealTimeLogger.get().warning(
-                    "Need to retry download of {}".format(file_url))
+                    "Need to retry download of {} due to: {}".format(file_url,
+                    traceback.format_exc()))
                 # But keep looping
                     
     # Put the BAM in the file store with a new ID
