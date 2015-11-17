@@ -9,6 +9,9 @@ and output deposit to file/S3 (coming soon)/Azure
 import sys, os, os.path, json, collections, logging, logging.handlers
 import SocketServer, struct, socket, threading, tarfile, shutil
 import functools
+import random
+import time
+import traceback
 
 # We need some stuff in order to have Azure
 try:
@@ -264,6 +267,11 @@ class IOStore(object):
         Read an input file from wherever the input comes from and send it to the
         given path.
         
+        If the file at local_path already exists, it is overwritten.
+        
+        If the file at local_path already exists and is a directory, behavior is
+        undefined.
+        
         """
         
         raise NotImplementedError()
@@ -287,6 +295,11 @@ class IOStore(object):
         """
         Save the given local file to the given output path. No output directory
         needs to exist already.
+        
+        If the output path already exists, it is overwritten.
+        
+        If the output path already exists and is a directory, behavior is
+        undefined.
         
         """
         
@@ -386,8 +399,20 @@ class FileIOStore(IOStore):
         Get input from the filesystem.
         """
         
-        RealTimeLogger.get().debug("Loading {} from FileIOStore in {}".format(
-            input_path, self.path_prefix))
+        RealTimeLogger.get().debug("Loading {} from FileIOStore in {} to {}".format(
+            input_path, self.path_prefix, local_path))
+        
+        if os.path.exists(local_path):
+            # Try deleting the existing item if it already exists
+            try:
+                os.unlink(local_path)
+            except:
+                # Don't fail here, fail complaining about the assertion, which
+                # will be more informative.
+                pass
+                
+        # Make sure the path is clear for the symlink.
+        assert(not os.path.exists(local_path))
         
         # Make a symlink to grab things
         os.symlink(os.path.abspath(os.path.join(self.path_prefix, input_path)),
@@ -402,12 +427,14 @@ class FileIOStore(IOStore):
             "FileIOStore in {}".format(input_path, self.path_prefix))
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
-            if(recursive and os.isdir(item)):
-                # Recurse on this
+            if(recursive and os.path.isdir(os.path.join(self.path_prefix,
+                input_path, item))):
+                # We're recursing and this is a directory.
+                # Recurse on this.
                 for subitem in self.list_input_directory(
                     os.path.join(input_path, item), recursive):
                     
-                    # Make relative paths include this directory anme and yield
+                    # Make relative paths include this directory name and yield
                     # them
                     yield os.path.join(item, subitem)
             else:
@@ -488,14 +515,9 @@ def backoff(original_function, retries=6, base_delay=10):
     # Make a new version of the function
     @functools.wraps(original_function)
     def new_function(*args, **kwargs):
-        # Overwrite the retry parameters with parameters passed at call time, if
-        # available.
-        if kwargs.has_key("retries"):
-            retries = kwargs["retries"]
-        if kwargs.has_key("base_delay"):
-            base_delay = kwargs["base_delay"]
-        
-        for delay in backoff_times(retries=retries, base_delay=base_delay):
+        # Call backoff times, overriding parameters with stuff from kwargs        
+        for delay in backoff_times(retries=kwargs.get("retries", retries),
+            base_delay=kwargs.get("base_delay", base_delay)):
             # Keep looping until it works or our iterator raises a
             # BackoffError
             if delay > 0:
@@ -506,8 +528,10 @@ def backoff(original_function, retries=6, base_delay=10):
             try:
                 return original_function(*args, **kwargs)
             except:
-                RealTimeLogger.get().error("{} failed due to {}".format(
-                    original_function.__name__, sys.exc_info()))
+                # Report the formatted underlying exception with traceback
+                RealTimeLogger.get().error("{} failed due to: {}".format(
+                    original_function.__name__,
+                    "".join(traceback.format_exception(*sys.exc_info()))))
         
         
         # If we get here, the function we're calling never ran through before we
