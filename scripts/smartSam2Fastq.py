@@ -156,7 +156,7 @@ class Read(object):
         if self.sequence != other.sequence:
             return False
         if self.qualities != other.qualities:
-            return Fasle
+            return False
         if self.end != other.end:
             return False
             
@@ -427,7 +427,9 @@ def run(options):
         options.fq2.close()
         
     # Announce that we're totally done.
-    sys.stderr.write("Finished converting from BAM to FASTQ.")
+    sys.stderr.write("Finished converting from BAM to FASTQ.\n")
+    
+    return True
         
     
     

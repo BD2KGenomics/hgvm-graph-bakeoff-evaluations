@@ -300,7 +300,7 @@ def explore_path(ftp, path, pattern):
                 try:
                     ftp.retrlines("NLST", lambda line: listing.append(line))
                     break
-                except error_reply:
+                except ftplib.error_reply:
                     RealTimeLogger.get().warning("Manual NLST on {} failed. "
                         "Clearing and retrying.".format(path))
                 
@@ -764,33 +764,29 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     subprocess.check_call(["samtools", "sort", "-n", concat_filename,
         sort_prefix])
     
+    # Convert to SAM (which is wasteful but hopefully will actually get all the
+    # pieces).
+    sam_filename = "{}/reads.sam".format(job.fileStore.getLocalTempDir())
+    RealTimeLogger.get().info("Creating {}.sam".format(output_filename))
     
-    
+    # View the bam to a sam
+    subprocess.check_call(["samtools", "view", "{}.bam".format(sort_prefix)],
+        "-o", sam_filename)
+        
     # Convert to FASTQ
     # Decide on the temp filename
     fastq_filename = "{}/reads.fq".format(job.fileStore.getLocalTempDir())
     RealTimeLogger.get().info("Creating {}.fq".format(output_filename))
-    
-    # View the sam and pipe it through the sort of smart converter
-    view = subprocess.Popen(["samtools", "view", "{}.bam".format(sort_prefix)],
-        stdout=subprocess.PIPE)
         
     # We import the converter so Toil will take care of finding it for us.
     # Configure the SAM to FASTQ converter
     convert_options = smartSam2Fastq.parse_args(["smartSam2Fastq.py",
-        "--interleaved", "--fq1", fastq_filename])
-    # Make it read from the samtools view command instead of our own stdin. We
-    # do it this way because we don't want to give it a filename (FIFO?) or
-    # adjust our own stdin. Or read BAM ourselves.
-    convert_options.input_sam = view.stdout
+        "--interleaved", "--fq1", fastq_filename, "--input_sam", sam_filename])
     
     # Do the conversion
-    smartSam2Fastq.run(convert_options)
+    if not smartSam2Fastq.run(convert_options):
+        raise RuntimeError("smartSam2Fastq failed somehow!")
         
-    # Wait and detect errors
-    view.wait()
-    assert(view.returncode == 0)
-    
     # Move it
     shutil.move("{}.bam".format(sort_prefix), output_filename)
     shutil.move(fastq_filename, "{}.fq".format(output_filename))
