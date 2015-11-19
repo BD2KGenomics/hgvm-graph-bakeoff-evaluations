@@ -46,7 +46,7 @@ def parse_args(args):
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
-    parser.add_argument("--sample_limit", type=int, default=1, 
+    parser.add_argument("--sample_limit", type=int, default=float("inf"), 
         help="number of samples to use")
     parser.add_argument("--edge_max", type=int, default=0, 
         help="maximum edges to cross in index")
@@ -170,8 +170,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     region_dir = region.upper()
     
     # What samples do we do? List input sample names up to the given limit.
-    input_samples = list(sample_store.list_input_directory(
-        region_dir))[:options.sample_limit]
+    input_samples = list(sample_store.list_input_directory(region_dir))
+    if len(input_samples) > options.sample_limit:
+        input_samples = input_samples[:options.sample_limit]
     
     # Work out the directory for the alignments to be dumped in in the output
     alignment_dir = "alignments/{}/{}".format(region, graph_name)
