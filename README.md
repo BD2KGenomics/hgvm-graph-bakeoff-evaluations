@@ -96,9 +96,14 @@ The mapping steps above will result make a directory, `./high_coverage_alignment
 	  
 ### Calling Variants
 
-The variant calling scripts require the original FASTA inputs.  If you haven't already, unpack them:
+The variant calling scripts require the original FASTA inputs.  Uncompress them as follows:
 
      tar xzf data/altRegions.tar.gz
+
+Fasta and vcf data is also required to make some baseline sample graphs for the 1000 Genomes data.  This is prepared with the following commands:
+
+	  tar xzf data/g1kvcf.tar.gz
+	  scripts/downloadChromFa.py
 
 To run both the vg and samtools variant calling pipeline on all samples, use the following script
 
