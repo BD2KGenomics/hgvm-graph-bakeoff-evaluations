@@ -105,6 +105,11 @@ Fasta and vcf data is also required to make some baseline sample graphs for the 
 	  tar xzf data/g1kvcf.tar.gz -C data
 	  scripts/downloadChromFa.py
 
+Fasta and vcf data is also required to make some baseline sample graphs for the 1000 Genomes data.  This is prepared with the following commands:
+
+	  tar xzf data/g1kvcf.tar.gz
+	  scripts/downloadChromFa.py
+
 To run both the vg and samtools variant calling pipeline on all samples, use the following script
 
      ./scripts/call_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants
