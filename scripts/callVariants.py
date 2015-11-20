@@ -55,6 +55,11 @@ def parse_args(args):
     parser.add_argument("--skip", type=str, default="",
                         help="comma-separated list of keywords that "
                         "will cause input gam to be skipped if found in path")
+    parser.add_argument("--g1kvcf_path", type=str, default="data/g1kvcf",
+                        help="path to search for 1000 genomes vcf sequences. expects "
+                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")
+    parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
+                        help="fasta file with entire chromosome info for all regions")
     
     args = args[1:]
         
@@ -172,7 +177,27 @@ def linear_vg_path(alignment_path, options, tag=""):
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}_linear.vg".format(tag)
-    return os.path.join(out_dir(alignment_path, options), name)    
+    return os.path.join(out_dir(alignment_path, options), name)
+
+def g1k_vcf_path(alignment_path, options, tag=""):
+    """ get (compressed) vcf output of sample filtering of 1000 genomes
+    """
+    name = os.path.splitext(os.path.basename(alignment_path))[0]
+    name += "{}_sample.vcf.gz".format(tag)
+    outdir = os.path.join(options.out_dir,
+                          alignment_region_tag(alignment_path, options),
+                          "g1kvcf")
+    return os.path.join(outdir, name)
+
+def g1k_vg_path(alignment_path, options, tag=""):
+    """ get vg path constructed from g1k filtered sample
+    """
+    name = os.path.splitext(os.path.basename(alignment_path))[0]
+    name += "{}_sample.vg".format(tag)
+    outdir = os.path.join(options.out_dir,
+                          alignment_region_tag(alignment_path, options),
+                          "g1kvcf")
+    return os.path.join(outdir, name)
 
 def run(cmd, stdout = sys.stdout, stderr = sys.stderr):
     """ run command in shell and barf if it doesn't work
@@ -283,16 +308,50 @@ def compute_vg_variants(job, input_gam, options):
                                                                                                          options.vg_cores,
                                                                                                          out_augmented_vg_path))
 
+def compute_snp1000g_baseline(job, input_gam, options):
+    """ make 1000 genomes sample graph by filtering the vcf
+    """
+    # there is only one g1vcf graph per region per sample
+    # this function is also going to get called once for each graph type
+    # so we hack here to only run on trivial graphs (arbitrary choice)
+    if alignment_graph_tag(input_gam, options) != "trivial":
+        return
+        
+    sample = alignment_sample_tag(input_gam, options)
+    region = alignment_region_tag(input_gam, options)
+    g1kvcf_path = os.path.join(options.g1kvcf_path, region.upper() + ".vcf")
+    filter_vcf_path = g1k_vcf_path(input_gam, options)
+    filter_vg_path = g1k_vg_path(input_gam, options)
+    fasta_path = options.chrom_fa_path
+
+    do_filter = options.overwrite or not os.path.isfile(filter_vcf_path)
+    do_construct = do_filter or not os.path.isfile(filter_vg_path)
+
+    # make filtered compressed vcf for this sample
+    if do_filter:
+        robust_makedirs(os.path.dirname(filter_vcf_path))
+        run("scripts/vcfFilterSample.py {} {} | bcftools view - -O z > {}".format(g1kvcf_path,
+                                                                                  sample,
+                                                                                  filter_vcf_path))
+        run("tabix -f -p vcf {}".format(filter_vcf_path))
+
+    # load it into a vg graph
+    if do_construct:
+        run("vg construct -v {} -r {} -t {} > {}".format(filter_vcf_path, fasta_path,
+                                                         options.vg_cores, filter_vg_path))    
+        
 def call_variants(job, options):
     """ run everything (root toil job)
     """
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, options,
+                          cores=options.vg_cores)
         if not options.vg_only:
             job.addChildJobFn(compute_linear_variants, input_gam, options,
                               cores=options.vg_cores)
-    
+            
     
 def main(args):
     
