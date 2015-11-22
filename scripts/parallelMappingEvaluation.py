@@ -1063,6 +1063,9 @@ def save_indexed_graph(job, options, index_dir_id, output_key):
     
     """
     
+    RealTimeLogger.get().info("Uploading {} to output store...".format(
+        output_key))
+    
     # Set up the IO stores each time, since we can't unpickle them on Azure for
     # some reason.
     sample_store = IOStore.get(options.sample_store)
@@ -1071,8 +1074,13 @@ def save_indexed_graph(job, options, index_dir_id, output_key):
     # Get the tar.gz file
     local_path = job.fileStore.readGlobalFile(index_dir_id)
     
+    RealTimeLogger.get().info("Global file for {} read".format(output_key))
+    
     # Save it as output
     out_store.write_output_file(local_path, output_key)
+    
+    RealTimeLogger.get().info("Index {} uploaded successfully".format(
+        output_key))
     
    
 def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
