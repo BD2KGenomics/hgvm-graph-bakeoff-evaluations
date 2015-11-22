@@ -1072,9 +1072,13 @@ def save_indexed_graph(job, options, index_dir_id, output_key):
     out_store = IOStore.get(options.out_store)
     
     # Get the tar.gz file
+    RealTimeLogger.get().info("Downloading global file {}".format(index_dir_id))
     local_path = job.fileStore.readGlobalFile(index_dir_id)
     
-    RealTimeLogger.get().info("Global file for {} read".format(output_key))
+    size = os.path.getsize(local_path)
+    
+    RealTimeLogger.get().info("Global file {} ({} bytes) for {} read".format(
+        index_dir_id, size, output_key))
     
     # Save it as output
     out_store.write_output_file(local_path, output_key)
