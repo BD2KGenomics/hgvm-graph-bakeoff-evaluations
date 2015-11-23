@@ -14,9 +14,12 @@ import logging, logging.handlers, SocketServer, struct, socket, threading
 from toil.job import Job
 
 ###BEGIN TOILLIB
-
 import sys, os, os.path, json, collections, logging, logging.handlers
 import SocketServer, struct, socket, threading, tarfile, shutil
+import functools
+import random
+import time
+import traceback
 
 # We need some stuff in order to have Azure
 try:
@@ -137,7 +140,7 @@ class RealTimeLogger(object):
         
         """
         
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.INFO)
     
         # Start up the logging server
         cls.logging_server = SocketServer.ThreadingUDPServer(("0.0.0.0", 0),
@@ -180,10 +183,15 @@ class RealTimeLogger(object):
             # Only do the setup once, so we don't add a handler every time we
             # log
             cls.logger = logging.getLogger('realtime')
-            cls.logger.setLevel(logging.DEBUG)
-            cls.logger.addHandler(JSONDatagramHandler(
-                os.environ["RT_LOGGING_HOST"],
-                int(os.environ["RT_LOGGING_PORT"])))
+            cls.logger.setLevel(logging.INFO)
+            
+            if (os.environ.has_key("RT_LOGGING_HOST") and
+                os.environ.has_key("RT_LOGGING_PORT")):
+                # We know where to send messages to, so send them.
+            
+                cls.logger.addHandler(JSONDatagramHandler(
+                    os.environ["RT_LOGGING_HOST"],
+                    int(os.environ["RT_LOGGING_PORT"])))
         
         return cls.logger
 
@@ -267,16 +275,25 @@ class IOStore(object):
         Read an input file from wherever the input comes from and send it to the
         given path.
         
+        If the file at local_path already exists, it is overwritten.
+        
+        If the file at local_path already exists and is a directory, behavior is
+        undefined.
+        
         """
         
         raise NotImplementedError()
         
-    def list_input_directory(self, input_path):
+    def list_input_directory(self, input_path, recursive=False):
         """
-        Yields each of the subdirectories and files in the given input path, non-
-        recursively.
+        Yields each of the subdirectories and files in the given input path.
         
-        Gives bare file/directory names with no paths.
+        If recursive is false, yields files and directories in the given
+        directory. If recursive is true, yields all files contained within the
+        current directory, recursively, but does not yield folders.
+        
+        
+        Gives relative file/directory names.
         
         """
         
@@ -286,6 +303,11 @@ class IOStore(object):
         """
         Save the given local file to the given output path. No output directory
         needs to exist already.
+        
+        If the output path already exists, it is overwritten.
+        
+        If the output path already exists and is a directory, behavior is
+        undefined.
         
         """
         
@@ -348,7 +370,7 @@ class IOStore(object):
             region, name_prefix = store_arguments.split(":", 1)
             raise NotImplementedError("AWS IO store not written")
         elif store_type == "azure":
-            # Break out the Azure arguments. TODO: prefix in the container.
+            # Break out the Azure arguments.
             account, container = store_arguments.split(":", 1)
             
             if "/" in container:
@@ -385,14 +407,26 @@ class FileIOStore(IOStore):
         Get input from the filesystem.
         """
         
-        RealTimeLogger.get().info("Loading {} from FileIOStore in {}".format(
-            input_path, self.path_prefix))
+        RealTimeLogger.get().debug("Loading {} from FileIOStore in {} to {}".format(
+            input_path, self.path_prefix, local_path))
+        
+        if os.path.exists(local_path):
+            # Try deleting the existing item if it already exists
+            try:
+                os.unlink(local_path)
+            except:
+                # Don't fail here, fail complaining about the assertion, which
+                # will be more informative.
+                pass
+                
+        # Make sure the path is clear for the symlink.
+        assert(not os.path.exists(local_path))
         
         # Make a symlink to grab things
         os.symlink(os.path.abspath(os.path.join(self.path_prefix, input_path)),
             local_path)
         
-    def list_input_directory(self, input_path):
+    def list_input_directory(self, input_path, recursive=False):
         """
         Loop over directories on the filesystem.
         """
@@ -401,14 +435,26 @@ class FileIOStore(IOStore):
             "FileIOStore in {}".format(input_path, self.path_prefix))
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
-            yield item
+            if(recursive and os.path.isdir(os.path.join(self.path_prefix,
+                input_path, item))):
+                # We're recursing and this is a directory.
+                # Recurse on this.
+                for subitem in self.list_input_directory(
+                    os.path.join(input_path, item), recursive):
+                    
+                    # Make relative paths include this directory name and yield
+                    # them
+                    yield os.path.join(item, subitem)
+            else:
+                # This isn't a directory or we aren't being recursive
+                yield item
     
     def write_output_file(self, local_path, output_path):
         """
         Write output to the filesystem
         """
 
-        RealTimeLogger.get().info("Saving {} to FileIOStore in {}".format(
+        RealTimeLogger.get().debug("Saving {} to FileIOStore in {}".format(
             output_path, self.path_prefix))
 
         # What's the real outptu path to write to?
@@ -432,6 +478,76 @@ class FileIOStore(IOStore):
         """
         
         return os.path.exists(os.path.join(self.path_prefix, path))
+
+class BackoffError(RuntimeError):
+    """
+    Represents an error from running out of retries during exponential back-off.
+    """
+
+def backoff_times(retries, base_delay):
+    """
+    A generator that yields times for random exponential back-off. You have to
+    do the exception handling and sleeping yourself. Stops when the retries run
+    out.
+    
+    """
+    
+    # Don't wait at all before the first try
+    yield 0
+    
+    # What retry are we on?
+    try_number = 1
+    
+    # Make a delay that increases
+    delay = float(base_delay) * 2
+    
+    while try_number <= retries:
+        # Wait a random amount between 0 and 2^try_number * base_delay
+        yield random.uniform(base_delay, delay)
+        delay *= 2
+        try_number += 1
+        
+    # If we get here, we're stopping iteration without succeeding. The caller
+    # will probably raise an error.
+        
+def backoff(original_function, retries=6, base_delay=10):
+    """
+    We define a decorator that does randomized exponential back-off up to a
+    certain number of retries. Raises BackoffError if the operation doesn't
+    succeed after backing off for the specified number of retries (which may be
+    float("inf")).
+    
+    Unfortunately doesn't really work on generators.
+    """
+    
+    # Make a new version of the function
+    @functools.wraps(original_function)
+    def new_function(*args, **kwargs):
+        # Call backoff times, overriding parameters with stuff from kwargs        
+        for delay in backoff_times(retries=kwargs.get("retries", retries),
+            base_delay=kwargs.get("base_delay", base_delay)):
+            # Keep looping until it works or our iterator raises a
+            # BackoffError
+            if delay > 0:
+                # We have to wait before trying again
+                RealTimeLogger.get().error("Retry after {} seconds".format(
+                    delay))
+                time.sleep(delay)
+            try:
+                return original_function(*args, **kwargs)
+            except:
+                # Report the formatted underlying exception with traceback
+                RealTimeLogger.get().error("{} failed due to: {}".format(
+                    original_function.__name__,
+                    "".join(traceback.format_exception(*sys.exc_info()))))
+        
+        
+        # If we get here, the function we're calling never ran through before we
+        # ran out of backoff times. Give an error.
+        raise BackoffError("Ran out of retries calling {}".format(
+            original_function.__name__))
+    
+    return new_function
             
 class AzureIOStore(IOStore):
     """
@@ -498,7 +614,7 @@ class AzureIOStore(IOStore):
         """
         
         if self.connection is None:
-            RealTimeLogger.get().info("Connecting to account {}, using "
+            RealTimeLogger.get().debug("Connecting to account {}, using "
                 "container {} and prefix {}".format(self.account_name,
                 self.container_name, self.name_prefix))
         
@@ -506,7 +622,7 @@ class AzureIOStore(IOStore):
             self.connection = BlobService(
                 account_name=self.account_name, account_key=self.account_key)
             
-            
+    @backoff        
     def read_input_file(self, input_path, local_path):
         """
         Get input from Azure.
@@ -515,7 +631,7 @@ class AzureIOStore(IOStore):
         self.__connect()
         
         
-        RealTimeLogger.get().info("Loading {} from AzureIOStore".format(
+        RealTimeLogger.get().debug("Loading {} from AzureIOStore".format(
             input_path))
         
         # Download the blob. This is known to be synchronous, although it can
@@ -523,7 +639,7 @@ class AzureIOStore(IOStore):
         self.connection.get_blob_to_path(self.container_name,
             self.name_prefix + input_path, local_path)
             
-    def list_input_directory(self, input_path):
+    def list_input_directory(self, input_path, recursive=False):
         """
         Loop over fake /-delimited directories on Azure. The prefix may or may
         not not have a trailing slash; if not, one will be added automatically.
@@ -549,7 +665,8 @@ class AzureIOStore(IOStore):
         # page, if there is one. See <http://stackoverflow.com/a/24303682>
         marker = None
         
-        # This holds the subdirectories we found; we yield each exactly once.
+        # This holds the subdirectories we found; we yield each exactly once if
+        # we aren't recursing.
         subdirectories = set()
         
         while True:
@@ -565,8 +682,9 @@ class AzureIOStore(IOStore):
                 # Drop the common prefix
                 relative_path = blob.name[len(fake_directory):]
                 
-                if "/" in relative_path:
-                    # We found a file in a subdirectory
+                if (not recursive) and "/" in relative_path:
+                    # We found a file in a subdirectory, and we aren't supposed
+                    # to be recursing.
                     subdirectory, _ = relative_path.split("/", 1)
                     
                     if subdirectory not in subdirectories:
@@ -582,8 +700,9 @@ class AzureIOStore(IOStore):
             marker = result.next_marker
                 
             if not marker:
-                break 
-    
+                break
+                
+    @backoff
     def write_output_file(self, local_path, output_path):
         """
         Write output to Azure. Will create the container if necessary.
@@ -591,7 +710,7 @@ class AzureIOStore(IOStore):
         
         self.__connect()
         
-        RealTimeLogger.get().info("Saving {} to AzureIOStore".format(
+        RealTimeLogger.get().debug("Saving {} to AzureIOStore".format(
             output_path))
         
         try:
@@ -605,7 +724,8 @@ class AzureIOStore(IOStore):
         # TODO: catch no container error here, make the container, and retry
         self.connection.put_block_blob_from_path(self.container_name,
             self.name_prefix + output_path, local_path)
-            
+    
+    @backoff        
     def exists(self, path):
         """
         Returns true if the given input or output file exists in Azure already.
@@ -637,7 +757,9 @@ class AzureIOStore(IOStore):
         
         return False
 
+    
 ###END TOILLIB
+
 
 def parse_args(args):
     """
@@ -669,7 +791,7 @@ def parse_args(args):
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
-    parser.add_argument("--sample_limit", type=int, default=1, 
+    parser.add_argument("--sample_limit", type=int, default=float("inf"), 
         help="number of samples to use")
     parser.add_argument("--edge_max", type=int, default=0, 
         help="maximum edges to cross in index")
@@ -678,6 +800,8 @@ def parse_args(args):
     parser.add_argument("--bin_url",
         default="https://hgvm.blob.core.windows.net/hgvm-bin",
         help="URL to download sg2vg and vg binaries from, without Docker")
+    parser.add_argument("--use_path_binaries", action="store_true",
+        help="use system vg and sg2vg instead of downloading them")
     parser.add_argument("--overwrite", default=False, action="store_true",
         help="overwrite existing result files")
     parser.add_argument("--reindex", default=False, action="store_true",
@@ -702,23 +826,27 @@ def run_all_alignments(job, options):
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Retrieve binaries we need
-    RealTimeLogger.get().info("Retrieving binaries from {}".format(
-        options.bin_url))
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    robust_makedirs(bin_dir)
-    subprocess.check_call(["wget", "{}/sg2vg".format(options.bin_url),
-        "-O", "{}/sg2vg".format(bin_dir)])
-    subprocess.check_call(["wget", "{}/vg".format(options.bin_url),
-        "-O", "{}/vg".format(bin_dir)])
+    if options.use_path_binaries:
+        # We don't download any bianries and don't maintain a bin_dir
+        bin_dir_id = None
+    else:
+        # Retrieve binaries we need
+        RealTimeLogger.get().info("Retrieving binaries from {}".format(
+            options.bin_url))
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        robust_makedirs(bin_dir)
+        subprocess.check_call(["wget", "{}/sg2vg".format(options.bin_url),
+            "-O", "{}/sg2vg".format(bin_dir)])
+        subprocess.check_call(["wget", "{}/vg".format(options.bin_url),
+            "-O", "{}/vg".format(bin_dir)])
+            
+        # Make them executable
+        os.chmod("{}/sg2vg".format(bin_dir), 0o744)
+        os.chmod("{}/vg".format(bin_dir), 0o744)
         
-    # Make them executable
-    os.chmod("{}/sg2vg".format(bin_dir), 0o744)
-    os.chmod("{}/vg".format(bin_dir), 0o744)
-    
-    # Upload the bin directory to the file store
-    bin_dir_id = write_global_directory(job.fileStore, bin_dir,
-        cleanup=True)
+        # Upload the bin directory to the file store
+        bin_dir_id = write_global_directory(job.fileStore, bin_dir,
+            cleanup=True)
     
     # Make sure we skip the header
     is_first = True
@@ -766,9 +894,15 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Download the binaries
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get either
+        # the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
     
     # Get graph basename (last URL component) from URL
     basename = re.match(".*/(.*)/$", url).group(1)
@@ -781,8 +915,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     region_dir = region.upper()
     
     # What samples do we do? List input sample names up to the given limit.
-    input_samples = list(sample_store.list_input_directory(
-        region_dir))[:options.sample_limit]
+    input_samples = list(sample_store.list_input_directory(region_dir))
+    if len(input_samples) > options.sample_limit:
+        input_samples = input_samples[:options.sample_limit]
     
     # Work out the directory for the alignments to be dumped in in the output
     alignment_dir = "alignments/{}/{}".format(region, graph_name)
@@ -858,20 +993,20 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             tasks = []
             
             # Do the download
-            tasks.append(subprocess.Popen(["{}/sg2vg".format(bin_dir),
+            tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
                 versioned_url, "-u"], stdout=subprocess.PIPE))
             
             # Pipe through zcat
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "view",
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "view",
                 "-Jv", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
             
             # And cut
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "mod",
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
                 "-X100", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
                 
             # And uniq
-            tasks.append(subprocess.Popen(["{}/vg".format(bin_dir), "ids", "-s",
-                "-"], stdin=tasks[-1].stdout, stdout=output_file))
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "ids",
+                "-s", "-"], stdin=tasks[-1].stdout, stdout=output_file))
                 
             # Did we make it through all the tasks OK?
             for task in tasks:
@@ -882,7 +1017,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Now run the indexer.
         # TODO: support both indexing modes
         RealTimeLogger.get().info("Indexing {}".format(graph_filename))
-        subprocess.check_call(["{}/vg".format(bin_dir), "index", "-s", "-k",
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
             str(options.kmer_size), "-e", str(options.edge_max),
             "-t", str(job.cores), graph_filename])
             
@@ -894,7 +1029,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Add a child to actually save the graph to the output. Hack our own job
         # so that the actual alignment targets get added as a child of this, so
         # they happen after. TODO: massive hack!
-        job.addChildJobFn(save_indexed_graph, options, index_dir_id,
+        job = job.addChildJobFn(save_indexed_graph, options, index_dir_id,
             index_key, cores=1, memory="10G", disk="50G")
             
     RealTimeLogger.get().info("Done making children")
@@ -914,9 +1049,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     
         # Go and bang that input fastq against the correct indexed graph.
         # Its output will go to the right place in the output store.
-        job.addChildJobFn(run_alignment, options, bin_dir_id, region,
-            index_dir_id, sample_fastq, alignment_file_key, stats_file_key,
-            cores=16, memory="100G", disk="50G")
+        job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
+            graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
+            stats_file_key, cores=16, memory="100G", disk="50G")
             
 def save_indexed_graph(job, options, index_dir_id, output_key):
     """
@@ -928,20 +1063,32 @@ def save_indexed_graph(job, options, index_dir_id, output_key):
     
     """
     
+    RealTimeLogger.get().info("Uploading {} to output store...".format(
+        output_key))
+    
     # Set up the IO stores each time, since we can't unpickle them on Azure for
     # some reason.
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
     # Get the tar.gz file
+    RealTimeLogger.get().info("Downloading global file {}".format(index_dir_id))
     local_path = job.fileStore.readGlobalFile(index_dir_id)
+    
+    size = os.path.getsize(local_path)
+    
+    RealTimeLogger.get().info("Global file {} ({} bytes) for {} read".format(
+        index_dir_id, size, output_key))
     
     # Save it as output
     out_store.write_output_file(local_path, output_key)
     
+    RealTimeLogger.get().info("Index {} uploaded successfully".format(
+        output_key))
+    
    
-def run_alignment(job, options, bin_dir_id, region, index_dir_id,
-    sample_fastq_key, alignment_file_key, stats_file_key):
+def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
+    index_dir_id, sample_fastq_key, alignment_file_key, stats_file_key):
     """
     Align the the given fastq from the input store against the given indexed
     graph (in the file store as a directory) and put the GAM and statistics in
@@ -954,9 +1101,15 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
-    # Download the binaries
-    bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-    read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get either
+        # the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
     
     # Download the indexed graph to a directory we can use
     graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
@@ -982,11 +1135,12 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
         # Start the aligner and have it write to the file
         
         # Plan out what to run
-        vg_parts = ["{}/vg".format(bin_dir), "map", "-f", fastq_file, "-i",
-            "-n3", "-M2", "-t", str(job.cores), "-k", str(options.kmer_size),
-            graph_file]
+        vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
+            "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
+            str(options.kmer_size), graph_file]
         
-        RealTimeLogger.get().info("Running VG: {}".format(" ".join(vg_parts)))
+        RealTimeLogger.get().info("Running VG for {} against {} {}: {}".format(
+            sample, graph_name, region, " ".join(vg_parts)))
         
         # Mark when we start the alignment
         start_time = timeit.default_timer()
@@ -1005,7 +1159,7 @@ def run_alignment(job, options, bin_dir_id, region, index_dir_id,
     RealTimeLogger.get().info("Aligned {}".format(output_file))
            
     # Read the alignments in in JSON-line format
-    view = subprocess.Popen(["{}/vg".format(bin_dir), "view", "-aj",
+    view = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
         output_file], stdout=subprocess.PIPE)
        
     # Count up the stats: total reads, total mapped at all, total multimapped,

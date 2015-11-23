@@ -46,7 +46,7 @@ To actually run the alignments for the downloaded reads, you should use the `par
 # Remove any previous Toil job store
 rm -Rf tree
 # Run the alignment
-scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./low_coverage_reads ./low_coverage_alignments --batchSystem=singleMachine --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
+scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./low_coverage_reads ./low_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
 ```
 
 Note that if you are running on all 2,691 samples retrieved in the previous step, the command given above will take an impractical amount of time to complete. One option to mitigate this is to only run some samples, with a `--sampleLimit` flag. Another is to use the script on a cluster, by changing the `--batchSystem` argument to any batch system supported by toil (and the job store of `./tree` to a job store that will be accessible from your cluster nodes).
@@ -82,7 +82,7 @@ Currently the easiest way to produce the alignments needed for the variant calli
 # Remove any previous Toil job store
 rm -Rf tree
 # Run the alignment
-scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_reads ./high_coverage_alignments --batchSystem=singleMachine --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
+scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_reads ./high_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
 ```
 
 It might be wise to parallelize this step across a cluster; Microsoft Azure Storage is supported for the input and output directories, using a syntax similar to that used for Toil job stores (`azure:<account>:<container>/<prefix>`).

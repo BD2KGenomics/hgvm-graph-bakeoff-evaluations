@@ -1,15 +1,17 @@
 """
 toillib.py: useful extras for Toil scripts.
 
-Includes real-time-logging, input retrieval from file/S3/Azure, and output
-deposit to file/S3/Azure
-
-The only problem is you can't use it since it won't be installed on your nodes
+Includes real-time-logging, input retrieval from file/S3 (coming soon)/Azure,
+and output deposit to file/S3 (coming soon)/Azure
 """
 
 
 import sys, os, os.path, json, collections, logging, logging.handlers
 import SocketServer, struct, socket, threading, tarfile, shutil
+import functools
+import random
+import time
+import traceback
 
 # We need some stuff in order to have Azure
 try:
@@ -265,6 +267,11 @@ class IOStore(object):
         Read an input file from wherever the input comes from and send it to the
         given path.
         
+        If the file at local_path already exists, it is overwritten.
+        
+        If the file at local_path already exists and is a directory, behavior is
+        undefined.
+        
         """
         
         raise NotImplementedError()
@@ -288,6 +295,11 @@ class IOStore(object):
         """
         Save the given local file to the given output path. No output directory
         needs to exist already.
+        
+        If the output path already exists, it is overwritten.
+        
+        If the output path already exists and is a directory, behavior is
+        undefined.
         
         """
         
@@ -350,7 +362,7 @@ class IOStore(object):
             region, name_prefix = store_arguments.split(":", 1)
             raise NotImplementedError("AWS IO store not written")
         elif store_type == "azure":
-            # Break out the Azure arguments. TODO: prefix in the container.
+            # Break out the Azure arguments.
             account, container = store_arguments.split(":", 1)
             
             if "/" in container:
@@ -387,8 +399,20 @@ class FileIOStore(IOStore):
         Get input from the filesystem.
         """
         
-        RealTimeLogger.get().debug("Loading {} from FileIOStore in {}".format(
-            input_path, self.path_prefix))
+        RealTimeLogger.get().debug("Loading {} from FileIOStore in {} to {}".format(
+            input_path, self.path_prefix, local_path))
+        
+        if os.path.exists(local_path):
+            # Try deleting the existing item if it already exists
+            try:
+                os.unlink(local_path)
+            except:
+                # Don't fail here, fail complaining about the assertion, which
+                # will be more informative.
+                pass
+                
+        # Make sure the path is clear for the symlink.
+        assert(not os.path.exists(local_path))
         
         # Make a symlink to grab things
         os.symlink(os.path.abspath(os.path.join(self.path_prefix, input_path)),
@@ -403,12 +427,14 @@ class FileIOStore(IOStore):
             "FileIOStore in {}".format(input_path, self.path_prefix))
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
-            if(recursive and os.isdir(item)):
-                # Recurse on this
+            if(recursive and os.path.isdir(os.path.join(self.path_prefix,
+                input_path, item))):
+                # We're recursing and this is a directory.
+                # Recurse on this.
                 for subitem in self.list_input_directory(
                     os.path.join(input_path, item), recursive):
                     
-                    # Make relative paths include this directory anme and yield
+                    # Make relative paths include this directory name and yield
                     # them
                     yield os.path.join(item, subitem)
             else:
@@ -444,6 +470,76 @@ class FileIOStore(IOStore):
         """
         
         return os.path.exists(os.path.join(self.path_prefix, path))
+
+class BackoffError(RuntimeError):
+    """
+    Represents an error from running out of retries during exponential back-off.
+    """
+
+def backoff_times(retries, base_delay):
+    """
+    A generator that yields times for random exponential back-off. You have to
+    do the exception handling and sleeping yourself. Stops when the retries run
+    out.
+    
+    """
+    
+    # Don't wait at all before the first try
+    yield 0
+    
+    # What retry are we on?
+    try_number = 1
+    
+    # Make a delay that increases
+    delay = float(base_delay) * 2
+    
+    while try_number <= retries:
+        # Wait a random amount between 0 and 2^try_number * base_delay
+        yield random.uniform(base_delay, delay)
+        delay *= 2
+        try_number += 1
+        
+    # If we get here, we're stopping iteration without succeeding. The caller
+    # will probably raise an error.
+        
+def backoff(original_function, retries=6, base_delay=10):
+    """
+    We define a decorator that does randomized exponential back-off up to a
+    certain number of retries. Raises BackoffError if the operation doesn't
+    succeed after backing off for the specified number of retries (which may be
+    float("inf")).
+    
+    Unfortunately doesn't really work on generators.
+    """
+    
+    # Make a new version of the function
+    @functools.wraps(original_function)
+    def new_function(*args, **kwargs):
+        # Call backoff times, overriding parameters with stuff from kwargs        
+        for delay in backoff_times(retries=kwargs.get("retries", retries),
+            base_delay=kwargs.get("base_delay", base_delay)):
+            # Keep looping until it works or our iterator raises a
+            # BackoffError
+            if delay > 0:
+                # We have to wait before trying again
+                RealTimeLogger.get().error("Retry after {} seconds".format(
+                    delay))
+                time.sleep(delay)
+            try:
+                return original_function(*args, **kwargs)
+            except:
+                # Report the formatted underlying exception with traceback
+                RealTimeLogger.get().error("{} failed due to: {}".format(
+                    original_function.__name__,
+                    "".join(traceback.format_exception(*sys.exc_info()))))
+        
+        
+        # If we get here, the function we're calling never ran through before we
+        # ran out of backoff times. Give an error.
+        raise BackoffError("Ran out of retries calling {}".format(
+            original_function.__name__))
+    
+    return new_function
             
 class AzureIOStore(IOStore):
     """
@@ -518,7 +614,7 @@ class AzureIOStore(IOStore):
             self.connection = BlobService(
                 account_name=self.account_name, account_key=self.account_key)
             
-            
+    @backoff        
     def read_input_file(self, input_path, local_path):
         """
         Get input from Azure.
@@ -596,8 +692,9 @@ class AzureIOStore(IOStore):
             marker = result.next_marker
                 
             if not marker:
-                break 
-    
+                break
+                
+    @backoff
     def write_output_file(self, local_path, output_path):
         """
         Write output to Azure. Will create the container if necessary.
@@ -619,7 +716,8 @@ class AzureIOStore(IOStore):
         # TODO: catch no container error here, make the container, and retry
         self.connection.put_block_blob_from_path(self.container_name,
             self.name_prefix + output_path, local_path)
-            
+    
+    @backoff        
     def exists(self, path):
         """
         Returns true if the given input or output file exists in Azure already.

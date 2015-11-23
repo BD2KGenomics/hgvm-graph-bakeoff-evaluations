@@ -9,6 +9,7 @@ import argparse, sys, os, os.path, random, collections, shutil, itertools, glob
 import urllib2, urlparse, ftplib, fnmatch, subprocess
 import json, logging, logging.handlers, SocketServer, struct, socket, threading
 import time, select
+import traceback
 
 from toil.job import Job
 import tsv
@@ -268,32 +269,57 @@ def explore_path(ftp, path, pattern):
         # List of everything to recurse into
         to_recurse_on = []
         
-        try:
-            listing = ftp.nlst()
-        except ftplib.error_proto:
-            # For some reason this built-in function sometimes doesn't work. Try
-            # doing it ourselves.
-            
-            RealTimeLogger.get().warning("FTPlib nlst on {} failed. Clearing "
-                "and retrying.".format(path))
-            
-            while True:
-                # Clear out any crap that may be coming over the ftp connection.
-                # Use a 2 second timeout
-                flags = select.select([ftp.sock], [], [], 2)
+        retries_remaining = 3
+        
+        while retries_remaining > 0:
+            retries_remaining -= 1
+            try:
+                listing = ftp.nlst()
+                break
+            except ftplib.error_proto:
+                # For some reason this built-in function sometimes doesn't work.
+                # Try doing it ourselves.
                 
-                if not flags[0]:
-                    # Nothing came
-                    break
+                RealTimeLogger.get().warning("FTPlib nlst on {} failed. "
+                    "Clearing and retrying.".format(path))
+                
+                while True:
+                    # Clear out any crap that may be coming over the ftp
+                    # connection. Use a 2 second timeout
+                    flags = select.select([ftp.sock], [], [], 2)
                     
-                # Otherwise read some data and select again
-                got = ftp.sock.recv(1024)
-                RealTimeLogger.get().warning("Extra data: {}".format(got))
-            
-            
-            # Now manually do the listing
-            listing = []
-            ftp.retrlines("NLST", lambda line: listing.append(line))
+                    if not flags[0]:
+                        # Nothing came
+                        break
+                        
+                    # Otherwise read some data and select again
+                    got = ftp.sock.recv(1024)
+                    RealTimeLogger.get().warning("Extra data: {}".format(got))
+                
+                # Now manually do the listing
+                listing = []
+                try:
+                    ftp.retrlines("NLST", lambda line: listing.append(line))
+                    break
+                except ftplib.error_reply:
+                    RealTimeLogger.get().warning("Manual NLST on {} failed. "
+                        "Clearing and retrying.".format(path))
+                
+                    # The server... replied to a PASV wrong or something? Maybe
+                    # we're out of sync. Try syncing up again.
+                    while True:
+                        # Clear out any crap that may be coming over the ftp
+                        # connection. Use a 2 second timeout
+                        flags = select.select([ftp.sock], [], [], 2)
+                        
+                        if not flags[0]:
+                            # Nothing came
+                            break
+                            
+                        # Otherwise read some data and select again
+                        got = ftp.sock.recv(1024)
+                        RealTimeLogger.get().warning("Extra data: {}".format(
+                            got))
         
         for subitem in listing:
             # We don't know if these are files or directories.
@@ -597,7 +623,7 @@ def downloadAllReads(job, options):
             # it to save the results to a file on a shared filesystem.
             job.addChildJobFn(downloadRegion, options, region_name, 
                 sample_url, ranges_by_region[region_name], bam_filename, 
-                cores=1, memory="1G", disk=0)
+                cores=1, memory="1G", disk="4G")
                 
     RealTimeLogger.get().info("Done making children")
    
@@ -657,8 +683,11 @@ def downloadRange(job, options, file_url, range_string):
             # Try running the download
             RealTimeLogger.get().info("Trying to download {} from {}".format(
                 range_string, file_url))
-            subprocess.check_call(["samtools", "view", "-b", "-o", bam_filename,
-                file_url, range_string])
+            samtools_args = ["samtools", "view", "-b", "-o", bam_filename,
+                file_url, range_string]
+            RealTimeLogger.get().info("Running: {}".format(" ".join(
+                samtools_args)))
+            subprocess.check_call(samtools_args)
                 
             # Make sure there's actually reads in its file.
             lines = subprocess.check_output(["samtools", "flagstat",
@@ -681,7 +710,8 @@ def downloadRange(job, options, file_url, range_string):
         except subprocess.CalledProcessError as e:
                 # Complain we need to retry
                 RealTimeLogger.get().warning(
-                    "Need to retry download of {}".format(file_url))
+                    "Need to retry download of {} due to: {}".format(file_url,
+                    traceback.format_exc()))
                 # But keep looping
                     
     # Put the BAM in the file store with a new ID
@@ -739,33 +769,29 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     subprocess.check_call(["samtools", "sort", "-n", concat_filename,
         sort_prefix])
     
+    # Convert to SAM (which is wasteful but hopefully will actually get all the
+    # pieces).
+    sam_filename = "{}/reads.sam".format(job.fileStore.getLocalTempDir())
+    RealTimeLogger.get().info("Creating {}.sam".format(output_filename))
     
-    
+    # View the bam to a sam
+    subprocess.check_call(["samtools", "view", "{}.bam".format(sort_prefix),
+        "-o", sam_filename])
+        
     # Convert to FASTQ
     # Decide on the temp filename
     fastq_filename = "{}/reads.fq".format(job.fileStore.getLocalTempDir())
     RealTimeLogger.get().info("Creating {}.fq".format(output_filename))
-    
-    # View the sam and pipe it through the sort of smart converter
-    view = subprocess.Popen(["samtools", "view", "{}.bam".format(sort_prefix)],
-        stdout=subprocess.PIPE)
         
     # We import the converter so Toil will take care of finding it for us.
     # Configure the SAM to FASTQ converter
     convert_options = smartSam2Fastq.parse_args(["smartSam2Fastq.py",
-        "--interleaved", "--fq1", fastq_filename])
-    # Make it read from the samtools view command instead of our own stdin. We
-    # do it this way because we don't want to give it a filename (FIFO?) or
-    # adjust our own stdin. Or read BAM ourselves.
-    convert_options.input_sam = view.stdout
+        "--interleaved", "--fq1", fastq_filename, "--input_sam", sam_filename])
     
     # Do the conversion
-    smartSam2Fastq.run(convert_options)
+    if not smartSam2Fastq.run(convert_options):
+        raise RuntimeError("smartSam2Fastq failed somehow!")
         
-    # Wait and detect errors
-    view.wait()
-    assert(view.returncode == 0)
-    
     # Move it
     shutil.move("{}.bam".format(sort_prefix), output_filename)
     shutil.move(fastq_filename, "{}.fq".format(output_filename))
@@ -797,7 +823,7 @@ def main():
     
     # Make the root job
     root_job = Job.wrapJobFn(downloadAllReads, options, 
-        cores=1, memory="1G", disk=0)
+        cores=1, memory="1G", disk="4G")
         
     print("Sending log from master")
     logger.info("This is the master")
