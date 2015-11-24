@@ -947,16 +947,26 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     # Also for statistics
     stats_dir = "stats/{}/{}".format(region, graph_name)
     
+    # What smaples have been completed?
+    completed_samples = set()
+    for filename in out_store.list_input_directory(stats_dir):
+        # See if every file is a stats file
+        match = re.match(".*/(.*)\.json$", filename)
+    
+        if match:
+            # We found a sample's stats file
+            completed_samples.add(match.group(1))
+            
+    RealTimeLogger.get().info("Already have {} completed samples for {}".format(
+        len(completed_samples), basename))
+    
     # What samples haven't been done yet and need doing
     samples_to_run = []
     
     for sample in input_samples:
         # Split out over each sample
         
-        # What's the file that has to exist for us to not re-run it?
-        stats_file_key = "{}/{}.json".format(stats_dir, sample)
-        
-        if (not options.overwrite) and out_store.exists(stats_file_key):
+        if (not options.overwrite) and sample in completed_samples:
             # This is already done.
             RealTimeLogger.get().info("Skipping completed alignment of "
                 "{} to {} {}".format(sample, graph_name, region))
