@@ -1075,6 +1075,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Index {} uploaded successfully".format(
             index_key))
             
+    RealTimeLogger.get().info("Queueing alignment of {} samples to "
+        "{} {}".format(len(samples_to_run), graph_name, region))
+            
     for sample in samples_to_run:
         # Split out over each sample that needs to be run
         
@@ -1085,7 +1088,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
         stats_file_key = "{}/{}.json".format(stats_dir, sample)
         
-        RealTimeLogger.get().info("Queueing alignment of {} to {} {}".format(
+        RealTimeLogger.get().debug("Queueing alignment of {} to {} {}".format(
             sample, graph_name, region))
     
         # Go and bang that input fastq against the correct indexed graph.
