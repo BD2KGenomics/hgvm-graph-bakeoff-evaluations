@@ -195,7 +195,7 @@ class RealTimeLogger(object):
         
         return cls.logger
 
-def write_global_directory(file_store, path, cleanup=False):
+def write_global_directory(file_store, path, cleanup=False, tee=None):
     """
     Write the given directory into the file store, and return an ID that can be
     used to retrieve it. Writes the files in the directory and subdirectories
@@ -207,25 +207,47 @@ def write_global_directory(file_store, path, cleanup=False):
     If cleanup is true, directory will be deleted from the file store when this
     job and its follow-ons finish.
     
+    If tee is passed, a tar.gz of the directory contents will be written to that
+    filename. The file thus created must not be modified after this function is
+    called.
+    
     """
     
-    with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
-        file_id):
-        # We have a stream, so start taring into it
-    
-        with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
-            # Open it for streaming-only write (no seeking)
-            
-            # We can't just add the root directory, since then we wouldn't be
-            # able to extract it later with an arbitrary name.
-            
-            for file_name in os.listdir(path):
-                # Add each file in the directory to the tar, with a relative
-                # path
-                tar.add(os.path.join(path, file_name), arcname=file_name)
+    if tee is not None:
+        with open(tee, "w") as file_handle:
+            # We have a stream, so start taring into it
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
                 
-        # Spit back the ID to use to retrieve it
-        return file_id
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+        # Save the file on disk to the file store.
+        return file_store.writeGlobalFile(tee)
+    else:
+    
+        with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
+            file_id):
+            # We have a stream, so start taring into it
+            # TODO: don't duplicate this code.
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
+                
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+            # Spit back the ID to use to retrieve it
+            return file_id
         
 def read_global_directory(file_store, directory_id, path):
     """
@@ -970,6 +992,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Will be compatible with read_global_directory
         index_dir_id = job.fileStore.writeGlobalFile(tgz_file, cleanup=True)
         
+        RealTimeLogger.get().info("Indexed {} graph retrieved "
+            "successfully".format(basename))
+        
     else:
         # Download the graph, build the index, and store it in the output store
     
@@ -1021,19 +1046,25 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             str(options.kmer_size), "-e", str(options.edge_max),
             "-t", str(job.cores), graph_filename])
             
+        # Define a file to keep the compressed index in, so we can send it to
+        # the output store.
+        index_dir_tgz = "{}/index.tar.gz".format(
+            job.fileStore.getLocalTempDir())
+            
         # Now save the indexed graph directory to the file store. It can be
         # cleaned up since only our children use it.
+        RealTimeLogger.get().info("Compressing index of {}".format(
+            graph_filename))
         index_dir_id = write_global_directory(job.fileStore, graph_dir,
-            cleanup=True)
+            cleanup=True, tee=index_dir_tgz)
             
-        # Add a child to actually save the graph to the output. Hack our own job
-        # so that the actual alignment targets get added as a child of this, so
-        # they happen after. TODO: massive hack!
-        job = job.addChildJobFn(save_indexed_graph, options, index_dir_id,
-            index_key, cores=1, memory="10G", disk="50G")
+        # Save it as output
+        RealTimeLogger.get().info("Uploading index of {}".format(
+            graph_filename))
+        out_store.write_output_file(index_dir_tgz, index_key)
+        RealTimeLogger.get().info("Index {} uploaded successfully".format(
+            index_key))
             
-    RealTimeLogger.get().info("Done making children")
-                    
     for sample in samples_to_run:
         # Split out over each sample that needs to be run
         
@@ -1052,6 +1083,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
             graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
             stats_file_key, cores=16, memory="100G", disk="50G")
+            
+    RealTimeLogger.get().info("Done making children for {}".format(basename))
             
 def save_indexed_graph(job, options, index_dir_id, output_key):
     """
