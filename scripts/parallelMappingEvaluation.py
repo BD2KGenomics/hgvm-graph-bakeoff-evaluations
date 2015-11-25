@@ -1002,7 +1002,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Will be compatible with read_global_directory
         index_dir_id = job.fileStore.writeGlobalFile(tgz_file, cleanup=True)
         
-        RealTimeLogger.get().info("Indexed {} graph retrieved "
+        RealTimeLogger.get().info("Index for {} retrieved "
             "successfully".format(basename))
         
     else:
@@ -1078,7 +1078,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     RealTimeLogger.get().info("Queueing alignment of {} samples to "
         "{} {}".format(len(samples_to_run), graph_name, region))
             
-    job.addChildJobFn(split_out_samples, options, bin_dir_id, 
+    job.addChildJobFn(recursively_run_samples, options, bin_dir_id, 
         graph_name, region, index_dir_id, samples_to_run,
         cores=1, memory="4G", disk="4G")
             
@@ -1195,9 +1195,16 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         RealTimeLogger.get().debug("Postponing queueing {} samples".format(
             len(samples_to_run_later)))
             
+        # Split the remainder in half, so we don't need to run 270 times.
+        # What's halfway?
+        halfway = len(samples_to_run_later)/2
+            
         job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-            graph_name, region, index_dir_id, samples_to_run_later,
-            num_per_call, cores=16, memory="100G", disk="50G")
+            graph_name, region, index_dir_id, samples_to_run_later[:halfway],
+            num_per_call, cores=1, memory="4G", disk="4G")
+        job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run_later[halfway:],
+            num_per_call, cores=1, memory="4G", disk="4G")
         
         
     
