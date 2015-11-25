@@ -1104,6 +1104,9 @@ def split_out_samples(job, options, bin_dir_id, graph_name, region,
         # We can split more. TODO: these are tiny jobs and the old Parasol
         # scheduler would break.
         
+        RealTimeLogger.get().debug("Splitting to {} samples for "
+                "{} {}".format(halfway, graph_name, region))
+        
         job.addChildJobFn(split_out_samples, options, bin_dir_id,
             graph_name, region, index_dir_id, samples_to_run[:halfway],
             cores=1, memory="4G", disk="4G")
