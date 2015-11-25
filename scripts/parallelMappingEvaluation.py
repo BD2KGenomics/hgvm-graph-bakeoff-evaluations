@@ -1181,7 +1181,7 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
         stats_file_key = "{}/{}.json".format(stats_dir, sample)
         
-        RealTimeLogger.get().debug("Queueing alignment of {} to {} {}".format(
+        RealTimeLogger.get().info("Queueing alignment of {} to {} {}".format(
             sample, graph_name, region))
     
         # Go and bang that input fastq against the correct indexed graph.
@@ -1194,17 +1194,22 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         # We need to recurse and run more later.
         RealTimeLogger.get().debug("Postponing queueing {} samples".format(
             len(samples_to_run_later)))
+        
+        part_size = len(samples_to_run_later) / num_per_call
+        
+        RealTimeLogger.get().info("Splitting remainder of {} {} into {} "
+            "parts of {}".format(graph_name, region, num_per_call, part_size))
+        
+        for i in xrange(num_per_call + 1):
+            # Do 1 more part for any remainder
             
-        # Split the remainder in half, so we don't need to run 270 times.
-        # What's halfway?
-        halfway = len(samples_to_run_later)/2
+            # Grab this bit of the rest
+            part = samples_to_run_later[(i * part_size) : ((i + 1) * part_size)]
             
-        job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-            graph_name, region, index_dir_id, samples_to_run_later[:halfway],
-            num_per_call, cores=1, memory="4G", disk="4G")
-        job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-            graph_name, region, index_dir_id, samples_to_run_later[halfway:],
-            num_per_call, cores=1, memory="4G", disk="4G")
+            # Make a job to run it
+            job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
+                graph_name, region, index_dir_id, samples_to_run_later[part],
+                num_per_call, cores=1, memory="4G", disk="4G")
         
         
     
