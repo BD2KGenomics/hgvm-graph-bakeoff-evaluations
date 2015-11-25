@@ -1078,7 +1078,97 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     RealTimeLogger.get().info("Queueing alignment of {} samples to "
         "{} {}".format(len(samples_to_run), graph_name, region))
             
-    for sample in samples_to_run:
+    job.addChildJobFn(split_out_samples, options, bin_dir_id, 
+        graph_name, region, index_dir_id, samples_to_run,
+        cores=1, memory="4G", disk="4G")
+            
+    RealTimeLogger.get().info("Done making children for {}".format(basename))
+   
+def split_out_samples(job, options, bin_dir_id, graph_name, region,
+    index_dir_id, samples_to_run):
+    """
+    Create 2 child jobs, each running half of samples_to_run.
+    
+    If one of the jobs fails to serialize, the other will at least run.
+    
+    """
+    
+    if len(samples_to_run) == 0:
+        # Nothing to do
+        return
+    
+    # What's halfway?
+    halfway = len(samples_to_run)/2
+    
+    if halfway >= 1:
+        # We can split more. TODO: these are tiny jobs and the old Parasol
+        # scheduler would break.
+        
+        job.addChildJobFn(split_out_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run[:halfway],
+            cores=1, memory="4G", disk="4G")
+        job.addChildJobFn(split_out_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run[halfway:],
+            cores=1, memory="4G", disk="4G")
+    else:
+        # We have just one sample and should run it
+    
+        # Work out where samples for this region live
+        region_dir = region.upper()    
+        
+        # Work out the directory for the alignments to be dumped in in the
+        # output
+        alignment_dir = "alignments/{}/{}".format(region, graph_name)
+        
+        # Also for statistics
+        stats_dir = "stats/{}/{}".format(region, graph_name)
+        
+        for sample in samples_to_run:
+            # Split out over each sample that needs to be run
+            
+            # For each sample, know the FQ name
+            sample_fastq = "{}/{}/{}.bam.fq".format(region_dir, sample, sample)
+            
+            # And know where we're going to put the output
+            alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
+            stats_file_key = "{}/{}.json".format(stats_dir, sample)
+            
+            RealTimeLogger.get().debug("Queueing alignment of {} to "
+                "{} {}".format(sample, graph_name, region))
+    
+            job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
+                graph_name, region, index_dir_id, sample_fastq,
+                alignment_file_key, stats_file_key, cores=16, memory="100G",
+                disk="50G")
+        
+            
+def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
+    index_dir_id, samples_to_run, num_per_call=10):
+    """
+    Create child jobs to run a few samples from the samples_to_run list, and a
+    recursive child job to create a few more.
+    
+    This is a hack to deal with the problems produced by having a job with
+    thousands of children on the Azure job store: the job graph gets cut up into
+    tiny chunks of data and stored as table values, and when you have many table
+    store operations one of them is likely to fail and screw up your whole
+    serialization process.
+    """
+    
+    # Get some samples to run
+    samples_to_run_now = samples_to_run[:num_per_call]
+    samples_to_run_later = samples_to_run[num_per_call:]
+    
+    # Work out where samples for this region live
+    region_dir = region.upper()    
+    
+    # Work out the directory for the alignments to be dumped in in the output
+    alignment_dir = "alignments/{}/{}".format(region, graph_name)
+    
+    # Also for statistics
+    stats_dir = "stats/{}/{}".format(region, graph_name)
+    
+    for sample in samples_to_run_now:
         # Split out over each sample that needs to be run
         
         # For each sample, know the FQ name
@@ -1097,7 +1187,17 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
             stats_file_key, cores=16, memory="100G", disk="50G")
             
-    RealTimeLogger.get().info("Done making children for {}".format(basename))
+    if len(samples_to_run_later) > 0:
+        # We need to recurse and run more later.
+        RealTimeLogger.get().debug("Postponing queueing {} samples".format(
+            len(samples_to_run_later)))
+            
+        job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run_later,
+            num_per_call, cores=16, memory="100G", disk="50G")
+        
+        
+    
             
 def save_indexed_graph(job, options, index_dir_id, output_key):
     """
