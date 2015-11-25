@@ -183,7 +183,17 @@ def graph_size_table(options):
     
 def main(args):
     
-    options = parse_args(args) 
+    options = parse_args(args)
+
+    # hack in some fake alignments so that the g1kvcf sample graphs
+    # get added to the tables
+    added = []
+    for gam in options.in_gams:
+        if os.path.dirname(gam).split("/")[-1] == "trivial":
+            added.append(gam.replace("trivial/" + os.path.basename(gam),
+                                     "g1kvcf/" + os.path.basename(gam)))
+    options.in_gams = options.in_gams + added
+        
                         
     # make some tables from the json comparison output
     snp_count_table(options)

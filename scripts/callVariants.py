@@ -320,6 +320,7 @@ def compute_snp1000g_baseline(job, input_gam, options):
     sample = alignment_sample_tag(input_gam, options)
     region = alignment_region_tag(input_gam, options)
     g1kvcf_path = os.path.join(options.g1kvcf_path, region.upper() + ".vcf")
+    g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
     filter_vcf_path = g1k_vcf_path(input_gam, options)
     filter_vg_path = g1k_vg_path(input_gam, options)
     fasta_path = options.chrom_fa_path
@@ -328,7 +329,7 @@ def compute_snp1000g_baseline(job, input_gam, options):
     do_construct = do_filter or not os.path.isfile(filter_vg_path)
 
     # make filtered compressed vcf for this sample
-    if do_filter:
+    if do_filter:            
         robust_makedirs(os.path.dirname(filter_vcf_path))
         run("scripts/vcfFilterSample.py {} {} | bcftools view - -O z > {}".format(g1kvcf_path,
                                                                                   sample,
@@ -337,8 +338,14 @@ def compute_snp1000g_baseline(job, input_gam, options):
 
     # load it into a vg graph
     if do_construct:
-        run("vg construct -v {} -r {} -t {} > {}".format(filter_vcf_path, fasta_path,
-                                                         options.vg_cores, filter_vg_path))    
+        with open(g1kbed_path) as bed_file:
+            coords = bed_file.readline().split()
+            # convert from bed to vcf coordinates by adding one to start
+            coords = (coords[0], int(coords[1]) + 1, int(coords[2]))
+            run("vg construct -v {} -r {} -t {} -R {}:{}-{} > {}".format(filter_vcf_path, fasta_path,
+                                                                         options.vg_cores, 
+                                                                         coords[0], coords[1], coords[2],
+                                                                         filter_vg_path))    
         
 def call_variants(job, options):
     """ run everything (root toil job)

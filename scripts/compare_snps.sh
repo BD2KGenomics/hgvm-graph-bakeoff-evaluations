@@ -11,7 +11,7 @@ VARIANTS=$3
 OUT_DIR=$4
 TOIL_DIR=cps_toil_dir
 TOIL_OPTS="--maxCores 48 --vg_cores 8"
-INDEX_OPTS="--kmer 27 --edge_max 5"
+INDEX_OPTS="--kmer 27 --edge_max 3"
 #OPTS="--dir_tag --only_summary"
 OPTS="--dir_tag"
 
@@ -25,20 +25,6 @@ mkdir $OUT_DIR
 for i in brca1 brca2 sma lrc_kir mhc
 #for i in brca1
 do
-	 # heatmap of everything
-	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample
-	 for j in "${CP_FILES[@]}"
-	 do
-		  cp ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/${i}_avg_${j}
-	 done
-
-	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS}
-
-	 for j in "${CP_FILES[@]}"
-	 do
-		  cp ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/${i}_${j}
-	 done
-
 	 #heatmap of original
 	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS}
 
@@ -48,8 +34,9 @@ do
 	 done
 
 	 # heatmap of categories
-	 for k in sample linear augmented
+	 for k in sample augmented
 	 do
+		  # just the category
 		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample
 
 		  for j in "${CP_FILES[@]}"
@@ -57,6 +44,7 @@ do
 				cp ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/${k}_${i}_avg_${j}
 		  done
 
+		  # category and original together
 		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample
 
 		  for j in "${CP_FILES[@]}"
@@ -65,17 +53,8 @@ do
 		  done
 	 done
 
-	 # linear sample heatmap
-	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*sample*.vg ${VARIANTS}/${i}/*/*linear*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample
-
-	 for j in "${CP_FILES[@]}"
-	 do
-		  cp ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/sample_and_linear_${i}_avg_${j}
-	 done
-
 	 # tables
-	 scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS}
-
-	 cp ${VARIANTS}/compare/${i}/*.tsv ${OUT_DIR}/${i}
+	 scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam --out_dir ${VARIANTS} --avg_sample --out_sub $i ${OPTS} --orig_tag ${GRAPHS} --graph_dir ${GRAPHS}
+	 cp ${VARIANTS}/${i}/*.tsv ${OUT_DIR}/${i}
 	 
 done
