@@ -1208,7 +1208,7 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
             
             # Make a job to run it
             job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-                graph_name, region, index_dir_id, samples_to_run_later[part],
+                graph_name, region, index_dir_id, part,
                 num_per_call, cores=1, memory="4G", disk="4G")
         
         
