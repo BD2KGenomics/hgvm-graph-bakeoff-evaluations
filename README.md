@@ -11,11 +11,12 @@ Todo: I think we have multiple ways of getting the graphs.  I've been piggybacki
 ## Dependencies
 
 Submodules and/or Docker may be the way to go here?
-*  [VG](https://github.com/ekg/vg) 
+*  [VG](https://github.com/ekg/vg) Note: vg/vcflib/bin should added to PATH too
 *  [toil](https://github.com/BD2KGenomics/toil)
 *  [samtools](https://github.com/samtools/samtools)
 *  [bcftools](https://github.com/samtools/bcftools)
 *  [htslib](https://github.com/samtools/htslib)
+*  [corg](https://github.com/adamnovak/corg)
 *  Python modules detailed in `requirements.txt`. Installable with `pip install -r requirements.txt`.
 
 
@@ -89,28 +90,32 @@ It might be wise to parallelize this step across a cluster; Microsoft Azure Stor
 
 ### Expected Alignment Location
 
-The mapping comparison must be run before the variant calling comparison.  In particular the following directory structure it outputs is required (top-level names and locations are generally flexible)
+The mapping steps above will result make a directory, `./high_coverage_alignments`.  It will contain a mapping for every region for every sample for every tool: `./high_coverage_reads/alignments/<region>/<tool>/sample.gam`  It will also contain tarballs of graphs and indexes used: `./high_coverage_reads/indexes/`.  We begin by extracting these into a new directory
 
-* `graphs/` location containing all original graphs in `.vg` format as well as their rocksdb indexes.  Graph names must be of the form `<tool>-<region>.vg`
-* `alignments/<region>/<tool>/sample.gam` directory structure of vg alignments. 
-  
-The names in these two directories must be consistent.  For example, `alignments/brca1/camel/NA19239.gam` requires the existence of `graphs/camel-brca1.vg` and `graphs/camel-brca1.vg.index` for processing. 
-
+     scripts/extractGraphs.py ./high_coverage_alignments/indexes/*/*.tar.gz ./high_coverage_graphs
+	  
 ### Calling Variants
+
+The variant calling scripts require the original FASTA inputs.  Uncompress them as follows:
+
+     tar xzf data/altRegions.tar.gz -C data
+
+Fasta and vcf data is also required to make some baseline sample graphs for the 1000 Genomes data.  This is prepared with the following commands:
+
+	  tar xzf data/g1kvcf.tar.gz -C data
+	  scripts/downloadChromFa.py
 
 To run both the vg and samtools variant calling pipeline on all samples, use the following script
 
-     ./scripts/call_snps.sh <graphs_dir> <alignments_dir> <out_dir>
+     ./scripts/call_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants
 
-This will create a structure in `<out_dir>` similar to that in `alignments` (organized by tool and region) with calling output for all samples. **Note**: The number of threads used is hardcoded in this script and should be modified accordingly (see `--maxCores and --vgCores` options in OPTS variable). 
+This will create a structure in `./high_coverage_variants` similar to that in `alignments` (organized by tool and region) with calling output for all samples. **Note**: The number of threads used is hardcoded in this script and should be modified accordingly (see `--maxCores and --vgCores` options in OPTS variable). 
 
 ### Analysing Called Variants
 
 To generate basic statistics of the calls, as well as do pairwise kmer comparisons of all output graphs, run
 
-     ./scripts/compare_snps.sh <graphs_dir> <alignments_dir> <calls_dir> <out_dir>
-     
-The `<calls_dir>` argument here must be the same as the `<out_dir>` argument that was passed to `call_snps.sh`.  Like the latter `compare_snps.sh` has hardcoded threading options.  
+     ./scripts/compare_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants ./variants_analysis
 
 The output of this script is organized by region.  In each region directory, will be a variety of heatmaps comparing various output gaphs with each other, as well as some tables in `.tsv` format with some basic counting and size statistics. 
 
