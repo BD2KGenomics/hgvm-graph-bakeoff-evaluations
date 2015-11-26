@@ -163,6 +163,23 @@ def corg_dist_fn(graph1, graph2, options):
         c = f.readline().strip()
         dist = float(c)
         return dist
+
+def sample_name(graph):
+    """ Try to extract a sample name from the graph path.  Will succeed
+    only in cases like .../<SAMPLE_ID>_[linear|augmented|sample].vg
+    """
+    toks = os.path.splitext(os.path.basename(graph))[0].split("_")
+    if len(toks) == 2 and toks[1] in ["sample", "linear", "augmented"]:
+        return toks[0]
+    return ""
+
+def different_sample(graph1, graph2):
+    """ Are two graphs from different samples?  If either doesn't 
+    have a sample name, then return false
+    """
+    sample1 = sample_name(graph1)
+    sample2 = sample_name(graph2)
+    return len(sample1) > 0 and len(sample2) > 0 and sample1 != sample2
     
 def compute_matrix(options, dist_fn):
     """ make a distance matrix (dictionary), also write it to file
@@ -171,7 +188,7 @@ def compute_matrix(options, dist_fn):
     def label_fn(graph):
         if options.avg_samples:
             # ex: NA3453456_agumented.vg -> augmented
-            label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[1:])
+            label = sample_name(graph)
             if label == "":
                 label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[0])
                 toks = label.split("-")
@@ -200,11 +217,12 @@ def compute_matrix(options, dist_fn):
     for graph1 in options.graphs:
         for graph2 in options.graphs:
             if graph1 <= graph2:
-                val = dist_fn(graph1, graph2, options)
-                mat[label_fn(graph1)][label_fn(graph2)] += val
-                mat[label_fn(graph2)][label_fn(graph1)] += val
-                counts[label_fn(graph1)][label_fn(graph2)] += 1.
-                counts[label_fn(graph2)][label_fn(graph1)] += 1.
+                if not options.avg_samples or not different_sample(graph1, graph2):
+                    val = dist_fn(graph1, graph2, options)
+                    mat[label_fn(graph1)][label_fn(graph2)] += val
+                    mat[label_fn(graph2)][label_fn(graph1)] += val
+                    counts[label_fn(graph1)][label_fn(graph2)] += 1.
+                    counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
     # divide by counts to get mean
     for graph1 in map(label_fn, options.graphs):
@@ -372,10 +390,11 @@ def compute_comparisons(job, options):
     for graph1 in options.graphs:
         for graph2 in options.graphs:
             if graph1 <= graph2:
-                job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
-                                  cores=min(options.vg_cores, 2))
-                job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
-                                  cores=1)
+                if not options.avg_samples or not different_sample(graph1, graph2):
+                    job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
+                                      cores=min(options.vg_cores, 2))
+                    job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
+                                      cores=1)
 
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
