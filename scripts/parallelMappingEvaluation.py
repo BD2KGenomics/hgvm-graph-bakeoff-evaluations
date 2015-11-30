@@ -950,9 +950,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     # What smaples have been completed?
     completed_samples = set()
     for filename in out_store.list_input_directory(stats_dir):
-        RealTimeLogger.get().info(filename)
         # See if every file is a stats file
-        match = re.match(".*/(.*)\.json$", filename)
+        match = re.match("(.*)\.json$", filename)
     
         if match:
             # We found a sample's stats file
