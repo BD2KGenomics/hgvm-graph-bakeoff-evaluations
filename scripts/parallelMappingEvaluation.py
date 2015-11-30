@@ -1216,10 +1216,12 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
                 part = samples_to_run_later[(i * part_size) :
                     ((i + 1) * part_size)]
                 
-                # Make a job to run it
-                job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-                    graph_name, region, index_dir_id, part,
-                    num_per_call, cores=1, memory="4G", disk="4G")
+                if len(part) > 0:
+                
+                    # Make a job to run it
+                    job.addChildJobFn(recursively_run_samples, options,
+                        bin_dir_id, graph_name, region, index_dir_id, part,
+                        num_per_call, cores=1, memory="4G", disk="4G")
         
         
     
