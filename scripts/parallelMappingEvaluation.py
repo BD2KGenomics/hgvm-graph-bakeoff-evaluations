@@ -1194,22 +1194,32 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         # We need to recurse and run more later.
         RealTimeLogger.get().debug("Postponing queueing {} samples".format(
             len(samples_to_run_later)))
-        
-        part_size = len(samples_to_run_later) / num_per_call
-        
-        RealTimeLogger.get().info("Splitting remainder of {} {} into {} "
-            "parts of {}".format(graph_name, region, num_per_call, part_size))
-        
-        for i in xrange(num_per_call + 1):
-            # Do 1 more part for any remainder
             
-            # Grab this bit of the rest
-            part = samples_to_run_later[(i * part_size) : ((i + 1) * part_size)]
-            
-            # Make a job to run it
+        if len(samples_to_run_later) < num_per_call:
+            # Just run them all in one batch
             job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
-                graph_name, region, index_dir_id, part,
-                num_per_call, cores=1, memory="4G", disk="4G")
+                    graph_name, region, index_dir_id, samples_to_run_later,
+                    num_per_call, cores=1, memory="4G", disk="4G")
+        else:
+            # Split them up
+        
+            part_size = len(samples_to_run_later) / num_per_call
+            
+            RealTimeLogger.get().info("Splitting remainder of {} {} into {} "
+                "parts of {}".format(graph_name, region, num_per_call,
+                part_size))
+            
+            for i in xrange(num_per_call + 1):
+                # Do 1 more part for any remainder
+                
+                # Grab this bit of the rest
+                part = samples_to_run_later[(i * part_size) :
+                    ((i + 1) * part_size)]
+                
+                # Make a job to run it
+                job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
+                    graph_name, region, index_dir_id, part,
+                    num_per_call, cores=1, memory="4G", disk="4G")
         
         
     
