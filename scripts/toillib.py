@@ -187,7 +187,7 @@ class RealTimeLogger(object):
         
         return cls.logger
 
-def write_global_directory(file_store, path, cleanup=False):
+def write_global_directory(file_store, path, cleanup=False, tee=None):
     """
     Write the given directory into the file store, and return an ID that can be
     used to retrieve it. Writes the files in the directory and subdirectories
@@ -199,25 +199,47 @@ def write_global_directory(file_store, path, cleanup=False):
     If cleanup is true, directory will be deleted from the file store when this
     job and its follow-ons finish.
     
+    If tee is passed, a tar.gz of the directory contents will be written to that
+    filename. The file thus created must not be modified after this function is
+    called.
+    
     """
     
-    with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
-        file_id):
-        # We have a stream, so start taring into it
-    
-        with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
-            # Open it for streaming-only write (no seeking)
-            
-            # We can't just add the root directory, since then we wouldn't be
-            # able to extract it later with an arbitrary name.
-            
-            for file_name in os.listdir(path):
-                # Add each file in the directory to the tar, with a relative
-                # path
-                tar.add(os.path.join(path, file_name), arcname=file_name)
+    if tee is not None:
+        with open(tee, "w") as file_handle:
+            # We have a stream, so start taring into it
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
                 
-        # Spit back the ID to use to retrieve it
-        return file_id
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+        # Save the file on disk to the file store.
+        return file_store.writeGlobalFile(tee)
+    else:
+    
+        with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
+            file_id):
+            # We have a stream, so start taring into it
+            # TODO: don't duplicate this code.
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
+                
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+            # Spit back the ID to use to retrieve it
+            return file_id
         
 def read_global_directory(file_store, directory_id, path):
     """
@@ -748,14 +770,6 @@ class AzureIOStore(IOStore):
                 break 
         
         return False
-
-    
-
-
-
-
-
-
 
 
 
