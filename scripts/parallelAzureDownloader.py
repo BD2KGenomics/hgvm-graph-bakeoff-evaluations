@@ -111,7 +111,10 @@ def copy_everything(job, options):
             
         batch_count += 1
         
-        RealTimeLogger.get().info("Queued {} batches...".format(batch_count))
+        if batch_count % 10 == 0:
+        
+            RealTimeLogger.get().info("Queued {} batches...".format(
+                batch_count))
             
     RealTimeLogger.get().info("Queued {} total batches".format(batch_count))
     

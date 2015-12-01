@@ -8,6 +8,7 @@ and output deposit to file/S3 (coming soon)/Azure
 
 import sys, os, os.path, json, collections, logging, logging.handlers
 import SocketServer, struct, socket, threading, tarfile, shutil
+import tempfile
 import functools
 import random
 import time
@@ -471,7 +472,7 @@ class FileIOStore(IOStore):
         RealTimeLogger.get().debug("Saving {} to FileIOStore in {}".format(
             output_path, self.path_prefix))
 
-        # What's the real outptu path to write to?
+        # What's the real output path to write to?
         real_output_path = os.path.join(self.path_prefix, output_path)
 
         # What directory should this go in?
@@ -481,8 +482,19 @@ class FileIOStore(IOStore):
             # Make sure the directory it goes in exists.
             robust_makedirs(parent_dir)
         
-        # These are small so we just make copies
-        shutil.copy2(local_path, real_output_path)
+        # Make a temporary file
+        temp_handle, temp_path = tempfile.mkstemp(dir=self.path_prefix)
+        temp_handle.close()
+        
+        # Copy to the temp file
+        shutil.copy2(local_path, temp_path)
+        
+        if os.path.exists(real_output_path):
+            # At least try to get existing files out of the way first.
+            os.unlink(real_output_path)
+            
+        # Rename the temp file to the right place, atomically
+        os.rename(temp_path, real_output_path)
         
     def exists(self, path):
         """
