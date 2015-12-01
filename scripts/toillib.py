@@ -685,10 +685,12 @@ class AzureIOStore(IOStore):
         
         while True:
         
-            # Get the results from Azure. We skip the delimiter since it doesn't
-            # seem to have the placeholder entries it's suppsoed to.
+            # Get the results from Azure. We don't use delimiter since Azure
+            # doesn't seem to provide the placeholder entries it's supposed to.
             result = self.connection.list_blobs(self.container_name, 
                 prefix=fake_directory, marker=marker)
+                
+            RealTimeLogger.get().info("Found {} files".format(len(result)))
                 
             for blob in result:
                 # Yield each result's blob name, but directory names only once
