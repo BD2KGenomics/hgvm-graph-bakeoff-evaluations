@@ -15,11 +15,11 @@ fi
 
 # Set up the plot parameters
 PLOT_PARAMS=(
-    --categories "cactus" "camel" "vg" "curoverse" "simons" "snp1000g" "prg" "debruijn-k31" "debruijn-k63"
+    --categories "cactus" "camel" "vglr" "curoverse" "simons" "snp1kg" "haplo1kg" "prg" "debruijn-k31" "debruijn-k63"
     "sbg" "refonly" "trivial" "level1" "level2" "level3"
-    --category_labels "Cactus" "Camel" "VG"  "Curoverse" "Simons" "1000 Genomes" "PRG" "k=31" "k=63"
+    --category_labels "Cactus" "Camel" "VG"  "Curoverse" "Simons" "1k Genomes SNPs" "1k Genomes Phased" "PRG" "k=31" "k=63"
     "7 Bridges" "RefOnly" "Trivial" "Level1" "Level2" "Level3"
-    --colors "#5C755E" "#C19A6B" "#000099" "#31184A" "#384DA0" "k" "#353C47" "r" "m"
+    --colors "#5C755E" "#C19A6B" "#000099" "#31184A" "#384DA0" "k" "#545454" "#353C47" "r" "m"
     "#93AC2B" "c" "b" "c" "m" "y"
     --font_size 20 --dpi 90 --no_n
 )
