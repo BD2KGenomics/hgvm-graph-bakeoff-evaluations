@@ -38,6 +38,8 @@ def parse_args(args):
         help="input IOStore to find stats files in (under /stats)")
     parser.add_argument("out_store",
         help="output IOStore to put collated plotting files in (under /plots)")
+    parser.add_argument("--blacklist", action="append", default=[],
+        help="ignore the specified region:graph pairs")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -137,7 +139,14 @@ def collate_region(job, options, region):
     runtime_temp = open(runtime_temp_name, "w")
     
     for graph in in_store.list_input_directory("stats/{}".format(region)):
-        # For each 
+        # For each
+        
+        if "{}:{}".format(region, graph) in options.blacklist:
+            # We don't want to process this region/graph pair.
+            RealTimeLogger.get().info("Skipping {} graph {}".format(region,
+                graph))
+            continue
+        
         RealTimeLogger.get().info("Processing {} graph {}".format(region,
             graph))
         for result in in_store.list_input_directory("stats/{}/{}".format(region,
