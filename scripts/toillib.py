@@ -484,7 +484,7 @@ class FileIOStore(IOStore):
         
         # Make a temporary file
         temp_handle, temp_path = tempfile.mkstemp(dir=self.path_prefix)
-        temp_handle.close()
+        os.close(temp_handle)
         
         # Copy to the temp file
         shutil.copy2(local_path, temp_path)
