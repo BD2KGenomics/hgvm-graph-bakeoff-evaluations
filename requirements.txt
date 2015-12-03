@@ -1,3 +1,4 @@
 toil
 tsv
 pysam
+-e git://github.com/adamnovak/biopython.git@63330ea8e534cf40cc72ebad610223478ff50806#egg=biopython
