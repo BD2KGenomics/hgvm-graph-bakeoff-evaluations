@@ -64,7 +64,7 @@ PLOT_PARAMS=(
     "#6a3d9a"
     "#000000"
     "#b2df8a"
-    "#ffff99"
+    "#b1b300"
     "#cab2d6"
     --font_size 20 --dpi 90 --no_n
 )
