@@ -7,9 +7,9 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit, string
 from collections import defaultdict
 from operator import sub
-from callVariants import sample_vg_path, augmented_vg_path, alignment_region_tag, alignment_graph_tag
+from callVariants import sample_vg_path, sample_txt_path, augmented_vg_path, alignment_region_tag, alignment_graph_tag
 from callVariants import graph_path, index_path, augmented_vg_path, linear_vg_path, linear_vcf_path, sample_vg_path
-from callVariants import alignment_region_tag
+from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -22,21 +22,12 @@ def parse_args(args):
                         help="output directory (used for callVariants.py)")
     parser.add_argument("--graph_dir", type=str, default="graphs",
                         help="name of input graphs directory")
-    parser.add_argument("--index_ext", type=str, default=".index",
-                        help="extension to find input grpah index")
-    parser.add_argument("--overwrite", action="store_true", default=False,
-                        help="overwrite files if dont exist")
     parser.add_argument("--avg_samples", action="store_true", default=False,
                         help="Average samples into mean value")
     parser.add_argument("--dir_tag", action="store_true", default=False,
                          help="Use directory of graph as name tag")
-    parser.add_argument("--orig_tag", type=str, default="graphs",
-                        help="When dir_tag used, change this tag to original")
     parser.add_argument("--out_sub", type=str, default="",
                         help="make a subfolder with this name for output")
-    parser.add_argument("--only_summary", action="store_true", default=False,
-                        help="Only generate summary output.  Do not do any"
-                        " compute")    
                             
     args = args[1:]
         
@@ -117,25 +108,37 @@ def snp_count_table(options):
 
     for gam in options.in_gams:
         linear_vcf = linear_vcf_path(gam, options) + ".gz"
-        vg_sample = sample_vg_path(gam, options)
+        vg_sample = sample_vg_path(gam, options)        
         vg_augmented = augmented_vg_path(gam, options)
         vcf_snps = count_vcf_snps(linear_vcf, options)
-        sample_snps = count_vg_paths(vg_sample, options)
+        # ugly hack to get g1kvcf sample from vcf
+        if vg_sample.split("/")[-2] == "g1kvcf":
+            sample_snps = count_vcf_snps(vg_sample.replace(".vg", ".vcf.gz"), options)
+        else:
+            sample_snps = count_vg_paths(vg_sample, options)
         augmented_snps = count_vg_paths(vg_augmented, options)
 
-        name = graph_path(gam, options)
-
+        if options.avg_samples:
+            # reduce to reference graph
+            name_fn = lambda x : graph_path(x, options)
+        else:
+            # keep split apart by sample / graph corresponding to gam
+            name_fn = lambda x : alignment_graph_tag(x, options)  \
+                   + "_" + alignment_sample_tag(x, options)
+            
+        name = name_fn(gam)
+        
         sums[name] = (sums[name][0] + vcf_snps,
                       sums[name][1] + sample_snps,
                       sums[name][2] + augmented_snps)
         counts[name] = counts[name] + 1
 
-    for name in list(set(map(lambda x : graph_path(x, options), options.in_gams))):
+    for name in sorted(list(set(map(name_fn, options.in_gams)))):
         avg_vcf = float(sums[name][0]) / float(counts[name])
         avg_sam = float(sums[name][1]) / float(counts[name])
         avg_aug = float(sums[name][2]) / float(counts[name])
         count_table +="{}\t{}\t{}\t{}\n".format(
-            os.path.splitext(os.path.basename(name))[0],
+            name,
             avg_vcf,
             avg_sam,
             avg_aug)
@@ -161,26 +164,64 @@ def graph_size_table(options):
         vg_original = graph_path(gam, options)
         original_snps = vg_length(vg_original, options)
 
-        name = graph_path(gam, options)
+        if options.avg_samples:
+            # reduce to reference graph
+            name_fn = lambda x : graph_path(x, options)
+        else:
+            # keep split apart by sample / graph corresponding to gam
+            name_fn = lambda x : alignment_graph_tag(x, options)  \
+                   + "_" + alignment_sample_tag(x, options)
+            
+        name = name_fn(gam)
 
         sums[name] = (sums[name][0] + sample_snps,
                       sums[name][1] + augmented_snps,
                       sums[name][2] + original_snps)
         counts[name] = counts[name] + 1
 
-    for name in list(set(map(lambda x : graph_path(x, options), options.in_gams))):
+    for name in list(set(map(name_fn, options.in_gams))):
         avg_sam = float(sums[name][0]) / float(counts[name])
         avg_aug = float(sums[name][1]) / float(counts[name])
         avg_ori = float(sums[name][2]) / float(counts[name])
         length_table +="{}\t{}\t{}\t{}\n".format(
-            os.path.splitext(os.path.basename(name))[0],
+            name,
             avg_sam,
             avg_aug,
             avg_ori)
 
     with open(size_tsv_path(options), "w") as ofile:
         ofile.write(length_table)
-    
+
+def boxPlot(inFile, outFile, column, title = None, x_label = None, y_label = None):
+    """ make a box plot out of one of the tsv's generated above
+    """
+
+    # input format not quite right.  We strip off sample names from row
+    # headers and put the column we want 2nd, and also skip -1 data points
+    tempTsv = inFile.replace(".tsv", "_plot_{}.tsv".format(column))
+    with open(inFile) as f, open(tempTsv, "w") as o:
+        for line in f:
+            toks = line.split()
+            # strip last _ and beyond
+            name = "_".join(toks[0].split("_")[:-1])
+            val = toks[column]
+            missing = False
+            try:
+                missing = float(val) == -1.
+            except:
+                pass
+            if not missing:
+                o.write("{}\t{}\n".format(name, val))
+    cmd = "scripts/boxplot.py {} --save {} --x_sideways".format(tempTsv, outFile)
+    if title is not None:
+        cmd += " --title {}".format(title)
+    if x_label is not None:
+        cmd += " --x_label {}".format(x_label)
+    if y_label is not None:
+        cmd += " --y_label {}".format(y_label)
+    print cmd
+    os.system(cmd)
+                
 def main(args):
     
     options = parse_args(args)
@@ -198,6 +239,12 @@ def main(args):
     # make some tables from the json comparison output
     snp_count_table(options)
     graph_size_table(options)
+
+    # make some boxplots with adams super script
+    boxPlot(count_tsv_path(options), count_tsv_path(options).replace(".tsv", ".pdf"),
+            2, "SNP\\ Count")
+    boxPlot(size_tsv_path(options), size_tsv_path(options).replace(".tsv", ".pdf"),
+            1, "Sample\\ Graph\\ Size")
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
