@@ -31,6 +31,7 @@ def main(args):
 
     filterProc = subprocess.Popen(filterCmd, shell=True, stdout=subprocess.PIPE)
 
+    first = True
     while True:
         line = filterProc.stdout.readline()
         if line != "":
@@ -42,6 +43,13 @@ def main(args):
                                 line.find("GT\t.|0\n") < 0 and
                                 line.find("GT\t0|.\n") < 0)):
                 sys.stdout.write(line)
+            elif first is True and len(line.lstrip()) > 0 and line.lstrip()[0] != "#":
+                # vg construct doesn't like empty vcf.  make sure that there's always
+                # a trivial reference position if nothing else
+                toks = line.split("\t")
+                toks[4] = toks[3]
+                sys.stdout.write("\t".join(toks))
+                first = False
         else:
             break
 	 

@@ -51,6 +51,8 @@ def parse_args(args):
     parser.add_argument("--only_summary", action="store_true", default=False,
                         help="Only generate summary output.  Do not do any"
                         " compute")
+    parser.add_argument("--no_corg", action="store_true", default=False,
+                        help="Dont try to do corg comparison or heatmap")
                             
     args = args[1:]
 
@@ -188,7 +190,7 @@ def compute_matrix(options, dist_fn):
     def label_fn(graph):
         if options.avg_samples:
             # ex: NA3453456_agumented.vg -> augmented
-            label = sample_name(graph)
+            label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[1:])
             if label == "":
                 label = "".join(os.path.splitext(os.path.basename(graph))[0].split("_")[0])
                 toks = label.split("-")
@@ -218,16 +220,21 @@ def compute_matrix(options, dist_fn):
         for graph2 in options.graphs:
             if graph1 <= graph2:
                 if not options.avg_samples or not different_sample(graph1, graph2):
+                    print "applying", graph1, graph2
                     val = dist_fn(graph1, graph2, options)
                     mat[label_fn(graph1)][label_fn(graph2)] += val
-                    mat[label_fn(graph2)][label_fn(graph1)] += val
                     counts[label_fn(graph1)][label_fn(graph2)] += 1.
-                    counts[label_fn(graph2)][label_fn(graph1)] += 1.
+                    if graph1 != graph2:
+                        mat[label_fn(graph2)][label_fn(graph1)] += val
+                        counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
+    print "mat", mat
+    print "counot", counts
+    
     # divide by counts to get mean
     for graph1 in map(label_fn, options.graphs):
         for graph2 in map(label_fn, options.graphs):
-            mat[graph1][graph2] /= counts[graph1][graph2]
+            mat[graph1][graph2] /= max(1, counts[graph1][graph2])
 
     return mat, list(set(map(label_fn, options.graphs)))
 
@@ -304,6 +311,9 @@ def compute_heatmap(options, mat, names, tag):
         array_mat.append([])
         for graph2 in names:
             array_mat[-1].append(mat[graph1][graph2])
+
+    print names
+    print array_mat
 
     plotHeatMap(array_mat, names, names,
                 heatmap_path(options, tag),
@@ -391,10 +401,15 @@ def compute_comparisons(job, options):
         for graph2 in options.graphs:
             if graph1 <= graph2:
                 if not options.avg_samples or not different_sample(graph1, graph2):
-                    job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
-                                      cores=min(options.vg_cores, 2))
-                    job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
-                                      cores=1)
+                        out_path = comp_path(graph1, graph2, options)
+                        if options.overwrite or not os.path.exists(out_path):
+                            job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
+                                              cores=min(options.vg_cores, 2))
+                            
+                        out_path = corg_path(graph1, graph2, options)
+                        if not options.no_corg and (options.overwrite or not os.path.exists(out_path)):
+                            job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
+                                              cores=1)
 
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
@@ -436,7 +451,8 @@ def main(args):
 
     # Do the drawing outside toil to get around weird import problems
     cluster_comparisons(options, jaccard_dist_fn, "_kmer")
-    cluster_comparisons(options, corg_dist_fn, "_corg")
+    if not options.no_corg:
+        cluster_comparisons(options, corg_dist_fn, "_corg")
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

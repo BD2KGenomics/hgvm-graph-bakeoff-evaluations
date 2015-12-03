@@ -37,6 +37,8 @@ def downloadChrom(chrom, options, assembly = "hg38"):
     cmd = "curl {} | zcat".format(fa_url)
     # take chr out of sequence names
     cmd += " | sed \"s/chr{}/{}/\" ".format(chrom, chrom)
+    # convert to upper case
+    cmd += " | sed \"s/a/A/g;s/c/C/g;s/g/G/g;s/t/T/g;s/n/N/g\" "
     # tack onto output
     cmd += " >> {}".format(options.out_fa)
     os.system(cmd)
