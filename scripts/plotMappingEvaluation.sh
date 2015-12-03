@@ -15,12 +15,57 @@ fi
 
 # Set up the plot parameters
 PLOT_PARAMS=(
-    --categories "cactus" "camel" "vg" "curoverse" "simons" "snp1000g" "prg" "debruijn-k31" "debruijn-k63"
-    "sbg" "refonly" "trivial" "level1" "level2" "level3"
-    --category_labels "Cactus" "Camel" "VG"  "Curoverse" "Simons" "1000 Genomes" "PRG" "k=31" "k=63"
-    "7 Bridges" "RefOnly" "Trivial" "Level1" "Level2" "Level3"
-    --colors "#5C755E" "#C19A6B" "#000099" "#31184A" "#384DA0" "k" "#353C47" "r" "m"
-    "#93AC2B" "c" "b" "c" "m" "y"
+    --categories
+    snp1kg
+    haplo1kg
+    sbg
+    cactus
+    camel
+    curoverse
+    Debruijn-k31
+    Debruijn-k63
+    level1
+    level2
+    level3
+    prg
+    refonly
+    simons
+    trivial
+    vglr
+    --category_labels 
+    1KG
+    "1KG Haplo"
+    7BG
+    Cactus
+    Camel
+    Curoverse
+    "De Bruijn 31"
+    "De Bruijn 63"
+    Level1
+    Level2
+    Level3
+    PRG
+    Reference
+    SGDP
+    Trivial
+    VGLR
+    --colors
+    "#fb9a99"
+    "#fdbf6f"
+    "#b15928"
+    "#1f78b4"
+    "#33a02c"
+    "#a6cee3"
+    "#e31a1c"
+    "#ff7f00"
+    "#FF0000"
+    "#00FF00"
+    "#0000FF"
+    "#6a3d9a"
+    "#000000"
+    "#b2df8a"
+    "#ffff99"
+    "#cab2d6"
     --font_size 20 --dpi 90 --no_n
 )
 
@@ -59,36 +104,39 @@ do
     
     echo "Plotting ${REGION^^}..."
     
+    # Remove underscores from region names to make them human readable
+    HR_REGION=`echo ${REGION^^} | sed 's/_/ /g'`
+    
     # TODO: you need to run collateStatistics.py to build the per-region-and-
     # graph stats files. We expect them to exist and only concatenate the final
     # overall files and make the plots.
     
-    ./boxplot.py "${MAPPING_FILE}" \
-        --title "$(printf "Mapped (<=2 mismatches)\nreads in ${REGION^^}")" \
+    ./scripts/boxplot.py "${MAPPING_FILE}" \
+        --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
-    ./boxplot.py "${PERFECT_FILE}" \
-        --title "$(printf "Perfectly mapped\nreads in ${REGION^^}")" \
+    ./scripts/boxplot.py "${PERFECT_FILE}" \
+        --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${PERFECT_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
-    ./boxplot.py "${ONE_ERROR_FILE}" \
-        --title "$(printf "One-error (<=1 mismatch)\nreads in ${REGION^^}")" \
+    ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
+        --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Portion" --save "${ONE_ERROR_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
-    ./boxplot.py "${SINGLE_MAPPING_FILE}" \
-        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${REGION^^}")" \
+    ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
+        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
-    ./boxplot.py "${RUNTIME_FILE}" \
-        --title "$(printf "Per-read runtime\n in ${REGION^^}")" \
+    ./scripts/boxplot.py "${RUNTIME_FILE}" \
+        --title "$(printf "Per-read runtime\n in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Runtime per read (seconds)" --save "${RUNTIME_PLOT}" \
         --x_sideways --max_max 0.006 \
         "${PLOT_PARAMS[@]}"
@@ -102,25 +150,25 @@ cat "${PLOTS_DIR}"/oneerror.*.tsv > "${OVERALL_ONE_ERROR_FILE}"
 cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_FILE}"
 
 # Make the overall plots
-./boxplot.py "${OVERALL_MAPPING_FILE}" \
+./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
     --title "$(printf "Mapped (<=2 mismatches)\nreads")" \
     --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
     --x_sideways  --hline_median trivial \
     "${PLOT_PARAMS[@]}"
     
-./boxplot.py "${OVERALL_PERFECT_FILE}" \
+./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
     --title "$(printf "Perfectly mapped\nreads")" \
     --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
     --x_sideways --hline_median trivial \
     "${PLOT_PARAMS[@]}"
     
-./boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
+./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
     --title "$(printf "One-error (<=1 mismatch)\nreads")" \
     --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
     --x_sideways --hline_median trivial \
     "${PLOT_PARAMS[@]}"
 
-./boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
+./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
     --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads")" \
     --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
     --x_sideways --hline_median refonly \

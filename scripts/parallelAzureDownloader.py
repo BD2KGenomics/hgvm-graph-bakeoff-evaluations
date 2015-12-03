@@ -63,8 +63,22 @@ def group(iterable, max_count):
     
     """
     
-    # Zip a bunch of copies of the iterable.
-    return itertools.izip_longest(*([iter(iterable)] * max_count))
+    batch = []
+    
+    while True:
+        try:
+            # Grab the next thing from the underlying iterator and put it in our
+            # batch
+            batch.append(iterable.next())
+        except StopIteration:
+            # Underlying iterator ran out. Yield what we have and stop.
+            yield batch
+            break
+            
+        if len(batch) >= max_count:
+            # If we have enough items, yield a batch and start a new one
+            yield batch
+            batch = []
 
 def copy_everything(job, options):
     """
@@ -78,10 +92,15 @@ def copy_everything(job, options):
     
     batch_count = 0;
     
-    # List all the files, filter them by the pattern, and batch them up. TODO:
-    # force case-sensitive comparison even on Windows/OS X)
-    for batch in group(fnmatch.filter(in_store.list_input_directory("",
-        recursive=True), options.pattern), options.batch_size):
+    # List all the files.
+    blobs_iterator = in_store.list_input_directory("", recursive=True)
+    
+    # Make an iterator that filters them
+    filtered_iterator = (x for x in blobs_iterator if
+        fnmatch.fnmatchcase(x, options.pattern))
+    
+    # Batch them up
+    for batch in group(filtered_iterator, options.batch_size):
         
         # For every batch, strip out any Nones that got put in when grouping
         batch = [x for x in batch if x is not None]
@@ -93,8 +112,9 @@ def copy_everything(job, options):
         batch_count += 1
         
         if batch_count % 10 == 0:
-            
-            RealTimeLogger.get().info("Queued {} batches...".format(batch_count))
+        
+            RealTimeLogger.get().info("Queued {} batches...".format(
+                batch_count))
             
     RealTimeLogger.get().info("Queued {} total batches".format(batch_count))
     

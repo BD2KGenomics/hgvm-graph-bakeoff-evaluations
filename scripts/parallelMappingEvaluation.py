@@ -195,7 +195,7 @@ class RealTimeLogger(object):
         
         return cls.logger
 
-def write_global_directory(file_store, path, cleanup=False):
+def write_global_directory(file_store, path, cleanup=False, tee=None):
     """
     Write the given directory into the file store, and return an ID that can be
     used to retrieve it. Writes the files in the directory and subdirectories
@@ -207,25 +207,47 @@ def write_global_directory(file_store, path, cleanup=False):
     If cleanup is true, directory will be deleted from the file store when this
     job and its follow-ons finish.
     
+    If tee is passed, a tar.gz of the directory contents will be written to that
+    filename. The file thus created must not be modified after this function is
+    called.
+    
     """
     
-    with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
-        file_id):
-        # We have a stream, so start taring into it
-    
-        with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
-            # Open it for streaming-only write (no seeking)
-            
-            # We can't just add the root directory, since then we wouldn't be
-            # able to extract it later with an arbitrary name.
-            
-            for file_name in os.listdir(path):
-                # Add each file in the directory to the tar, with a relative
-                # path
-                tar.add(os.path.join(path, file_name), arcname=file_name)
+    if tee is not None:
+        with open(tee, "w") as file_handle:
+            # We have a stream, so start taring into it
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
                 
-        # Spit back the ID to use to retrieve it
-        return file_id
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+        # Save the file on disk to the file store.
+        return file_store.writeGlobalFile(tee)
+    else:
+    
+        with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
+            file_id):
+            # We have a stream, so start taring into it
+            # TODO: don't duplicate this code.
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
+                
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+            # Spit back the ID to use to retrieve it
+            return file_id
         
 def read_global_directory(file_store, directory_id, path):
     """
@@ -925,16 +947,26 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     # Also for statistics
     stats_dir = "stats/{}/{}".format(region, graph_name)
     
+    # What smaples have been completed?
+    completed_samples = set()
+    for filename in out_store.list_input_directory(stats_dir):
+        # See if every file is a stats file
+        match = re.match("(.*)\.json$", filename)
+    
+        if match:
+            # We found a sample's stats file
+            completed_samples.add(match.group(1))
+            
+    RealTimeLogger.get().info("Already have {} completed samples for {} in "
+        "{}".format(len(completed_samples), basename, stats_dir))
+    
     # What samples haven't been done yet and need doing
     samples_to_run = []
     
     for sample in input_samples:
         # Split out over each sample
         
-        # What's the file that has to exist for us to not re-run it?
-        stats_file_key = "{}/{}.json".format(stats_dir, sample)
-        
-        if (not options.overwrite) and out_store.exists(stats_file_key):
+        if (not options.overwrite) and sample in completed_samples:
             # This is already done.
             RealTimeLogger.get().info("Skipping completed alignment of "
                 "{} to {} {}".format(sample, graph_name, region))
@@ -969,6 +1001,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Save it to the global file store and keep around the ID.
         # Will be compatible with read_global_directory
         index_dir_id = job.fileStore.writeGlobalFile(tgz_file, cleanup=True)
+        
+        RealTimeLogger.get().info("Index for {} retrieved "
+            "successfully".format(basename))
         
     else:
         # Download the graph, build the index, and store it in the output store
@@ -1021,20 +1056,122 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             str(options.kmer_size), "-e", str(options.edge_max),
             "-t", str(job.cores), graph_filename])
             
+        # Define a file to keep the compressed index in, so we can send it to
+        # the output store.
+        index_dir_tgz = "{}/index.tar.gz".format(
+            job.fileStore.getLocalTempDir())
+            
         # Now save the indexed graph directory to the file store. It can be
         # cleaned up since only our children use it.
+        RealTimeLogger.get().info("Compressing index of {}".format(
+            graph_filename))
         index_dir_id = write_global_directory(job.fileStore, graph_dir,
-            cleanup=True)
+            cleanup=True, tee=index_dir_tgz)
             
-        # Add a child to actually save the graph to the output. Hack our own job
-        # so that the actual alignment targets get added as a child of this, so
-        # they happen after. TODO: massive hack!
-        job = job.addChildJobFn(save_indexed_graph, options, index_dir_id,
-            index_key, cores=1, memory="10G", disk="50G")
+        # Save it as output
+        RealTimeLogger.get().info("Uploading index of {}".format(
+            graph_filename))
+        out_store.write_output_file(index_dir_tgz, index_key)
+        RealTimeLogger.get().info("Index {} uploaded successfully".format(
+            index_key))
             
-    RealTimeLogger.get().info("Done making children")
-                    
-    for sample in samples_to_run:
+    RealTimeLogger.get().info("Queueing alignment of {} samples to "
+        "{} {}".format(len(samples_to_run), graph_name, region))
+            
+    job.addChildJobFn(recursively_run_samples, options, bin_dir_id, 
+        graph_name, region, index_dir_id, samples_to_run,
+        cores=1, memory="4G", disk="4G")
+            
+    RealTimeLogger.get().info("Done making children for {}".format(basename))
+   
+def split_out_samples(job, options, bin_dir_id, graph_name, region,
+    index_dir_id, samples_to_run):
+    """
+    Create 2 child jobs, each running half of samples_to_run.
+    
+    If one of the jobs fails to serialize, the other will at least run.
+    
+    """
+    
+    if len(samples_to_run) == 0:
+        # Nothing to do
+        return
+    
+    # What's halfway?
+    halfway = len(samples_to_run)/2
+    
+    if halfway >= 1:
+        # We can split more. TODO: these are tiny jobs and the old Parasol
+        # scheduler would break.
+        
+        RealTimeLogger.get().debug("Splitting to {} samples for "
+                "{} {}".format(halfway, graph_name, region))
+        
+        job.addChildJobFn(split_out_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run[:halfway],
+            cores=1, memory="4G", disk="4G")
+        job.addChildJobFn(split_out_samples, options, bin_dir_id,
+            graph_name, region, index_dir_id, samples_to_run[halfway:],
+            cores=1, memory="4G", disk="4G")
+    else:
+        # We have just one sample and should run it
+    
+        # Work out where samples for this region live
+        region_dir = region.upper()    
+        
+        # Work out the directory for the alignments to be dumped in in the
+        # output
+        alignment_dir = "alignments/{}/{}".format(region, graph_name)
+        
+        # Also for statistics
+        stats_dir = "stats/{}/{}".format(region, graph_name)
+        
+        for sample in samples_to_run:
+            # Split out over each sample that needs to be run
+            
+            # For each sample, know the FQ name
+            sample_fastq = "{}/{}/{}.bam.fq".format(region_dir, sample, sample)
+            
+            # And know where we're going to put the output
+            alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
+            stats_file_key = "{}/{}.json".format(stats_dir, sample)
+            
+            RealTimeLogger.get().debug("Queueing alignment of {} to "
+                "{} {}".format(sample, graph_name, region))
+    
+            job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
+                graph_name, region, index_dir_id, sample_fastq,
+                alignment_file_key, stats_file_key, cores=16, memory="100G",
+                disk="50G")
+        
+            
+def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
+    index_dir_id, samples_to_run, num_per_call=10):
+    """
+    Create child jobs to run a few samples from the samples_to_run list, and a
+    recursive child job to create a few more.
+    
+    This is a hack to deal with the problems produced by having a job with
+    thousands of children on the Azure job store: the job graph gets cut up into
+    tiny chunks of data and stored as table values, and when you have many table
+    store operations one of them is likely to fail and screw up your whole
+    serialization process.
+    """
+    
+    # Get some samples to run
+    samples_to_run_now = samples_to_run[:num_per_call]
+    samples_to_run_later = samples_to_run[num_per_call:]
+    
+    # Work out where samples for this region live
+    region_dir = region.upper()    
+    
+    # Work out the directory for the alignments to be dumped in in the output
+    alignment_dir = "alignments/{}/{}".format(region, graph_name)
+    
+    # Also for statistics
+    stats_dir = "stats/{}/{}".format(region, graph_name)
+    
+    for sample in samples_to_run_now:
         # Split out over each sample that needs to be run
         
         # For each sample, know the FQ name
@@ -1052,6 +1189,42 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
             graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
             stats_file_key, cores=16, memory="100G", disk="50G")
+            
+    if len(samples_to_run_later) > 0:
+        # We need to recurse and run more later.
+        RealTimeLogger.get().debug("Postponing queueing {} samples".format(
+            len(samples_to_run_later)))
+            
+        if len(samples_to_run_later) < num_per_call:
+            # Just run them all in one batch
+            job.addChildJobFn(recursively_run_samples, options, bin_dir_id,
+                    graph_name, region, index_dir_id, samples_to_run_later,
+                    num_per_call, cores=1, memory="4G", disk="4G")
+        else:
+            # Split them up
+        
+            part_size = len(samples_to_run_later) / num_per_call
+            
+            RealTimeLogger.get().info("Splitting remainder of {} {} into {} "
+                "parts of {}".format(graph_name, region, num_per_call,
+                part_size))
+            
+            for i in xrange(num_per_call + 1):
+                # Do 1 more part for any remainder
+                
+                # Grab this bit of the rest
+                part = samples_to_run_later[(i * part_size) :
+                    ((i + 1) * part_size)]
+                
+                if len(part) > 0:
+                
+                    # Make a job to run it
+                    job.addChildJobFn(recursively_run_samples, options,
+                        bin_dir_id, graph_name, region, index_dir_id, part,
+                        num_per_call, cores=1, memory="4G", disk="4G")
+        
+        
+    
             
 def save_indexed_graph(job, options, index_dir_id, output_key):
     """

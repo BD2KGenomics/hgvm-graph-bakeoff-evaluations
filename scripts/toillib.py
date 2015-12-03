@@ -8,6 +8,7 @@ and output deposit to file/S3 (coming soon)/Azure
 
 import sys, os, os.path, json, collections, logging, logging.handlers
 import SocketServer, struct, socket, threading, tarfile, shutil
+import tempfile
 import functools
 import random
 import time
@@ -187,7 +188,7 @@ class RealTimeLogger(object):
         
         return cls.logger
 
-def write_global_directory(file_store, path, cleanup=False):
+def write_global_directory(file_store, path, cleanup=False, tee=None):
     """
     Write the given directory into the file store, and return an ID that can be
     used to retrieve it. Writes the files in the directory and subdirectories
@@ -199,25 +200,47 @@ def write_global_directory(file_store, path, cleanup=False):
     If cleanup is true, directory will be deleted from the file store when this
     job and its follow-ons finish.
     
+    If tee is passed, a tar.gz of the directory contents will be written to that
+    filename. The file thus created must not be modified after this function is
+    called.
+    
     """
     
-    with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
-        file_id):
-        # We have a stream, so start taring into it
-    
-        with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
-            # Open it for streaming-only write (no seeking)
-            
-            # We can't just add the root directory, since then we wouldn't be
-            # able to extract it later with an arbitrary name.
-            
-            for file_name in os.listdir(path):
-                # Add each file in the directory to the tar, with a relative
-                # path
-                tar.add(os.path.join(path, file_name), arcname=file_name)
+    if tee is not None:
+        with open(tee, "w") as file_handle:
+            # We have a stream, so start taring into it
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
                 
-        # Spit back the ID to use to retrieve it
-        return file_id
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+        # Save the file on disk to the file store.
+        return file_store.writeGlobalFile(tee)
+    else:
+    
+        with file_store.writeGlobalFileStream(cleanup=cleanup) as (file_handle,
+            file_id):
+            # We have a stream, so start taring into it
+            # TODO: don't duplicate this code.
+            with tarfile.open(fileobj=file_handle, mode="w|gz") as tar:
+                # Open it for streaming-only write (no seeking)
+                
+                # We can't just add the root directory, since then we wouldn't be
+                # able to extract it later with an arbitrary name.
+                
+                for file_name in os.listdir(path):
+                    # Add each file in the directory to the tar, with a relative
+                    # path
+                    tar.add(os.path.join(path, file_name), arcname=file_name)
+                    
+            # Spit back the ID to use to retrieve it
+            return file_id
         
 def read_global_directory(file_store, directory_id, path):
     """
@@ -449,7 +472,7 @@ class FileIOStore(IOStore):
         RealTimeLogger.get().debug("Saving {} to FileIOStore in {}".format(
             output_path, self.path_prefix))
 
-        # What's the real outptu path to write to?
+        # What's the real output path to write to?
         real_output_path = os.path.join(self.path_prefix, output_path)
 
         # What directory should this go in?
@@ -459,8 +482,19 @@ class FileIOStore(IOStore):
             # Make sure the directory it goes in exists.
             robust_makedirs(parent_dir)
         
-        # These are small so we just make copies
-        shutil.copy2(local_path, real_output_path)
+        # Make a temporary file
+        temp_handle, temp_path = tempfile.mkstemp(dir=self.path_prefix)
+        os.close(temp_handle)
+        
+        # Copy to the temp file
+        shutil.copy2(local_path, temp_path)
+        
+        if os.path.exists(real_output_path):
+            # At least try to get existing files out of the way first.
+            os.unlink(real_output_path)
+            
+        # Rename the temp file to the right place, atomically
+        os.rename(temp_path, real_output_path)
         
     def exists(self, path):
         """
@@ -663,10 +697,12 @@ class AzureIOStore(IOStore):
         
         while True:
         
-            # Get the results from Azure. We skip the delimiter since it doesn't
-            # seem to have the placeholder entries it's suppsoed to.
+            # Get the results from Azure. We don't use delimiter since Azure
+            # doesn't seem to provide the placeholder entries it's supposed to.
             result = self.connection.list_blobs(self.container_name, 
                 prefix=fake_directory, marker=marker)
+                
+            RealTimeLogger.get().info("Found {} files".format(len(result)))
                 
             for blob in result:
                 # Yield each result's blob name, but directory names only once
@@ -748,14 +784,6 @@ class AzureIOStore(IOStore):
                 break 
         
         return False
-
-    
-
-
-
-
-
-
 
 
 
