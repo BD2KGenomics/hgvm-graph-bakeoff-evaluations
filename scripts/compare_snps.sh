@@ -16,6 +16,9 @@ TAG_OPTS="--orig_tag ${GRAPHS}"
 #OPTS="--dir_tag --only_summary"
 OPTS="--dir_tag"
 
+REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
+#REGIONS=( "brca1" )
+
 # output for clusteGraphs.py that we rename
 CP_FILES=( "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "heatmap_log_vm1_kmer.pdf" "tree_kmer.dot" "tree_kmer.newick"  "tree_kmer.png" "heatmap_corg.pdf" "heatmap_log_corg.pdf" "heatmap_vm1_corg.pdf" "heatmap_log_vm1_corg.pdf" "tree_corg.dot" "tree_corg.newick"  "tree_corg.png" )
 
@@ -27,9 +30,7 @@ CP_FILES=( "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "hea
 
 mkdir $OUT_DIR
 
-#for i in brca1 brca2 sma lrc_kr mhc cenx
-for i in brca1 brca2 sma lrc_kir mhc
-#for i in brca1
+for i in "${REGIONS[@]}"
 do
 	 #heatmap of original
 	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS}
