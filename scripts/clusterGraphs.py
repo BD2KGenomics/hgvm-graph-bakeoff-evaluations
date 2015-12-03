@@ -220,7 +220,6 @@ def compute_matrix(options, dist_fn):
         for graph2 in options.graphs:
             if graph1 <= graph2:
                 if not options.avg_samples or not different_sample(graph1, graph2):
-                    print "applying", graph1, graph2
                     val = dist_fn(graph1, graph2, options)
                     mat[label_fn(graph1)][label_fn(graph2)] += val
                     counts[label_fn(graph1)][label_fn(graph2)] += 1.
@@ -228,9 +227,6 @@ def compute_matrix(options, dist_fn):
                         mat[label_fn(graph2)][label_fn(graph1)] += val
                         counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
-    print "mat", mat
-    print "counot", counts
-    
     # divide by counts to get mean
     for graph1 in map(label_fn, options.graphs):
         for graph2 in map(label_fn, options.graphs):
@@ -311,9 +307,6 @@ def compute_heatmap(options, mat, names, tag):
         array_mat.append([])
         for graph2 in names:
             array_mat[-1].append(mat[graph1][graph2])
-
-    print names
-    print array_mat
 
     plotHeatMap(array_mat, names, names,
                 heatmap_path(options, tag),
