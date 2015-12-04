@@ -47,17 +47,6 @@ def parse_args(args):
         
     return parser.parse_args(args)
    
-def group(iterable, max_count):
-    """
-    Batch up iterable results. Pads with None.
-    
-    See <http://stackoverflow.com/a/8290490/402891>
-    
-    """
-    
-    # Zip a bunch of copies of the iterable.
-    return itertools.izip_longest(*([iter(iterable)] * max_count))
-
 def collate_all(job, options):
     """
     Collate all the stats files

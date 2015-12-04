@@ -1,0 +1,273 @@
+#!/usr/bin/env python2.7
+"""
+biasDetector.py: see if there is a population bias in mapping rates for each
+graph.
+
+"""
+
+import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
+import doctest, re, json, collections, time, timeit
+import tempfile
+import urllib2
+
+import tsv
+import scipy.stats.mstats
+
+from toil.job import Job
+
+from toillib import *
+
+def parse_args(args):
+    """
+    Takes in the command-line arguments list (args), and returns a nice argparse
+    result with fields for all the options.
+    
+    Borrows heavily from the argparse documentation examples:
+    <http://docs.python.org/library/argparse.html>
+    """
+    
+    # Construct the parser (which is stored in parser)
+    # Module docstring lives in __doc__
+    # See http://python-forum.com/pythonforum/viewtopic.php?f=3&t=36847
+    # And a formatter class so our examples in the docstring look good. Isn't it
+    # convenient how we already wrapped it to 80 characters?
+    # See http://docs.python.org/library/argparse.html#formatter-class
+    parser = argparse.ArgumentParser(description=__doc__, 
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    # Add the Toil options so the job store is the first argument
+    Job.Runner.addToilOptions(parser)
+    
+    # General options
+    parser.add_argument("in_store",
+        help="input IOStore to find stats files in (under /stats)")
+    parser.add_argument("out_store",
+        help="output IOStore to put collated plotting files in (under /bias)")
+    parser.add_argument("--blacklist", action="append", default=[],
+        help="ignore the specified region:graph pairs")
+    parser.add_argument("--index_url", 
+        default=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/"
+        "1000_genomes_project/1000genomes.sequence.index"), 
+        help="URL to index of samples, with SAMPLE_NAME and POPULATION_NAME")
+    
+    # The command line arguments start with the program name, which we don't
+    # want to treat as an argument for argparse. So we remove it.
+    args = args[1:]
+        
+    return parser.parse_args(args)
+   
+def tsv_reader_with_comments(lines):
+    """
+    TSV reader iterator that doesn't strip comments.
+    """
+    
+    for line in lines:
+        yield line.split("\t")
+   
+def scan_all(job, options):
+    """
+    Scan all the regions and graphs for bias.
+    
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    RealTimeLogger.get().info("Downloading sample population assignments")    
+    
+    # Load the 1000 Genomes population assignments.
+    # Make a reader that goes through split out lines in the TSV.
+    reader = tsv_reader_with_comments(urllib2.urlopen(urllib2.Request(
+        options.index_url)))
+    
+    # Get an iterator over the lines
+    lines = iter(reader)
+    
+    # Grab the headings
+    headings = lines.next()
+    
+    while headings[0].startswith("##"):
+        # Skip leading lines that aren't the real header (which starts with #)
+        headings = lines.next()
+    
+    # Which column holds sample names?
+    sample_name_column = headings.index("SAMPLE_NAME")
+    
+    # Which column holds sample populations?
+    sample_population_column = headings.index("POPULATION")
+    
+    # What dict do we fill in? Holds population string by sample name.
+    pop_by_sample = {}
+    
+    for parts in lines:
+        # Save population under sample
+        pop_by_sample[parts[sample_name_column]] = parts[
+            sample_population_column]
+        
+    
+    for region in in_store.list_input_directory("stats"):
+        # Collate everything in the region
+        job.addChildJobFn(scan_region, options, region, pop_by_sample,
+            cores=1, memory="1G", disk="10G")
+    
+def scan_region(job, options, region, pop_by_sample):
+    """
+    Scan all the graphs in a region for bias.
+    
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    # Will hold (h statistic, p value) pair (promises) by graph name
+    graph_biases = {}
+    
+    for graph in in_store.list_input_directory("stats/{}".format(region)):
+        # For each
+        
+        if "{}:{}".format(region, graph) in options.blacklist:
+            # We don't want to process this region/graph pair.
+            RealTimeLogger.get().info("Skipping {} graph {}".format(region,
+                graph))
+            continue
+        
+        # Scan the graph and get its bias info
+        graph_bias = job.addChildJobFn(scan_graph, options, region, graph,
+            pop_by_sample, cores=1, memory="1G", disk="10G").rv()
+            
+        # Save the bias stats
+        graph_biases[graph] = graph_bias
+        
+    # When stats are all in, save them
+    job.addFollowOnJobFn(save_region_stats, options, region, graph_biases,
+        cores=1, memory="1G", disk="10G")
+        
+def scan_graph(job, options, region, graph, pop_by_sample):
+    """
+    Look at a given graph in a given region and return its bias info (H
+    statistic and p value) as a tuple.
+    
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    RealTimeLogger.get().info("Processing {} graph {}".format(region,
+        graph))
+    
+    # This holds lists of portion well-mapped stat values by population
+    stats_by_pop = collections.defaultdict(list)
+    
+    for result in in_store.list_input_directory("stats/{}/{}".format(region,
+        graph)):
+        
+        # Pull sample name from filename
+        sample_name = re.match("(.*)\.json$", result).group(1)
+    
+        # Grab file
+        local_filename = os.path.join(job.fileStore.getLocalTempDir(),
+            "temp.json")
+        in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
+            result), local_filename)
+        # Read the JSON
+        stats = json.load(open(local_filename))
+        
+        # Compute the answers for this sample
+        
+        # How many reads are mapped well enough?
+        total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
+            for x in xrange(3)))
+            
+        # How many reads are there overall for this sample?
+        total_reads = stats["total_reads"]
+        
+        # What portion are mapped well?
+        portion_mapped_well = total_mapped_well / float(total_reads)
+        
+        # Add the sample to the distribution
+        stats_by_pop[pop_by_sample[sample_name]].append(portion_mapped_well)
+        
+    RealTimeLogger.get().info("Running statistics for {} graph {}".format(
+        region, graph))
+        
+    # Now we have the data for each graph read in, so we can run stats.
+    h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
+        stats_by_pop.values())
+        
+    return (h_statistic, p_value)
+    
+def save_region_stats(job, options, region, graph_biases):
+    """ 
+    Save the biases of the graphs for this region to the output IOStore.
+    
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    # Grab file
+    local_filename = os.path.join(job.fileStore.getLocalTempDir(),
+        "temp.tsv")
+        
+    # Get a writer to write to it
+    writer = tsv.TsvWriter(open(local_filename, "w"))
+    
+    for (graph, (h_statistic, p_value)) in graph_biases.iteritems():
+        # Write this stat to the TSV
+        writer.line(graph, h_statistic, p_value)
+        
+    # Finish up the file
+    writer.close()
+    
+    RealTimeLogger.get().info("Uploading results for {} ".format(region))
+    
+    # Save it to the output store
+    out_store.write_output_file(local_filename, "bias/{}.tsv".format(region))
+        
+    
+def main(args):
+    """
+    Parses command line arguments and do the work of the program.
+    "args" specifies the program arguments, with args[0] being the executable
+    name. The return value should be used as the program's exit code.
+    """
+    
+    if len(args) == 2 and args[1] == "--test":
+        # Run the tests
+        return doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
+    
+    options = parse_args(args) # This holds the nicely-parsed options object
+    
+    RealTimeLogger.start_master()
+    
+    # Make a root job
+    root_job = Job.wrapJobFn(scan_all, options,
+        cores=1, memory="1G", disk="1G")
+    
+    # Run it and see how many jobs fail
+    failed_jobs = Job.Runner.startToil(root_job,  options)
+    
+    if failed_jobs > 0:
+        raise Exception("{} jobs failed!".format(failed_jobs))
+        
+    print("All jobs completed successfully")
+    
+    RealTimeLogger.stop_master()
+    
+if __name__ == "__main__" :
+    sys.exit(main(sys.argv))
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
