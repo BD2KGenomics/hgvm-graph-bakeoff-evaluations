@@ -379,14 +379,14 @@ def compute_corg_comparison(job, graph1, graph2, options):
             len1 = vg_length(graph1, options)
             len2 = vg_length(graph2, options)
             lenC = vg_length(corg_vg, options)
-            corg_val = (2. * lenC) / float(len1 + len2) -1. 
+            corg_val = abs((2. * lenC) / float(len1 + len2) -1.) 
         except:
             pass
     with open(out_path, "w") as f:
         f.write("{}\n".format(corg_val))
     return corg_val
 
-def compute_comparisons(job, options):
+def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
     """
@@ -398,12 +398,48 @@ def compute_comparisons(job, options):
                         if options.overwrite or not os.path.exists(out_path):
                             job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
                                               cores=min(options.vg_cores, 2))
-                            
-                        out_path = corg_path(graph1, graph2, options)
-                        if not options.no_corg and (options.overwrite or not os.path.exists(out_path)):
-                            job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
-                                              cores=1)
 
+    if not options.no_corg:
+        job.addFollowOnJobFn(compute_corg_self_comparisons, options, cores=1)
+
+def compute_corg_self_comparisons(job, options):
+    """ run corg compare on all graphs with themselves.  the results are used 
+    to decide if a graph is corg-able. 
+    """    
+    for graph1 in options.graphs:
+        graph2 = graph1
+        out_path = corg_path(graph1, graph2, options)
+        if options.overwrite or not os.path.exists(out_path):
+            job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
+                              cores=1)
+
+    job.addFollowOnJobFn(compute_corg_comparisons, options, cores=1)
+
+def can_corg(graph, options):
+    """ return whether a corg self compare returned distance 0 for this graph
+    """
+    try:
+        out_path = corg_path(graph, graph, options)
+        with open(out_path) as f:
+            val = float(f.readline().strip())
+        return val == 0.0
+    except:
+        return False
+        
+def compute_corg_comparisons(job, options):
+    """ run corg compare on all corg-ablegraphs. 
+    """
+    for graph1 in options.graphs:
+        for graph2 in options.graphs:
+            if graph1 <= graph2:
+                if not options.avg_samples or not different_sample(graph1, graph2):
+                    out_path = corg_path(graph1, graph2, options)
+                    if options.overwrite or not os.path.exists(out_path):
+                        if can_corg(graph1, options) and can_corg(graph2, options):
+                            job.addChildJobFn(compute_corg_comparison, graph1, graph2,
+                                              options, cores=1)
+
+    
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
     first all indexes are computed,
@@ -415,7 +451,7 @@ def compute_kmer_indexes(job, options):
         job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
     # do the comparisons
-    job.addFollowOnJobFn(compute_comparisons, options, cores=1)
+    job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
     
 def main(args):
     
@@ -445,6 +481,12 @@ def main(args):
     # Do the drawing outside toil to get around weird import problems
     cluster_comparisons(options, jaccard_dist_fn, "_kmer")
     if not options.no_corg:
+        # hack out non-corg-able graphs
+        graphs = []
+        for graph in options.graphs:
+            if can_corg(graph, options):
+                graphs.append(graph)
+        options.graphs = graphs
         cluster_comparisons(options, corg_dist_fn, "_corg")
     
 if __name__ == "__main__" :
