@@ -192,19 +192,23 @@ def graph_size_table(options):
     with open(size_tsv_path(options), "w") as ofile:
         ofile.write(length_table)
 
-def boxPlot(inFile, outFile, column, title = None, x_label = None, y_label = None):
+def boxPlot(inFile, outFile, x_column = 0, y_column = 1, title = None, x_label = None, y_label = None):
     """ make a box plot out of one of the tsv's generated above
     """
 
     # input format not quite right.  We strip off sample names from row
     # headers and put the column we want 2nd, and also skip -1 data points
-    tempTsv = inFile.replace(".tsv", "_plot_{}.tsv".format(column))
+    tempTsv = inFile.replace(".tsv", "_plot_{}_v_{}.tsv".format(x_column, y_column))
     with open(inFile) as f, open(tempTsv, "w") as o:
         for line in f:
+            if len(line) > 0 and line[0] == "#":
+                continue
             toks = line.split()
             # strip last _ and beyond
-            name = "_".join(toks[0].split("_")[:-1])
-            val = toks[column]
+            name = "_".join(toks[x_column].split("_")[:-1])
+            if name == "":
+                name = toks[x_column]
+            val = toks[y_column]
             missing = False
             try:
                 missing = float(val) == -1.
@@ -242,9 +246,9 @@ def main(args):
 
     # make some boxplots with adams super script
     boxPlot(count_tsv_path(options), count_tsv_path(options).replace(".tsv", ".pdf"),
-            2, "SNP\\ Count")
+            0, 2, "SNP\\ Count")
     boxPlot(size_tsv_path(options), size_tsv_path(options).replace(".tsv", ".pdf"),
-            1, "Sample\\ Graph\\ Size")
+            0, 1, "Sample\\ Graph\\ Size")
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
