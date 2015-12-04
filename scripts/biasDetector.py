@@ -100,11 +100,22 @@ def scan_all(job, options):
     # What dict do we fill in? Holds population string by sample name.
     pop_by_sample = {}
     
+    # We also want to count samples in each population for debuging
+    samples_per_pop = collections.Counter()
+    
     for parts in lines:
         # Save population under sample
         pop_by_sample[parts[sample_name_column]] = parts[
             sample_population_column]
+            
+        # Count the sample for its population
+        samples_per_pop[parts[sample_population_column]] += 1
         
+    RealTimeLogger.get().info("Found {} populations:".format(len(
+        samples_per_pop))) 
+        
+    for (pop, count) in samples_per_pop.iteritems():
+        RealTimeLogger.get().info("{}: {}".format(pop, count))
     
     for region in in_store.list_input_directory("stats"):
         # Collate everything in the region
@@ -193,9 +204,15 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     RealTimeLogger.get().info("Running statistics for {} graph {}".format(
         region, graph))
         
+    # Grab all the distributions to compare in a list
+    list_of_distributions = stats_by_pop.values()
+
+    RealTimeLogger.get().info("Have {} populations to compare".format(len(
+        list_of_distributions)))
+        
     # Now we have the data for each graph read in, so we can run stats.
     h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
-        stats_by_pop.values())
+        *list_of_distributions)
         
     return (h_statistic, p_value)
     
