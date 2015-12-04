@@ -115,16 +115,18 @@ def collate_region(job, options, region):
     
     
     # Where will we put our final collated files?
-    mapping_key="plots/mapping.{}.tsv".format(region)
+    # This is only good mappings
+    good_mapping_key="plots/mapping.{}.tsv".format(region) 
     perfect_key="plots/perfect.{}.tsv".format(region)
     one_error_key="plots/oneerror.{}.tsv".format(region)
     single_mapping_key="plots/singlemapping.{}.tsv".format(region)
     runtime_key="plots/runtime.{}.tsv".format(region)
+    any_mapping_key="plots/anymapping.{}.tsv".format(region)
     
     # Where will we build them?
-    mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
+    good_mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
         "mapping.tsv")
-    mapping_temp = open(mapping_temp_name, "w")
+    good_mapping_temp = open(good_mapping_temp_name, "w")
     perfect_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
         "perfect.tsv")
     perfect_temp = open(perfect_temp_name, "w")
@@ -137,6 +139,9 @@ def collate_region(job, options, region):
     runtime_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
         "runtime.tsv")
     runtime_temp = open(runtime_temp_name, "w")
+    any_mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
+        "anymapping.tsv")
+    any_mapping_temp = open(any_mapping_temp_name, "w")
     
     for graph in in_store.list_input_directory("stats/{}".format(region)):
         # For each
@@ -163,7 +168,7 @@ def collate_region(job, options, region):
             # Compute the answers for this sample
             
             # How many reads are mapped well enough?
-            total_mapped = sum((stats["primary_mismatches"].get(str(x), 0)
+            total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
                 for x in xrange(3)))
                 
             # How many reads are multimapped well enough?
@@ -181,6 +186,10 @@ def collate_region(job, options, region):
             # How many reads are there overall for this sample?
             total_reads = stats["total_reads"]
             
+            # How many reads are mapped at all for this sample (not just good
+            # enough)?
+            total_mapped_at_all = stats["total_mapped"]
+            
             # What was the runtime?
             runtime = stats.get("run_time", None)
             if runtime is None:
@@ -191,36 +200,43 @@ def collate_region(job, options, region):
                 runtime /= total_reads
             
             # What portion are single-mapped?
-            portion_single_mapped = (total_mapped - total_multimapped) / float(
+            portion_single_mapped = (total_mapped_well - total_multimapped) / float(
                 total_reads)
-            # What portion are mapped?
-            portion_mapped = total_mapped / float(total_reads)
+            # What portion are mapped well?
+            portion_mapped_well = total_mapped_well / float(total_reads)
             # What portion are perfect?
             portion_perfect = total_perfect / float(total_reads)
             # What portion are <=1 error?
             portion_one_error = total_one_error / float(total_reads)
+            # What portion are mapped at all?
+            portion_mapped_at_all = total_mapped_at_all / float(total_reads)
 
             # Append lines to the files            
-            mapping_temp.write("{}\t{}\n".format(graph, portion_mapped))
+            good_mapping_temp.write("{}\t{}\n".format(graph,
+                portion_mapped_well))
             perfect_temp.write("{}\t{}\n".format(graph, portion_perfect))
             one_error_temp.write("{}\t{}\n".format(graph, portion_one_error))
             single_mapping_temp.write("{}\t{}\n".format(graph,
                 portion_single_mapped))
             runtime_temp.write("{}\t{}\n".format(graph, runtime))
+            any_mapping_temp.write("{}\t{}\n".format(graph,
+                portion_mapped_at_all))
             
     # Flush and close the files
-    mapping_temp.close()
+    good_mapping_temp.close()
     perfect_temp.close()
     one_error_temp.close()
     single_mapping_temp.close()
     runtime_temp.close()
+    any_mapping_temp.close()
     
     # Save them to the final places
-    out_store.write_output_file(mapping_temp_name, mapping_key)
+    out_store.write_output_file(good_mapping_temp_name, good_mapping_key)
     out_store.write_output_file(perfect_temp_name, perfect_key)
     out_store.write_output_file(one_error_temp_name, one_error_key)
     out_store.write_output_file(single_mapping_temp_name, single_mapping_key)
     out_store.write_output_file(runtime_temp_name, runtime_key)
+    out_store.write_output_file(any_mapping_temp_name, any_mapping_key)
     
 def main(args):
     """

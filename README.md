@@ -17,10 +17,29 @@ Submodules and/or Docker may be the way to go here?
 *  [bcftools](https://github.com/samtools/bcftools)
 *  [htslib](https://github.com/samtools/htslib)
 *  [corg](https://github.com/adamnovak/corg)
-*  Python modules detailed in `requirements.txt`. Installable with `pip install -r requirements.txt`.
+*  Python modules detailed in `requirements.txt`. Installable with `pip install -r requirements.txt` in a virtualenv.
 
 
 ## Graph Properties Comparison
+
+### Obtaining GRC Alignments and Gene Definitions
+
+For the GRC alignment concordance analysis, MAF files for the GRC alignments for the MHC, SMA, and LRC_KIR regions are required. Additionally, for the ortholog/paralog mapping analysis, BED files giving gene annotations for those regions are required.
+
+These can both be obtained by running the `fetchRegion.py` script. For example, to get the BED and MAF files for the SMA region, deposited into an `SMA` directory under the current directory, run:
+
+```
+scripts/fetchRegion.py SMA
+```
+
+As of this writing, this ought to fetch the GENCODE v22 genes, and alignments and sequence from the GRCh38.p2 assembly.
+
+This script requires the `hgsql` tool, available in the [Kent tools](https://github.com/ENCODE-DCC/kentUtils), as well as a set-up and configured database containing the `hg38` database and its `knownGenes` and `kgXref` tables. It may be possible to use UCSC's public SQL server; this has not been tested.
+
+This script also requires a patched version of BioPython with MAF output support, which should have been installed via `requirements.txt`.
+
+MAF files and gene annotations fetched with this script are also available [in this archive](http://hgwdev.sdsc.edu/~anovak/hgvm/hgvm.tar.gz).
+
 
 ## Graph Mapping Comparison
 
@@ -47,7 +66,7 @@ To actually run the alignments for the downloaded reads, you should use the `par
 # Remove any previous Toil job store
 rm -Rf tree
 # Run the alignment
-scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./low_coverage_reads ./low_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
+scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./low_coverage_reads ./low_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=3 2>&1 | tee log.txt
 ```
 
 Note that if you are running on all 2,691 samples retrieved in the previous step, the command given above will take an impractical amount of time to complete. One option to mitigate this is to only run some samples, with a `--sampleLimit` flag. Another is to use the script on a cluster, by changing the `--batchSystem` argument to any batch system supported by toil (and the job store of `./tree` to a job store that will be accessible from your cluster nodes).
@@ -83,7 +102,7 @@ Currently the easiest way to produce the alignments needed for the variant calli
 # Remove any previous Toil job store
 rm -Rf tree
 # Run the alignment
-scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_reads ./high_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=7 2>&1 | tee log.txt
+scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_reads ./high_coverage_alignments --batchSystem=singleMachine --use_path_binaries --kmer_size=27 --edge_max=3 2>&1 | tee log.txt
 ```
 
 It might be wise to parallelize this step across a cluster; Microsoft Azure Storage is supported for the input and output directories, using a syntax similar to that used for Toil job stores (`azure:<account>:<container>/<prefix>`).
