@@ -14,16 +14,18 @@ then
 fi
 
 # Set up the plot parameters
+# Include both versions of the 1kg SNPs graph name
 PLOT_PARAMS=(
     --categories
     snp1kg
+    snp1000g
     haplo1kg
     sbg
     cactus
     camel
     curoverse
-    Debruijn-k31
-    Debruijn-k63
+    debruijn-k31
+    debruijn-k63
     level1
     level2
     level3
@@ -33,6 +35,7 @@ PLOT_PARAMS=(
     trivial
     vglr
     --category_labels 
+    1KG
     1KG
     "1KG Haplo"
     7BG
@@ -50,6 +53,7 @@ PLOT_PARAMS=(
     Trivial
     VGLR
     --colors
+    "#fb9a99"
     "#fb9a99"
     "#fdbf6f"
     "#b15928"
@@ -99,6 +103,8 @@ do
     ONE_ERROR_PLOT="${PLOTS_DIR}/oneerror.${REGION}.png"
     SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
     SINGLE_MAPPING_PLOT="${PLOTS_DIR}/singlemapping.${REGION}.png"
+    ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
+    ANY_MAPPING_PLOT="${PLOTS_DIR}/anymapping.${REGION}.png"
     RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
     RUNTIME_PLOT="${PLOTS_DIR}/runtime.${REGION}.png"
     
@@ -132,6 +138,12 @@ do
     ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
         --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
+        --x_sideways --hline_median refonly \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
+        --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION}")" \
+        --x_label "Graph" --y_label "Portion mapped" --save "${ANY_MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         
