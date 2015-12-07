@@ -11,6 +11,8 @@ import tempfile
 import urllib2
 
 import tsv
+import numpy
+import scipy.stats
 import scipy.stats.mstats
 
 from toil.job import Job
@@ -49,6 +51,8 @@ def parse_args(args):
         default=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/"
         "1000_genomes_project/1000genomes.sequence.index"), 
         help="URL to index of samples, with SAMPLE_NAME and POPULATION_NAME")
+    parser.add_argument("--overwrite", action="store_true",
+        help="replace cached per-sample statistics with recalculated ones")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -158,7 +162,7 @@ def scan_region(job, options, region, pop_by_sample):
 def scan_graph(job, options, region, graph, pop_by_sample):
     """
     Look at a given graph in a given region and return its bias info (H
-    statistic and p value) as a tuple.
+    statistic and p value and bias level) as a tuple.
     
     """
     
@@ -166,40 +170,73 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    RealTimeLogger.get().info("Processing {} graph {}".format(region,
-        graph))
-    
     # This holds lists of portion well-mapped stat values by population
     stats_by_pop = collections.defaultdict(list)
     
-    for result in in_store.list_input_directory("stats/{}/{}".format(region,
-        graph)):
-        
-        # Pull sample name from filename
-        sample_name = re.match("(.*)\.json$", result).group(1)
+    # This is the output TSV it should all land in, in <pop>\t<value> format
+    labeled_tsv_key = "bias/distributions/{}/{}.tsv".format(region, graph)
     
-        # Grab file
-        local_filename = os.path.join(job.fileStore.getLocalTempDir(),
-            "temp.json")
-        in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
-            result), local_filename)
-        # Read the JSON
-        stats = json.load(open(local_filename))
+    # What name will it have locally for us?
+    local_filename = os.path.join(job.fileStore.getLocalTempDir(), "temp.tsv")
+    
+    if out_store.exists(labeled_tsv_key) and not options.overwrite:
+        # Just read in from that TSV
         
-        # Compute the answers for this sample
+        # Grab the cached results
+        out_store.read_input_file(labeled_tsv_key, local_filename)
         
-        # How many reads are mapped well enough?
-        total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
-            for x in xrange(3)))
+        # Read all the pop, value pairs from the TSV
+        reader = tsv.TsvReader(open(local_filename))
+        
+        for pop, stat in reader:
+            # Collect all the values and put them in the right populations
+            stats_by_pop[pop].append(float(stat))
+        
+    else:
+        # Look in each sample file, compute the per-sample statistic, and save
+        # it to the tsv
+
+        RealTimeLogger.get().info("Processing samples for {} graph {}".format(
+            region, graph))
+    
+        for result in in_store.list_input_directory("stats/{}/{}".format(region,
+            graph)):
             
-        # How many reads are there overall for this sample?
-        total_reads = stats["total_reads"]
+            # Pull sample name from filename
+            sample_name = re.match("(.*)\.json$", result).group(1)
         
-        # What portion are mapped well?
-        portion_mapped_well = total_mapped_well / float(total_reads)
+            # Grab file
+            local_filename = os.path.join(job.fileStore.getLocalTempDir(),
+                "temp.json")
+            in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
+                result), local_filename)
+            # Read the JSON
+            stats = json.load(open(local_filename))
+            
+            # How many reads are mapped well enough?
+            total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
+                for x in xrange(3)))
+                
+            # How many reads are there overall for this sample?
+            total_reads = stats["total_reads"]
+            
+            # What portion are mapped well?
+            portion_mapped_well = total_mapped_well / float(total_reads)
+            
+            # Add the sample to the distribution
+            stats_by_pop[pop_by_sample[sample_name]].append(portion_mapped_well)
+            
+        # Write all the pop, value pairs to the TSV
+        writer = tsv.TsvWriter(open(local_filename, "w"))
         
-        # Add the sample to the distribution
-        stats_by_pop[pop_by_sample[sample_name]].append(portion_mapped_well)
+        for pop, list_of_stats in stats_by_pop.iteritems():
+            for stat in list_of_stats:
+                # Save each sample for its population
+                writer.line(pop, stat)
+                
+        # Close the file and save the results for the next run
+        writer.close()
+        out_store.write_output_file(local_filename, labeled_tsv_key)
         
     RealTimeLogger.get().info("Running statistics for {} graph {}".format(
         region, graph))
@@ -210,11 +247,21 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     RealTimeLogger.get().info("Have {} populations to compare".format(len(
         list_of_distributions)))
         
-    # Now we have the data for each graph read in, so we can run stats.
+    # Now we have the data for each graph read in, so we can run stats. Test to
+    # see if there is a significant difference in medians among the populations.
     h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
         *list_of_distributions)
         
-    return (h_statistic, p_value)
+    # Since there probably is, quantify the degree of difference between
+    # populations. This is my own metric which may or may not be good.
+    
+    # Get the median of each distribution
+    medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
+    
+    # Find the standard deviation and call it the bias level
+    bias_level = numpy.std(medians)
+        
+    return (h_statistic, p_value, bias_level)
     
 def save_region_stats(job, options, region, graph_biases):
     """ 
@@ -233,9 +280,9 @@ def save_region_stats(job, options, region, graph_biases):
     # Get a writer to write to it
     writer = tsv.TsvWriter(open(local_filename, "w"))
     
-    for (graph, (h_statistic, p_value)) in graph_biases.iteritems():
+    for (graph, (h_statistic, p_value, bias_level)) in graph_biases.iteritems():
         # Write this stat to the TSV
-        writer.line(graph, h_statistic, p_value)
+        writer.line(graph, h_statistic, p_value, bias_level)
         
     # Finish up the file
     writer.close()

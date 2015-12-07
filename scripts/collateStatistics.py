@@ -8,6 +8,8 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import tempfile
 
+import tsv
+
 from toil.job import Job
 
 from toillib import *
@@ -40,6 +42,8 @@ def parse_args(args):
         help="output IOStore to put collated plotting files in (under /plots)")
     parser.add_argument("--blacklist", action="append", default=[],
         help="ignore the specified region:graph pairs")
+    parser.add_argument("--overwrite", action="store_true",
+        help="replace cached per-sample statistics with recalculated ones")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -82,7 +86,7 @@ def concatenate_results(job, options, inputs, output_key):
     
     with open(path, "w") as destination:
         for input_id in inputs:
-            with file_store.readGlobalFileStream(input_id) as input_stream:
+            with job.file_store.readGlobalFileStream(input_id) as input_stream:
                 # Copy over every input
                 shutil.copyfileobj(input_stream, destination)
     
@@ -94,7 +98,8 @@ def concatenate_results(job, options, inputs, output_key):
             
 def collate_region(job, options, region):
     """
-    Collate all the stats files in a region
+    Collate all the stats files in a region. Returns a dict from graph and
+    sample and stat name to stat value, which may be cached.
     
     """
     
@@ -102,130 +107,179 @@ def collate_region(job, options, region):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
+    # This holds a dict from graph name, then sample name, then stat name to
+    # actual stst value.
+    stats_cache = collections.defaultdict(lambda: collections.defaultdict(dict))
     
-    # Where will we put our final collated files?
-    # This is only good mappings
-    good_mapping_key="plots/mapping.{}.tsv".format(region) 
-    perfect_key="plots/perfect.{}.tsv".format(region)
-    one_error_key="plots/oneerror.{}.tsv".format(region)
-    single_mapping_key="plots/singlemapping.{}.tsv".format(region)
-    runtime_key="plots/runtime.{}.tsv".format(region)
-    any_mapping_key="plots/anymapping.{}.tsv".format(region)
+    # This is the cache file for this region, in
+    # <graph>\t<sample>\t<stat>\t<value> format
+    cache_tsv_key = "plots/cache/{}.tsv".format(region)
     
-    # Where will we build them?
-    good_mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "mapping.tsv")
-    good_mapping_temp = open(good_mapping_temp_name, "w")
-    perfect_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "perfect.tsv")
-    perfect_temp = open(perfect_temp_name, "w")
-    one_error_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "oneerror.tsv")
-    one_error_temp = open(one_error_temp_name, "w")
-    single_mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "singlemapping.tsv")
-    single_mapping_temp = open(single_mapping_temp_name, "w")
-    runtime_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "runtime.tsv")
-    runtime_temp = open(runtime_temp_name, "w")
-    any_mapping_temp_name = os.path.join(job.fileStore.getLocalTempDir(),
-        "anymapping.tsv")
-    any_mapping_temp = open(any_mapping_temp_name, "w")
+    # What name will it have locally for us?
+    local_filename = os.path.join(job.fileStore.getLocalTempDir(), "temp.tsv")
     
-    for graph in in_store.list_input_directory("stats/{}".format(region)):
-        # For each
+    if out_store.exists(cache_tsv_key) and not options.overwrite:
+        # Just read in from that TSV
         
-        if "{}:{}".format(region, graph) in options.blacklist:
-            # We don't want to process this region/graph pair.
-            RealTimeLogger.get().info("Skipping {} graph {}".format(region,
+        RealTimeLogger.get().info("Loading cached region {}".format(region))
+        
+        # Grab the cached results
+        out_store.read_input_file(cache_tsv_key, local_filename)
+        
+        # Read all the pop, value pairs from the TSV
+        reader = tsv.TsvReader(open(local_filename))
+        
+        for graph, sample, stat, value in reader:
+            # Read in and place all the values
+            stats_cache[graph][sample][stat] = float(value)
+        
+    else:
+    
+        # We need to populate the stats cache ourselves.
+        for graph in in_store.list_input_directory("stats/{}".format(region)):
+            # For each graph
+        
+            if "{}:{}".format(region, graph) in options.blacklist:
+                # We don't want to process this region/graph pair.
+                RealTimeLogger.get().info("Skipping {} graph {}".format(region,
+                    graph))
+                continue
+            
+            RealTimeLogger.get().info("Processing {} graph {}".format(region,
                 graph))
-            continue
+            for result in in_store.list_input_directory("stats/{}/{}".format(
+                region, graph)):
+            
+                # For every sample
+                
+                # Pull sample name from filename
+                sample_name = re.match("(.*)\.json$", result).group(1)
+            
+                # Grab file
+                json_filename = os.path.join(job.fileStore.getLocalTempDir(),
+                    "temp.json")
+                in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
+                    result), json_filename)
+                # Read the JSON
+                stats = json.load(open(json_filename))
+                
+                # Compute the answers for this sample
+                
+                # How many reads are mapped well enough?
+                total_mapped_well = sum((stats["primary_mismatches"].get(str(x),
+                    0) for x in xrange(3)))
+                    
+                # How many reads are multimapped well enough?
+                total_multimapped = sum((stats["secondary_mismatches"].get(
+                    str(x), 0) for x in xrange(3)))
+                    
+                # How many reads are perfect?
+                total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
+                    for x in xrange(1)))
+                    
+                # How many reads are mapped with <=1 error?
+                total_one_error = sum((stats["primary_mismatches"].get(str(x),
+                    0) for x in xrange(2)))
+                    
+                # How many reads are there overall for this sample?
+                total_reads = stats["total_reads"]
+                
+                # How many reads are mapped at all for this sample (not just good
+                # enough)?
+                total_mapped_at_all = stats["total_mapped"]
+                
+                # What was the runtime?
+                runtime = stats.get("run_time", None)
+                if runtime is None:
+                    # We need NaN floats if there's no runtime
+                    runtime = float("nan")
+                else:
+                    # Convert to time per read aligned
+                    runtime /= total_reads
+                    
+                # Compute the stats we actually care about and save them
+                
+                # Get the dict we want to put the computed stats in
+                sample_stats = stats_cache[graph][sample_name]
+                
+                # What portion are single-mapped?
+                sample_stats["portion_single_mapped"] = (total_mapped_well - 
+                    total_multimapped) / float(total_reads)
+                # What portion are mapped well?
+                sample_stats["portion_mapped_well"] = (total_mapped_well /
+                    float(total_reads))
+                # What portion are perfect?
+                sample_stats["portion_perfect"] = (total_perfect /
+                    float(total_reads))
+                # What portion are <=1 error?
+                sample_stats["portion_one_error"] = (total_one_error / 
+                    float(total_reads))
+                # What portion are mapped at all?
+                sample_stats["portion_mapped_at_all"] = (total_mapped_at_all / 
+                    float(total_reads))
+                # What was the runtime?
+                sample_stats["runtime"] = runtime
+                    
         
-        RealTimeLogger.get().info("Processing {} graph {}".format(region,
-            graph))
-        for result in in_store.list_input_directory("stats/{}/{}".format(region,
-            graph)):
+        # Now save all these portion stats we extracted back to the cache
+        writer = tsv.TsvWriter(open(local_filename, "w"))
         
-            # Grab file
-            local_filename = os.path.join(job.fileStore.getLocalTempDir(),
-                "temp.json")
-            in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
-                result), local_filename)
-            # Read the JSON
-            stats = json.load(open(local_filename))
-            
-            # Compute the answers for this sample
-            
-            # How many reads are mapped well enough?
-            total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
-                for x in xrange(3)))
+        for graph, stats_by_sample in stats_cache.iteritems():
+            # For each graph and allt he stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name, stat_value in stats_by_name.iteritems():
+                    # For each stat
+                    
+                    # Save each stat value
+                    writer.line(graph, sample, stat_name, stat_value)
                 
-            # How many reads are multimapped well enough?
-            total_multimapped = sum((stats["secondary_mismatches"].get(str(x),
-                0) for x in xrange(3)))
-                
-            # How many reads are perfect?
-            total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
-                for x in xrange(1)))
-                
-            # How many reads are mapped with <=1 error?
-            total_one_error = sum((stats["primary_mismatches"].get(str(x), 0)
-                for x in xrange(2)))
-                
-            # How many reads are there overall for this sample?
-            total_reads = stats["total_reads"]
-            
-            # How many reads are mapped at all for this sample (not just good
-            # enough)?
-            total_mapped_at_all = stats["total_mapped"]
-            
-            # What was the runtime?
-            runtime = stats.get("run_time", None)
-            if runtime is None:
-                # We need NaN floats if there's no runtime
-                runtime = float("nan")
-            else:
-                # Convert to time per read aligned
-                runtime /= total_reads
-            
-            # What portion are single-mapped?
-            portion_single_mapped = (total_mapped_well - total_multimapped) / float(
-                total_reads)
-            # What portion are mapped well?
-            portion_mapped_well = total_mapped_well / float(total_reads)
-            # What portion are perfect?
-            portion_perfect = total_perfect / float(total_reads)
-            # What portion are <=1 error?
-            portion_one_error = total_one_error / float(total_reads)
-            # What portion are mapped at all?
-            portion_mapped_at_all = total_mapped_at_all / float(total_reads)
-
-            # Append lines to the files            
-            good_mapping_temp.write("{}\t{}\n".format(graph,
-                portion_mapped_well))
-            perfect_temp.write("{}\t{}\n".format(graph, portion_perfect))
-            one_error_temp.write("{}\t{}\n".format(graph, portion_one_error))
-            single_mapping_temp.write("{}\t{}\n".format(graph,
-                portion_single_mapped))
-            runtime_temp.write("{}\t{}\n".format(graph, runtime))
-            any_mapping_temp.write("{}\t{}\n".format(graph,
-                portion_mapped_at_all))
-            
-    # Flush and close the files
-    good_mapping_temp.close()
-    perfect_temp.close()
-    one_error_temp.close()
-    single_mapping_temp.close()
-    runtime_temp.close()
-    any_mapping_temp.close()
+        # Close the file and save the results for the next run
+        writer.close()
+        out_store.write_output_file(local_filename, cache_tsv_key)        
     
-    # Save them to the final places
-    out_store.write_output_file(good_mapping_temp_name, good_mapping_key)
-    out_store.write_output_file(perfect_temp_name, perfect_key)
-    out_store.write_output_file(one_error_temp_name, one_error_key)
-    out_store.write_output_file(single_mapping_temp_name, single_mapping_key)
-    out_store.write_output_file(runtime_temp_name, runtime_key)
-    out_store.write_output_file(any_mapping_temp_name, any_mapping_key)
+    # Now break out the stats from our massive cached dict into files for
+    # plotting
+        
+    # We need some config
+    # Where should we route each stat to?
+    stat_file_keys = {
+        "portion_mapped_well": "plots/mapping.{}.tsv".format(region),
+        "portion_perfect": "plots/perfect.{}.tsv".format(region),
+        "portion_one_error": "plots/oneerror.{}.tsv".format(region),
+        "portion_single_mapped": "plots/singlemapping.{}.tsv".format(region),
+        "portion_mapped_at_all": "plots/anymapping.{}.tsv".format(region),
+        "runtime": "plots/runtime.{}.tsv".format(region)
+    }
+        
+    # Make a local temp file for each (dict from stat name to file object with a
+    # .name).
+    stats_file_temps = {name: tempfile.NamedTemporaryFile(
+        dir=job.fileStore.getLocalTempDir(), delete=False) 
+        for name in stat_file_keys.iterkeys()}
+        
+    for graph, stats_by_sample in stats_cache.iteritems():
+            # For each graph and allt he stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name, stat_value in stats_by_name.iteritems():
+                    # For each stat
+                    
+                    # Write graph and value to the file for the stat, for
+                    # plotting
+                    stats_file_temps[stat_name].write("{}\t{}\n".format(graph,
+                        stat_value))
+    
+    for stat_name, stat_file in stats_file_temps.iteritems():
+        # Flush and close the temp file
+        stat_file.close()
+        
+        # Upload the file
+        out_store.write_output_file(stat_file.name, stat_file_keys[stat_name])
+        
+    # Return the cached stats. TODO: break out actual collate and upload into
+    # its own function that will also do normalization.
+    return stats_cache
     
 def main(args):
     """
