@@ -446,7 +446,10 @@ class FileIOStore(IOStore):
             
         # Clear the user write bit, so the user can't accidentally clobber the
         # file in the actual store through the symlink.
-        os.chmod(real_path, os.stat(real_path).st_mode & ~stat.S_IWUSR)
+        old_mode = os.stat(real_path).st_mode
+        if old_mode & stat.S_IWUSR:
+            # Clear the bit
+            os.chmod(real_path, old_mode ^ stat.S_IWUSR)
         
     def list_input_directory(self, input_path, recursive=False):
         """
@@ -455,6 +458,10 @@ class FileIOStore(IOStore):
         
         RealTimeLogger.get().info("Enumerating {} from "
             "FileIOStore in {}".format(input_path, self.path_prefix))
+        
+        if not os.path.exists(os.path.join(self.path_prefix, input_path)):
+            # Nothing to list over
+            return
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
             if(recursive and os.path.isdir(os.path.join(self.path_prefix,
