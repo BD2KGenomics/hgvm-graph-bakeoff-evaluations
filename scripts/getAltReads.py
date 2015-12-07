@@ -14,7 +14,8 @@ import traceback
 from toil.job import Job
 import tsv
 
-# This is a script, but we import itand call main to make sure it's going to be available on Toil, and to make sure that it's going to 
+# This is a script, but we import it and call main to make sure it's going to be
+# available on Toil
 import smartSam2Fastq
 
 def parse_args(args):
