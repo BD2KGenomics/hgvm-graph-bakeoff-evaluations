@@ -7,6 +7,7 @@ collateStatistics.py: turn individual .stats files into input files for plotting
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import tempfile
+import copy
 
 import tsv
 
@@ -238,44 +239,78 @@ def collate_region(job, options, region):
         writer.close()
         out_store.write_output_file(local_filename, cache_tsv_key)        
     
-    # Now break out the stats from our massive cached dict into files for
-    # plotting
+    # We want normalized and un-normalized versions of the stats cache
+    stats_by_mode = {"absolute": stats_cache}
+    
+    if stats_cache.has_key("refonly"):
         
-    # We need some config
-    # Where should we route each stat to?
-    stat_file_keys = {
-        "portion_mapped_well": "plots/mapping.{}.tsv".format(region),
-        "portion_perfect": "plots/perfect.{}.tsv".format(region),
-        "portion_one_error": "plots/oneerror.{}.tsv".format(region),
-        "portion_single_mapped": "plots/singlemapping.{}.tsv".format(region),
-        "portion_mapped_at_all": "plots/anymapping.{}.tsv".format(region),
-        "runtime": "plots/runtime.{}.tsv".format(region)
-    }
+        # Deep copy and normalize the stats cache
+        normed_stats_cache = copy.deepcopy(stats_cache)
         
-    # Make a local temp file for each (dict from stat name to file object with a
-    # .name).
-    stats_file_temps = {name: tempfile.NamedTemporaryFile(
-        dir=job.fileStore.getLocalTempDir(), delete=False) 
-        for name in stat_file_keys.iterkeys()}
-        
-    for graph, stats_by_sample in stats_cache.iteritems():
+        # We want to normalize and the reference exists (i.e. not CENX)
+        # Normalize every stat against the reference
+        for graph, stats_by_sample in normed_stats_cache.iteritems():
             # For each graph and allt he stats for that graph
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
-                for stat_name, stat_value in stats_by_name.iteritems():
-                    # For each stat
+                for stat_name in stats_by_name.keys():
+                
+                    # Get the reference value
+                    ref_value = stats_cache["refonly"][sample][stat_name]
                     
-                    # Write graph and value to the file for the stat, for
-                    # plotting
-                    stats_file_temps[stat_name].write("{}\t{}\n".format(graph,
-                        stat_value))
+                    # Normalize
+                    stats_by_name[stat_name] /= ref_value
+                    
+                    # TODO: handle div by 0?
+                    
+        # Register this as a condition
+        stats_by_mode["normalized"] = normed_stats_cache
     
-    for stat_name, stat_file in stats_file_temps.iteritems():
-        # Flush and close the temp file
-        stat_file.close()
+    # Now break out the stats from our massive cached dict into files for
+    # plotting
         
-        # Upload the file
-        out_store.write_output_file(stat_file.name, stat_file_keys[stat_name])
+    for mode, mode_stats_cache in stats_by_mode.iteritems():
+        
+        # We need some config
+        # Where should we route each stat to?
+        stat_file_keys = {
+            "portion_mapped_well": "plots/{}/mapping.{}.tsv".format(mode,
+                region),
+            "portion_perfect": "plots/{}/perfect.{}.tsv".format(mode, region),
+            "portion_one_error": "plots/{}/oneerror.{}.tsv".format(mode,
+                region),
+            "portion_single_mapped": "plots/{}/singlemapping.{}.tsv".format(
+                mode, region),
+            "portion_mapped_at_all": "plots/{}/anymapping.{}.tsv".format(mode,
+                region),
+            "runtime": "plots/{}/runtime.{}.tsv".format(mode, region)
+        }
+            
+        # Make a local temp file for each (dict from stat name to file object
+        # with a .name).
+        stats_file_temps = {name: tempfile.NamedTemporaryFile(
+            dir=job.fileStore.getLocalTempDir(), delete=False) 
+            for name in stat_file_keys.iterkeys()}
+            
+        for graph, stats_by_sample in mode_stats_cache.iteritems():
+                # For each graph and all the stats for that graph
+                for sample, stats_by_name in stats_by_sample.iteritems():
+                    # For each sample and all the stats for that sample
+                    for stat_name, stat_value in stats_by_name.iteritems():
+                        # For each stat
+                        
+                        # Write graph and value to the file for the stat, for
+                        # plotting
+                        stats_file_temps[stat_name].write("{}\t{}\n".format(
+                            graph, stat_value))
+        
+        for stat_name, stat_file in stats_file_temps.iteritems():
+            # Flush and close the temp file
+            stat_file.close()
+            
+            # Upload the file
+            out_store.write_output_file(stat_file.name,
+                stat_file_keys[stat_name])
         
     # Return the cached stats. TODO: break out actual collate and upload into
     # its own function that will also do normalization.
