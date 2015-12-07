@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run after mapping_evaluations.sh or parallelMappingEvaluation.py.
-# Makes plots comparing the graphs in each.
+# Run after collateSTatistics.py.
+# Makes plots comparing the graphs in each region.
 
 set -e
 

@@ -9,6 +9,7 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import tempfile
 import urllib2
+import copy
 
 import tsv
 import numpy
@@ -136,8 +137,8 @@ def scan_region(job, options, region, pop_by_sample):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    # Will hold (h statistic, p value) pair (promises) by graph name
-    graph_biases = {}
+    # Will hold stats by population (promises) by graph name
+    graph_stats = {}
     
     for graph in in_store.list_input_directory("stats/{}".format(region)):
         # For each
@@ -148,21 +149,21 @@ def scan_region(job, options, region, pop_by_sample):
                 graph))
             continue
         
-        # Scan the graph and get its bias info
-        graph_bias = job.addChildJobFn(scan_graph, options, region, graph,
+        # Scan the graph and get its per-population stats
+        stats_for_graph = job.addChildJobFn(scan_graph, options, region, graph,
             pop_by_sample, cores=1, memory="1G", disk="10G").rv()
             
-        # Save the bias stats
-        graph_biases[graph] = graph_bias
+        # Save the stats for the graph
+        graph_stats[graph] = stats_for_graph
         
-    # When stats are all in, save them
-    job.addFollowOnJobFn(save_region_stats, options, region, graph_biases,
+    # When stats are all in, look at the, and save the results
+    job.addFollowOnJobFn(save_region_stats, options, region, graph_stats,
         cores=1, memory="1G", disk="10G")
         
 def scan_graph(job, options, region, graph, pop_by_sample):
     """
-    Look at a given graph in a given region and return its bias info (H
-    statistic and p value and bias level) as a tuple.
+    Look at a given graph in a given region and return its mismatch portions by
+    population, sorted by sample name.
     
     """
     
@@ -223,8 +224,15 @@ def scan_graph(job, options, region, graph, pop_by_sample):
             # What portion are mapped well?
             portion_mapped_well = total_mapped_well / float(total_reads)
             
-            # Add the sample to the distribution
-            stats_by_pop[pop_by_sample[sample_name]].append(portion_mapped_well)
+            # Add the sample to the distribution, with the name in for sorting
+            stats_by_pop[pop_by_sample[sample_name]].append((sample_name,
+                portion_mapped_well))
+                
+        for pop_name in stats_by_pop.keys():
+            # Sort all the distributions by sample name, and throw out the
+            # sample names
+            stats_by_pop[pop_name] = [value for sample_name, value in
+                sorted(stats_by_pop[pop_name])]
             
         # Write all the pop, value pairs to the TSV
         writer = tsv.TsvWriter(open(local_filename, "w"))
@@ -238,32 +246,10 @@ def scan_graph(job, options, region, graph, pop_by_sample):
         writer.close()
         out_store.write_output_file(local_filename, labeled_tsv_key)
         
-    RealTimeLogger.get().info("Running statistics for {} graph {}".format(
-        region, graph))
         
-    # Grab all the distributions to compare in a list
-    list_of_distributions = stats_by_pop.values()
-
-    RealTimeLogger.get().info("Have {} populations to compare".format(len(
-        list_of_distributions)))
-        
-    # Now we have the data for each graph read in, so we can run stats. Test to
-    # see if there is a significant difference in medians among the populations.
-    h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
-        *list_of_distributions)
-        
-    # Since there probably is, quantify the degree of difference between
-    # populations. This is my own metric which may or may not be good.
+    return stats_by_pop
     
-    # Get the median of each distribution
-    medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
-    
-    # Find the standard deviation and call it the bias level
-    bias_level = numpy.std(medians)
-        
-    return (h_statistic, p_value, bias_level)
-    
-def save_region_stats(job, options, region, graph_biases):
+def save_region_stats(job, options, region, graph_stats):
     """ 
     Save the biases of the graphs for this region to the output IOStore.
     
@@ -273,14 +259,40 @@ def save_region_stats(job, options, region, graph_biases):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    # Grab file
+    # Before normalization, do the statistical bias test
+    
+    # Grab file to save the overall bias levels for the region in
     local_filename = os.path.join(job.fileStore.getLocalTempDir(),
         "temp.tsv")
         
     # Get a writer to write to it
     writer = tsv.TsvWriter(open(local_filename, "w"))
     
-    for (graph, (h_statistic, p_value, bias_level)) in graph_biases.iteritems():
+    for graph, stats_by_pop in graph_stats.iteritems():
+    
+        RealTimeLogger.get().info("Running statistics for {} graph {}".format(
+            region, graph))
+    
+        # Grab all the distributions to compare in a list
+        list_of_distributions = stats_by_pop.values()
+
+        RealTimeLogger.get().info("Have {} populations to compare".format(len(
+            list_of_distributions)))
+            
+        # Now we have the data for each graph read in, so we can run stats. Test to
+        # see if there is a significant difference in medians among the populations.
+        h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
+            *list_of_distributions)
+            
+        # Since there probably is, quantify the degree of difference between
+        # populations. This is my own metric which may or may not be good.
+        
+        # Get the median of each distribution
+        medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
+        
+        # Find the standard deviation and call it the bias level
+        bias_level = numpy.std(medians)
+    
         # Write this stat to the TSV
         writer.line(graph, h_statistic, p_value, bias_level)
         
@@ -291,7 +303,55 @@ def save_region_stats(job, options, region, graph_biases):
     
     # Save it to the output store
     out_store.write_output_file(local_filename, "bias/{}.tsv".format(region))
+    
+    # Now subtract refOnly out of everything as our normalization.
+    
+    if graph_stats.has_key("refonly"):
+        # Normalize stat against the refonly graph
         
+        # Pull out the refonly stats dict, as a deep copy so we don't
+        # clobber it. Do it before we manage to normalize refonly itself.
+        ref_stats = copy.deepcopy(graph_stats["refonly"])
+        
+        for graph, stats_by_pop in graph_stats.iteritems():
+            
+            for pop_name in stats_by_pop.keys():
+                # Normalize each population
+                
+                # Thest teo lists need to correspond
+                assert(len(stats_by_pop[pop_name]) == len(ref_stats[pop_name]))
+                
+                # Zip the two stats lists together and do the division, and
+                # replace the non-reference list.
+                stats_by_pop[pop_name] = [this_stat - ref_stat for 
+                    (this_stat, ref_stat) in itertools.izip(
+                    stats_by_pop[pop_name], ref_stats[pop_name])]
+                    
+            # Save the normalized values
+            normed_tsv_key = "bias/normalized_distributions/{}/{}.tsv".format(
+                region, graph)
+        
+            # What name will it have locally for us?
+            normed_file = tempfile.NamedTemporaryFile(
+                dir=job.fileStore.getLocalTempDir(), delete=False)
+                
+            # Make a TSV writer
+            normed_writer = tsv.TsvWriter(normed_file)
+            
+            for pop_name, value_list in stats_by_pop.iteritems():
+                for value in value_list:
+                    # Dump each normalized value with its population
+                    normed_writer.line(pop_name, value)
+                    
+            # Finish up our local temp file
+            normed_writer.close()
+            
+            # Save it to the IOStore. TODO: write stream methods for this!
+            out_store.write_output_file(normed_file.name, normed_tsv_key)
+                        
+    else:
+        RealTimeLogger.get().warning("Can't normalize {}".format(region))
+            
     
 def main(args):
     """
