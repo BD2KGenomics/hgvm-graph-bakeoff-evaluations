@@ -13,6 +13,7 @@ import functools
 import random
 import time
 import traceback
+import stat
 
 # We need some stuff in order to have Azure
 try:
@@ -437,9 +438,15 @@ class FileIOStore(IOStore):
         # Make sure the path is clear for the symlink.
         assert(not os.path.exists(local_path))
         
+        # Where is the file actually?
+        real_path = os.path.abspath(os.path.join(self.path_prefix, input_path))
+        
         # Make a symlink to grab things
-        os.symlink(os.path.abspath(os.path.join(self.path_prefix, input_path)),
-            local_path)
+        os.symlink(real_path, local_path)
+            
+        # Clear the user write bit, so the user can't accidentally clobber the
+        # file in the actual store through the symlink.
+        os.chmod(real_path, os.stat(real_path).st_mode & ~stat.S_IWUSR)
         
     def list_input_directory(self, input_path, recursive=False):
         """

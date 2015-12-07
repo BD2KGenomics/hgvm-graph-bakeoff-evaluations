@@ -206,12 +206,12 @@ def scan_graph(job, options, region, graph, pop_by_sample):
             sample_name = re.match("(.*)\.json$", result).group(1)
         
             # Grab file
-            local_filename = os.path.join(job.fileStore.getLocalTempDir(),
+            json_filename = os.path.join(job.fileStore.getLocalTempDir(),
                 "temp.json")
             in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
-                result), local_filename)
+                result), json_filename)
             # Read the JSON
-            stats = json.load(open(local_filename))
+            stats = json.load(open(json_filename))
             
             # How many reads are mapped well enough?
             total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
