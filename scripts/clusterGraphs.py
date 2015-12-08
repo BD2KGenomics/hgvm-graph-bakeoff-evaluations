@@ -228,8 +228,8 @@ def compute_matrix(options, dist_fn):
                         counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
     # divide by counts to get mean
-    for graph1 in map(label_fn, options.graphs):
-        for graph2 in map(label_fn, options.graphs):
+    for graph1 in set(map(label_fn, options.graphs)):
+        for graph2 in set(map(label_fn, options.graphs)):
             mat[graph1][graph2] /= max(1, counts[graph1][graph2])
 
     return mat, list(set(map(label_fn, options.graphs)))
