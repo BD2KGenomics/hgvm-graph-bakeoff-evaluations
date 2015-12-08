@@ -577,9 +577,11 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         "total_multimapped": 0,
         "primary_scores": collections.Counter(),
         "primary_mismatches": collections.Counter(),
+        "primary_indels": collections.Counter(),
         "secondary_scores": collections.Counter(),
         "secondary_mismatches": collections.Counter(),
-        "run_time": run_time
+        "secondary_indels": collections.Counter(),
+        "run_time": None
     }
         
     last_alignment = None
@@ -593,10 +595,13 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
             # Grab its score
             score = alignment["score"]
         
-            # Calculate the mismatches
+            # Get the mappings
+            mappings = alignment.get("path", {}).get("mapping", [])
+        
+            # Calculate the mismatches and indels
             length = len(alignment["sequence"])
             matches = 0
-            for mapping in alignment.get("path", {}).get("mapping", []):
+            for mapping in mappings:
                 for edit in mapping.get("edit", []):
                     if (not edit.has_key("sequence") and 
                         edit.get("to_length", None) == edit.get(
@@ -604,10 +609,24 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
                         
                         # We found a perfect match edit. Grab its length
                         matches += edit["from_length"]
-                        
+
             # Calculate mismatches as what's left
             mismatches = length - matches
                     
+            # Aggregate all the edits
+            edits = []
+            for mapping in mappings:
+                # Add in this mapping's edits
+                edits += mapping.get("edit", [])
+                
+            # Total up the instances of indels
+            indels = 0
+                
+            for edit in edits[1:-1]:
+                # For every edit that isn't potentially a soft clip
+                if edit.get("to_length", None) != edit.get("from_length", None):
+                    # This edit isn't a SNP or MNP. Must be an indel
+                    indels += 1
         
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
@@ -630,12 +649,14 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
                 stats["total_multimapped"] += 1
                 stats["secondary_scores"][score] += 1
                 stats["secondary_mismatches"][mismatches] += 1
+                stats["secondary_indels"][indels] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
                 stats["total_mapped"] += 1
                 stats["primary_scores"][score] += 1
                 stats["primary_mismatches"][mismatches] += 1
+                stats["primary_indels"][indels] += 1
                 
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read
