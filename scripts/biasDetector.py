@@ -52,6 +52,10 @@ def parse_args(args):
         default=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/"
         "1000_genomes_project/1000genomes.sequence.index"), 
         help="URL to index of samples, with SAMPLE_NAME and POPULATION_NAME")
+    parser.add_argument("--superpopulation_url",
+        default="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/"
+        "20131219.populations.tsv",
+        help="URL to index of superpopulation assignments")
     parser.add_argument("--overwrite", action="store_true",
         help="replace cached per-sample statistics with recalculated ones")
     
@@ -79,6 +83,17 @@ def scan_all(job, options):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
+    # Download the superpopulation assignments
+    # This holds superpop by pop
+    superpopulation_by_population = {}
+    
+    for parts in tsv.TsvReader(urllib2.urlopen(urllib2.Request(
+        options.superpopulation_url))):
+        # For each population code (column 1), assign it to the right
+        # superpopulation (column 2).
+        superpopulation_by_population[parts[1]] = parts[2]
+        
+    
     RealTimeLogger.get().info("Downloading sample population assignments")    
     
     # Load the 1000 Genomes population assignments.
@@ -103,15 +118,16 @@ def scan_all(job, options):
     sample_population_column = headings.index("POPULATION")
     
     # What dict do we fill in? Holds population string by sample name.
+    # We now use the superpopulation names for our populations.
     pop_by_sample = {}
     
     # We also want to count samples in each population for debuging
     samples_per_pop = collections.Counter()
     
     for parts in lines:
-        # Save population under sample
-        pop_by_sample[parts[sample_name_column]] = parts[
-            sample_population_column]
+        # Save superpopulation under sample
+        pop_by_sample[parts[sample_name_column]] = \
+            superpopulation_by_population[parts[sample_population_column]]
             
         # Count the sample for its population
         samples_per_pop[parts[sample_population_column]] += 1
@@ -259,51 +275,6 @@ def save_region_stats(job, options, region, graph_stats):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    # Before normalization, do the statistical bias test
-    
-    # Grab file to save the overall bias levels for the region in
-    local_filename = os.path.join(job.fileStore.getLocalTempDir(),
-        "temp.tsv")
-        
-    # Get a writer to write to it
-    writer = tsv.TsvWriter(open(local_filename, "w"))
-    
-    for graph, stats_by_pop in graph_stats.iteritems():
-    
-        RealTimeLogger.get().info("Running statistics for {} graph {}".format(
-            region, graph))
-    
-        # Grab all the distributions to compare in a list
-        list_of_distributions = stats_by_pop.values()
-
-        RealTimeLogger.get().info("Have {} populations to compare".format(len(
-            list_of_distributions)))
-            
-        # Now we have the data for each graph read in, so we can run stats. Test to
-        # see if there is a significant difference in medians among the populations.
-        h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
-            *list_of_distributions)
-            
-        # Since there probably is, quantify the degree of difference between
-        # populations. This is my own metric which may or may not be good.
-        
-        # Get the median of each distribution
-        medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
-        
-        # Find the standard deviation and call it the bias level
-        bias_level = numpy.std(medians)
-    
-        # Write this stat to the TSV
-        writer.line(graph, h_statistic, p_value, bias_level)
-        
-    # Finish up the file
-    writer.close()
-    
-    RealTimeLogger.get().info("Uploading results for {} ".format(region))
-    
-    # Save it to the output store
-    out_store.write_output_file(local_filename, "bias/{}.tsv".format(region))
-    
     # Now subtract refOnly out of everything as our normalization.
     
     if graph_stats.has_key("refonly"):
@@ -351,6 +322,59 @@ def save_region_stats(job, options, region, graph_stats):
                         
     else:
         RealTimeLogger.get().warning("Can't normalize {}".format(region))
+        
+    # After normalization, do the statistical test
+    
+    # Grab file to save the overall bias levels for the region in
+    local_filename = os.path.join(job.fileStore.getLocalTempDir(),
+        "temp.tsv")
+        
+    # Get a writer to write to it
+    writer = tsv.TsvWriter(open(local_filename, "w"))
+    
+    for graph, stats_by_pop in graph_stats.iteritems():
+    
+        RealTimeLogger.get().info("Running statistics for {} graph {}".format(
+            region, graph))
+    
+        # Grab all the distributions to compare in a list
+        list_of_distributions = stats_by_pop.values()
+
+        RealTimeLogger.get().info("Have {} populations to compare".format(len(
+            list_of_distributions)))
+        
+        try:
+            
+            # Now we have the data for each graph read in, so we can run stats.
+            # Test to see if there is a significant difference in medians among
+            # the populations.
+            h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
+                *list_of_distributions)
+                
+        except ValueError:
+            # We couldn;'t run the test on these particular numbers.
+            h_statistic = None
+            p_value = None
+            
+        # Since there probably is, quantify the degree of difference between
+        # populations. This is my own metric which may or may not be good.
+        
+        # Get the median of each distribution
+        medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
+        
+        # Find the standard deviation and call it the bias level
+        bias_level = numpy.std(medians)
+    
+        # Write this stat to the TSV
+        writer.line(graph, h_statistic, p_value, bias_level)
+        
+    # Finish up the file
+    writer.close()
+    
+    RealTimeLogger.get().info("Uploading results for {} ".format(region))
+    
+    # Save it to the output store
+    out_store.write_output_file(local_filename, "bias/{}.tsv".format(region))
             
     
 def main(args):

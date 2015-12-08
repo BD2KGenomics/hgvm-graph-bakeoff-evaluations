@@ -120,6 +120,11 @@ do
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
         RUNTIME_PLOT="${PLOTS_DIR}/runtime.${REGION}.png"
         
+        # Blacklist trivial graph from the singlemapping plots, since it's so
+        # bad
+        mv "${SINGLE_MAPPING_FILE}" "${SINGLE_MAPPING_FILE}.orig"
+        cat "${SINGLE_MAPPING_FILE}.orig" | grep -v "trivial" > "${SINGLE_MAPPING_FILE}"
+        
         echo "Plotting ${REGION^^}..."
         
         # Remove underscores from region names to make them human readable
