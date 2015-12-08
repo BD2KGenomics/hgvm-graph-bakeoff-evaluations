@@ -39,44 +39,54 @@ HR_NAMES["simons"]="SGDP"
 HR_NAMES["trivial"]="Trivial"
 HR_NAMES["vglr"]="VGLR"
 
-# Where are the bias files
-DISTRIBUTION_DIR="${INPUT_DIR}/bias/normalized_distributions"
-
-for REGION in `ls "${DISTRIBUTION_DIR}"`
+for MODE in normalized_distributions distributions
 do
-    # For every region, plot every graph
-    
-    # Remove underscores from region names to make them human readable
-    HR_REGION=`echo ${REGION^^} | sed 's/_/ /g'`
-    
-    REGION_DIR="${DISTRIBUTION_DIR}/${REGION}"
-    
-    for GRAPH_TSV in `ls "${REGION_DIR}" | grep '\.tsv$'`
-    do
-        # Every TSV becomes a boxplot
-        
-        # Pull out the graph name
-        GRAPH=`basename ${GRAPH_TSV} | sed 's/\(.*\).tsv/\1/'` 
-        
-        # Ge tthe actual path to the graph TSV
-        GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
-        
-        # Where should the plot go?
-        PLOT_PATH="${REGION_DIR}/bias_${REGION}_${GRAPH}.png"
-        
-        # Get the human readable graph name
-        HR_GRAPH=${HR_NAMES["${GRAPH}"]}
-        
-        echo "Plotting ${HR_REGION} ${HR_GRAPH} (${GRAPH})"
-        
-        ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-            --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
-            --x_label "Population" --y_label "Relative portion mapped" --save "${PLOT_PATH}" \
-            --x_sideways \
-            "${PLOT_PARAMS[@]}"
-    
-    done
 
+    RELATIVE=""
+    if ["${MODE}" == "normalized_distributions"]
+    then
+        RELATIVE="Relative "
+    fi
+
+    # Where are the bias files
+    DISTRIBUTION_DIR="${INPUT_DIR}/bias/${MODE}"
+
+    for REGION in `ls "${DISTRIBUTION_DIR}"`
+    do
+        # For every region, plot every graph
+        
+        # Remove underscores from region names to make them human readable
+        HR_REGION=`echo ${REGION^^} | sed 's/_/ /g'`
+        
+        REGION_DIR="${DISTRIBUTION_DIR}/${REGION}"
+        
+        for GRAPH_TSV in `ls "${REGION_DIR}" | grep '\.tsv$'`
+        do
+            # Every TSV becomes a boxplot
+            
+            # Pull out the graph name
+            GRAPH=`basename ${GRAPH_TSV} | sed 's/\(.*\).tsv/\1/'` 
+            
+            # Ge tthe actual path to the graph TSV
+            GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
+            
+            # Where should the plot go?
+            PLOT_PATH="${REGION_DIR}/bias_${REGION}_${GRAPH}.png"
+            
+            # Get the human readable graph name
+            HR_GRAPH=${HR_NAMES["${GRAPH}"]}
+            
+            echo "Plotting ${HR_REGION} ${HR_GRAPH} (${GRAPH})"
+            
+            ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
+                --x_label "Population" --y_label "${RELATIVE}portion mapped" --save "${PLOT_PATH}" \
+                --x_sideways \
+                "${PLOT_PARAMS[@]}"
+        
+        done
+
+    done
 done
 
 
