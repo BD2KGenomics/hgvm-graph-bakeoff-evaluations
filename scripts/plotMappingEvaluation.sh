@@ -130,38 +130,38 @@ do
         # overall files and make the plots.
         
         ./scripts/boxplot.py "${MAPPING_FILE}" \
-            --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion mapped (${MODE})" --save "${MAPPING_PLOT}" \
+            --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Portion mapped" --save "${MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion perfectly mapped (${MODE})" --save "${PERFECT_PLOT}" \
+            --x_label "Graph" --y_label "Portion perfectly mapped" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
-            --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion (${MODE})" --save "${ONE_ERROR_PLOT}" \
+            --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Portion" --save "${ONE_ERROR_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
-            --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion uniquely mapped (${MODE})" --save "${SINGLE_MAPPING_PLOT}" \
+            --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Portion uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
-            --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion mapped (${MODE})" --save "${ANY_MAPPING_PLOT}" \
+            --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Portion mapped" --save "${ANY_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
-            --title "$(printf "Per-read runtime\n in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Runtime per read (seconds) (${MODE})" --save "${RUNTIME_PLOT}" \
+            --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Runtime per read (seconds)" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
             "${PLOT_PARAMS[@]}"
         
@@ -175,26 +175,26 @@ do
 
     # Make the overall plots
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
-        --title "$(printf "Mapped (<=2 mismatches)\nreads")" \
-        --x_label "Graph" --y_label "Portion mapped (${MODE})" --save "${OVERALL_MAPPING_PLOT}" \
+        --title "$(printf "Mapped (<=2 mismatches)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         --x_sideways  --hline_median trivial \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
-        --title "$(printf "Perfectly mapped\nreads")" \
-        --x_label "Graph" --y_label "Portion perfectly mapped (${MODE})" --save "${OVERALL_PERFECT_PLOT}" \
+        --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
         --x_sideways --hline_median trivial \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
-        --title "$(printf "One-error (<=1 mismatch)\nreads")" \
-        --x_label "Graph" --y_label "Portion (${MODE})" --save "${OVERALL_ONE_ERROR_PLOT}" \
+        --title "$(printf "One-error (<=1 mismatch)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
         --x_sideways --hline_median trivial \
         "${PLOT_PARAMS[@]}"
 
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
-        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads")" \
-        --x_label "Graph" --y_label "Portion uniquely mapped (${MODE})" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
+        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
         "${PLOT_PARAMS[@]}"
         

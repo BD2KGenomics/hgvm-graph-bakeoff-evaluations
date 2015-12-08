@@ -171,7 +171,7 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    # This holds lists of portion well-mapped stat values by population
+    # This holds lists of portion perfectly-mapped stat values by population
     stats_by_pop = collections.defaultdict(list)
     
     # This is the output TSV it should all land in, in <pop>\t<value> format
@@ -214,19 +214,19 @@ def scan_graph(job, options, region, graph, pop_by_sample):
             # Read the JSON
             stats = json.load(open(json_filename))
             
-            # How many reads are mapped well enough?
-            total_mapped_well = sum((stats["primary_mismatches"].get(str(x), 0)
-                for x in xrange(3)))
+            # How many reads are mapped perfectly?
+            total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
+                    for x in xrange(1)))
                 
             # How many reads are there overall for this sample?
             total_reads = stats["total_reads"]
             
-            # What portion are mapped well?
-            portion_mapped_well = total_mapped_well / float(total_reads)
+            # What portion are mapped perfectly?
+            portion_perfect = total_perfect / float(total_reads)
             
             # Add the sample to the distribution, with the name in for sorting
             stats_by_pop[pop_by_sample[sample_name]].append((sample_name,
-                portion_mapped_well))
+                portion_perfect))
                 
         for pop_name in stats_by_pop.keys():
             # Sort all the distributions by sample name, and throw out the

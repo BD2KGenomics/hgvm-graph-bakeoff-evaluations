@@ -62,7 +62,7 @@ do
         GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
         
         # Where should the plot go?
-        PLOT_PATH="${REGION_DIR}/${GRAPH}.png"
+        PLOT_PATH="${REGION_DIR}/bias_${REGION}_${GRAPH}.png"
         
         # Get the human readable graph name
         HR_GRAPH=${HR_NAMES["${GRAPH}"]}
@@ -70,7 +70,7 @@ do
         echo "Plotting ${HR_REGION} ${HR_GRAPH} (${GRAPH})"
         
         ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-            --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} ${HR_GRAPH}")" \
+            --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
             --x_label "Population" --y_label "Relative portion mapped" --save "${PLOT_PATH}" \
             --x_sideways \
             "${PLOT_PARAMS[@]}"
