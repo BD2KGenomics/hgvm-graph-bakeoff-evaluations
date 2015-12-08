@@ -263,6 +263,17 @@ def collate_region(job, options, region):
                     
                     # TODO: handle div by 0?
                     
+                    if (graph == "snp1kg" and
+                        stat_name == "portion_mapped_at_all" and 
+                        region == "mhc" and 
+                        stats_by_name[stat_name] < 0.99):
+                        
+                        # This is one of those weird samples
+                        RealTimeLogger.get().warning(
+                            "Sample {} is weird!".format(sample))
+                        
+                    
+                    
         # Register this as a condition
         stats_by_mode["normalized"] = normed_stats_cache
     
