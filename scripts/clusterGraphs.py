@@ -53,6 +53,11 @@ def parse_args(args):
                         " compute")
     parser.add_argument("--no_corg", action="store_true", default=False,
                         help="Dont try to do corg comparison or heatmap")
+    parser.add_argument("--no_kmer", action="store_true", default=False,
+                        help="dont try to do kmer comparison or heatmap")
+    parser.add_argument("--skip", type=str, default="",
+                        help="comma-separated list of keywords"
+                        " such that input file will ignored if it contains one")
                             
     args = args[1:]
 
@@ -391,10 +396,11 @@ def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
     """
-    for graph1 in options.graphs:
-        for graph2 in options.graphs:
-            if graph1 <= graph2:
-                if not options.avg_samples or not different_sample(graph1, graph2):
+    if not options.no_kmer:
+        for graph1 in options.graphs:
+            for graph2 in options.graphs:
+                if graph1 <= graph2:
+                    if not options.avg_samples or not different_sample(graph1, graph2):
                         out_path = comp_path(graph1, graph2, options)
                         if options.overwrite or not os.path.exists(out_path):
                             job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
@@ -416,14 +422,14 @@ def compute_corg_self_comparisons(job, options):
 
     job.addFollowOnJobFn(compute_corg_comparisons, options, cores=1)
 
-def can_corg(graph, options):
+def can_corg(graph, options, threshold):
     """ return whether a corg self compare returned distance 0 for this graph
     """
     try:
         out_path = corg_path(graph, graph, options)
         with open(out_path) as f:
             val = float(f.readline().strip())
-        return val == 0.0
+        return val <= threshold
     except:
         return False
         
@@ -436,9 +442,8 @@ def compute_corg_comparisons(job, options):
                 if not options.avg_samples or not different_sample(graph1, graph2):
                     out_path = corg_path(graph1, graph2, options)
                     if options.overwrite or not os.path.exists(out_path):
-                        if can_corg(graph1, options) and can_corg(graph2, options):
-                            job.addChildJobFn(compute_corg_comparison, graph1, graph2,
-                                              options, cores=1)
+                        job.addChildJobFn(compute_corg_comparison, graph1, graph2,
+                                          options, cores=1)
 
     
 def compute_kmer_indexes(job, options):
@@ -448,21 +453,33 @@ def compute_kmer_indexes(job, options):
     then summary (follow on of that)
     """
     # do all the indexes
-    for graph in options.graphs:
-        job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
+    if not options.no_kmer:
+        for graph in options.graphs:
+            job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
     # do the comparisons
     job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
     
 def main(args):
     
-    options = parse_args(args) 
+    options = parse_args(args)
     
     RealTimeLogger.start_master()
 
+    skipList = options.skip.split(",")
+    goodGraphs = []
     for graph in options.graphs:
         if os.path.splitext(graph)[1] != ".vg":
             raise RuntimeError("Input graphs expected to have .vg extension")
+        toAdd = True
+        for skip in skipList:
+            if len(skip) > 0 and skip in graph:
+                toAdd = False
+                break
+        if toAdd is True:
+            goodGraphs.append(graph)
+
+    options.graphs = goodGraphs
 
     # Make a root job
     root_job = Job.wrapJobFn(compute_kmer_indexes, options,
@@ -484,12 +501,20 @@ def main(args):
     if not options.no_corg:
         # hack out non-corg-able graphs
         graphs = []
-        for graph in options.graphs:
-            if can_corg(graph, options):
+        input_graphs = options.graphs
+        for graph in input_graphs:
+            if can_corg(graph, options, 0.0001):
                 graphs.append(graph)
         options.graphs = graphs
         cluster_comparisons(options, corg_dist_fn, "_corg")
-    
+
+        graphs = []
+        for graph in input_graphs:
+            if can_corg(graph, options, 0.5):
+                graphs.append(graph)
+        options.graphs = graphs
+        cluster_comparisons(options, corg_dist_fn, "_corg1")
+
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
         
