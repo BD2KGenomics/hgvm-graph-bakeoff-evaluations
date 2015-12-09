@@ -120,6 +120,11 @@ do
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
         RUNTIME_PLOT="${PLOTS_DIR}/runtime.${REGION}.png"
         
+        NOINDEL_FILE="${PLOTS_DIR}/noindels.${REGION}.tsv"
+        NOINDEL_PLOT="${PLOTS_DIR}/noindels.${REGION}.png"
+        SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
+        SUBSTRATE_PLOT="${PLOTS_DIR}/substrate.${REGION}.png"
+        
         # Blacklist trivial graph from the singlemapping plots, since it's so
         # bad
         mv "${SINGLE_MAPPING_FILE}" "${SINGLE_MAPPING_FILE}.orig"
@@ -169,6 +174,19 @@ do
             --x_label "Graph" --y_label "Runtime per read (seconds)" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
             "${PLOT_PARAMS[@]}"
+            
+        ./scripts/boxplot.py "${NOINDEL_FILE}" \
+            --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Portion mapped" --save "${NOINDEL_PLOT}" \
+            --x_sideways \
+            "${PLOT_PARAMS[@]}"
+            
+        ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
+            --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Substitution rate" --save "${SUBSTRATE_PLOT}" \
+            --x_sideways \
+            "${PLOT_PARAMS[@]}"
+            
         
     done
 

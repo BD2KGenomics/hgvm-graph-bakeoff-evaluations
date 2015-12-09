@@ -11,6 +11,8 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
 
+import dateutil
+
 from toil.job import Job
 
 from toillib import *
@@ -62,6 +64,8 @@ def parse_args(args):
         help="recompute and overwrite existing stats files")
     parser.add_argument("--reindex", default=False, action="store_true",
         help="don't re-use existing indexed graphs")
+    parser.add_argument("--too_old", default=None, type=dateutil.parser.parse,
+        help="recompute stats files older than this date")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -183,12 +187,13 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     
     # What smaples have been completed?
     completed_samples = set()
-    for filename in out_store.list_input_directory(stats_dir):
+    for filename, mtime in out_store.list_input_directory(stats_dir,
+        with_times=True):
         # See if every file is a stats file
         match = re.match("(.*)\.json$", filename)
     
-        if match:
-            # We found a sample's stats file
+        if match and (options.too_old is None or mtime > options.too_old):
+            # We found a sample's stats file, and it's new enough.
             completed_samples.add(match.group(1))
             
     RealTimeLogger.get().info("Already have {} completed samples for {} in "
@@ -572,10 +577,12 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         # Upload the alignment
         out_store.write_output_file(output_file, alignment_file_key)
         
-    if (not out_store.exists(stats_file_key) or options.restat or
-        (not out_store.exists(alignment_file_key) or options.overwrite)):
+    if ((not out_store.exists(stats_file_key) or options.restat) or
+        (not out_store.exists(alignment_file_key) or options.overwrite) or
+        (options.too_old is not None and
+            out_store.get_mtime(stats_file_key) < options.too_old)):
         # We have no stats file or we need to redo stats, or we just redid the
-        # alignment above.
+        # alignment above, or our stats file is too old.
     
         # Add a follow-on to calculate stats. It only needs 2 cores since it's
         # not really prarllel.

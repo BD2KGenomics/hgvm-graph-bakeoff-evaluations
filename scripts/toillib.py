@@ -679,13 +679,17 @@ class AzureIOStore(IOStore):
         self.connection.get_blob_to_path(self.container_name,
             self.name_prefix + input_path, local_path)
             
-    def list_input_directory(self, input_path, recursive=False):
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Loop over fake /-delimited directories on Azure. The prefix may or may
         not not have a trailing slash; if not, one will be added automatically.
         
         Returns the names of files and fake directories in the given input fake
         directory, non-recursively.
+        
+        If with_times is specified, will yield (name, time) pairs including
+        modification times. Times on directories are None.
         
         """
         
@@ -733,10 +737,16 @@ class AzureIOStore(IOStore):
                         # It's a new subdirectory. Yield and remember it
                         subdirectories.add(subdirectory)
                         
-                        yield subdirectory
+                        if with_times:
+                            yield subdirectory, None
+                        else:
+                            yield subdirectory
                 else:
-                    # We found an actual file  
-                    yield relative_path
+                    # We found an actual file 
+                    if with_times:
+                        yield relative_path, blob.last_modified
+                    else:
+                        yield relative_path
                 
             # Save the marker
             marker = result.next_marker
@@ -798,6 +808,42 @@ class AzureIOStore(IOStore):
                 break 
         
         return False
+        
+        
+    @backoff        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given blob if it exists, or None
+        otherwise.
+        
+        TODO: port to other IOStores
+        
+        """
+        
+        self.__connect()
+        
+        marker = None
+        
+        while True:
+        
+            # Get the results from Azure.
+            result = self.connection.list_blobs(self.container_name, 
+                prefix=self.name_prefix + path, marker=marker)
+                
+            for blob in result:
+                # Look at each blob
+                
+                if blob.name == self.name_prefix + path:
+                    # Found it
+                    return blob.last_modified
+                
+            # Save the marker
+            marker = result.next_marker
+                
+            if not marker:
+                break 
+        
+        return None
 
 
 

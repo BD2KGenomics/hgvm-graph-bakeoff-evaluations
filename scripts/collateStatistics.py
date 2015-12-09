@@ -187,14 +187,21 @@ def collate_region(job, options, region):
                     for x in xrange(1)))
                     
                 # How many total substitution bases are there?
-                total_substitutions = sum((count * float(weight)
+                substitution_bases = sum((count * float(weight)
                     for weight, count in 
                     stats["primary_substitutions"].iteritems()))
+                    
+                # How many total mismatches (substitutions + indels) are there?
+                mismatch_bases = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_mismatches"].iteritems()))
                     
                 # How many reads are mapped with no substitutions?
                 total_no_substitutions = sum(
                     (stats["primary_substitutions"].get(str(x), 0)
                     for x in xrange(1)))
+                    
+                
                     
                 # How many reads are there overall for this sample?
                 total_reads = stats["total_reads"]
@@ -240,6 +247,32 @@ def collate_region(job, options, region):
                     (total_no_substitutions / float(total_reads))
                 # What was the runtime?
                 sample_stats["runtime"] = runtime
+                
+                try:
+                    # See if we have access to these extra stats
+                    
+                    # How many total bases of reads have primary alignments?
+                    total_bases = sum((count * float(weight)
+                        for weight, count in 
+                        stats["mapped_lengths"].iteritems()))
+                        
+                    # The aligned bases are the ones that aren't in indels or
+                    # leading/trailing softclips.
+                        
+                    # Indel bases = mismatch bases - substitution bases
+                    # Aligned bases = total bases - indel bases
+                    # Substitution rate = substitution bases / aligned bases
+                    indel_bases = mismatch_bases - substitution_bases
+                    aligned_bases = total_bases - indel_bases
+                    
+                    # Calculate portion of aligned bases that are substitutions
+                    # (even if we're "substituting" the same sequence in).
+                    sample_stats["substitution_rate"] = (mismatch_bases /
+                        float(aligned_bases))
+                        
+                except:
+                    # Sometimes we just won't have these stats available
+                    pass
                     
         
         # Now save all these portion stats we extracted back to the cache
@@ -314,7 +347,11 @@ def collate_region(job, options, region):
                 mode, region),
             "portion_mapped_at_all": "plots/{}/anymapping.{}.tsv".format(mode,
                 region),
-            "runtime": "plots/{}/runtime.{}.tsv".format(mode, region)
+            "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
+            "portion_no_indels": "plots/{}/noindels.{}.tsv".format(mode,
+                region),
+            "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
+                region)
         }
             
         # Make a local temp file for each (dict from stat name to file object
