@@ -11,7 +11,7 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
 
-import dateutil
+import dateutil.parser
 
 from toil.job import Job
 
@@ -786,6 +786,7 @@ def main(args):
     if options.too_old is not None:
         # Parse the too-old date
         options.too_old = dateutil.parser.parse(options.too_old)
+        assert(options.too_old.tzinfo != None)
     
     RealTimeLogger.start_master()
     

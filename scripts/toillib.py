@@ -15,7 +15,7 @@ import time
 import traceback
 import stat
 
-import dateutil
+import dateutil.parser
 import pytz
 
 # We need some stuff in order to have Azure
