@@ -64,7 +64,7 @@ def parse_args(args):
         help="recompute and overwrite existing stats files")
     parser.add_argument("--reindex", default=False, action="store_true",
         help="don't re-use existing indexed graphs")
-    parser.add_argument("--too_old", default=None, type=dateutil.parser.parse,
+    parser.add_argument("--too_old", default=None, type=str,
         help="recompute stats files older than this date")
     
     # The command line arguments start with the program name, which we don't
@@ -782,6 +782,10 @@ def main(args):
         return doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     
     options = parse_args(args) # This holds the nicely-parsed options object
+    
+    if options.too_old is not None:
+        # Parse the too-old date
+        options.too_old = dateutil.parser.parse(options.too_old)
     
     RealTimeLogger.start_master()
     
