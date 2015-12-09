@@ -744,7 +744,7 @@ class AzureIOStore(IOStore):
                 else:
                     # We found an actual file 
                     if with_times:
-                        yield relative_path, blob.last_modified
+                        yield relative_path, blob.properties.last_modified
                     else:
                         yield relative_path
                 
@@ -835,7 +835,7 @@ class AzureIOStore(IOStore):
                 
                 if blob.name == self.name_prefix + path:
                     # Found it
-                    return blob.last_modified
+                    return blob.properties.last_modified
                 
             # Save the marker
             marker = result.next_marker
