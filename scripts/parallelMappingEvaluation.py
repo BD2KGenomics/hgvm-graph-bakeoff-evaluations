@@ -640,9 +640,11 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
         "primary_scores": collections.Counter(),
         "primary_mismatches": collections.Counter(),
         "primary_indels": collections.Counter(),
+        "primary_substitutions": collections.Counter(),
         "secondary_scores": collections.Counter(),
         "secondary_mismatches": collections.Counter(),
         "secondary_indels": collections.Counter(),
+        "secondary_substitutions": collections.Counter(),
         "run_time": run_time
     }
         
@@ -689,6 +691,17 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
                 if edit.get("to_length", None) != edit.get("from_length", None):
                     # This edit isn't a SNP or MNP. Must be an indel
                     indels += 1
+                    
+            # Total up the number of substitutions (mismatching/alternative
+            # bases in edits with equal lengths).
+            substitutions = 0
+            for edit in edits:
+                if (edit.get("to_length", None) == 
+                    edit.get("from_length", None) and 
+                    edit.get("sequence", None) is not None):
+                    # This edit is a SNP or MNP.
+                    substitutions += len(edit.get("sequence", ""))
+            
         
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
@@ -712,6 +725,7 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
                 stats["secondary_scores"][score] += 1
                 stats["secondary_mismatches"][mismatches] += 1
                 stats["secondary_indels"][indels] += 1
+                stats["secondary_substitutions"][substitutions] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -719,6 +733,7 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
                 stats["primary_scores"][score] += 1
                 stats["primary_mismatches"][mismatches] += 1
                 stats["primary_indels"][indels] += 1
+                stats["primary_substitutions"][substitutions] += 1
                 
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read
