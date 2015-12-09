@@ -58,6 +58,8 @@ def parse_args(args):
         help="use system vg and sg2vg instead of downloading them")
     parser.add_argument("--overwrite", default=False, action="store_true",
         help="overwrite existing result files")
+    parser.add_argument("--restat", default=False, action="store_true",
+        help="recompute and overwrite existing stats files")
     parser.add_argument("--reindex", default=False, action="store_true",
         help="don't re-use existing indexed graphs")
     
@@ -198,7 +200,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     for sample in input_samples:
         # Split out over each sample
         
-        if (not options.overwrite) and sample in completed_samples:
+        if ((not options.overwrite) and (not options.restat) and 
+            sample in completed_samples):
             # This is already done.
             RealTimeLogger.get().info("Skipping completed alignment of "
                 "{} to {} {}".format(sample, graph_name, region))
@@ -506,6 +509,105 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
+    if not out_store.exists(alignment_file_key) or options.overwrite:
+        # We need to actually do the alignment
+    
+        if bin_dir_id is not None:
+            # Download the binaries
+            bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+            read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+            # We define a string we can just tack onto the binary name and get
+            # either the system or the downloaded version.
+            bin_prefix = bin_dir + "/"
+        else:
+            bin_prefix = ""
+        
+        # Download the indexed graph to a directory we can use
+        graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, index_dir_id, graph_dir)
+        
+        # We know what the vg file in there will be named
+        graph_file = "{}/graph.vg".format(graph_dir)
+        
+        # Also we need the sample fastq
+        fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
+        sample_store.read_input_file(sample_fastq_key, fastq_file)
+        
+        # And a temp file for our aligner output
+        output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
+        
+        # How long did the alignment take to run, in seconds?
+        run_time = None
+        
+        # Open the file stream for writing
+        with open(output_file, "w") as alignment_file:
+        
+            # Start the aligner and have it write to the file
+            
+            # Plan out what to run
+            vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
+                "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
+                str(options.kmer_size), graph_file]
+            
+            RealTimeLogger.get().info(
+                "Running VG for {} against {} {}: {}".format(sample, graph_name,
+                region, " ".join(vg_parts)))
+            
+            # Mark when we start the alignment
+            start_time = timeit.default_timer()
+            process = subprocess.Popen(vg_parts, stdout=alignment_file)
+                
+            if process.wait() != 0:
+                # Complain if vg dies
+                raise RuntimeError("vg died with error {}".format(
+                    process.returncode))
+                    
+            # Mark when it's done
+            end_time = timeit.default_timer()
+            run_time = end_time - start_time
+            
+                    
+        RealTimeLogger.get().info("Aligned {}".format(output_file))
+        
+        # Upload the alignment
+        out_store.write_output_file(output_file, alignment_file_key)
+        
+    if (not out_store.exists(stats_file_key) or options.restat or
+        (not out_store.exists(alignment_file_key) or options.overwrite)):
+        # We have no stats file or we need to redo stats, or we just redid the
+        # alignment above.
+    
+        # Add a follow-on to calculate stats. It only needs 2 cores since it's
+        # not really prarllel.
+        job.addFollowOnJobFn(run_stats, options, bin_dir_id, alignment_file_key,
+            stats_file_key, run_time=run_time, cores=2, memory="4G", disk="10G")
+      
+      
+def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
+    run_time=None):
+    """
+    If the stats aren't done, or if they need to be re-done, retrieve the
+    alignment file from the output store under alignment_file_key and compute the
+    stats file, saving it under stats_file_key.
+    
+    Can take a run time to put in the stats.
+
+    TODO: go through the proper file store (and cache) when not re-computing
+    stats.
+    
+    """
+          
+    # Set up the IO stores each time, since we can't unpickle them on Azure for
+    # some reason.
+    sample_store = IOStore.get(options.sample_store)
+    out_store = IOStore.get(options.out_store)
+    
+    if not options.restat and out_store.exists(stats_file_key):
+        # No need to perform the stat calculations.
+        return
+    
+    RealTimeLogger.get().info("Computing stats for {}".format(stats_file_key))
+    
     if bin_dir_id is not None:
         # Download the binaries
         bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
@@ -515,57 +617,17 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         bin_prefix = bin_dir + "/"
     else:
         bin_prefix = ""
-    
-    # Download the indexed graph to a directory we can use
-    graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
-    read_global_directory(job.fileStore, index_dir_id, graph_dir)
-    
-    # We know what the vg file in there will be named
-    graph_file = "{}/graph.vg".format(graph_dir)
-    
-    # Also we need the sample fastq
-    fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
-    sample_store.read_input_file(sample_fastq_key, fastq_file)
-    
-    # And temp files for our aligner output and stats
-    output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
+           
+    # Declare local files for everything
     stats_file = "{}/stats.json".format(job.fileStore.getLocalTempDir())
+    alignment_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
     
-    # How long did the alignment take to run, in seconds?
-    run_time = None
-    
-    # Open the file stream for writing
-    with open(output_file, "w") as alignment_file:
-    
-        # Start the aligner and have it write to the file
-        
-        # Plan out what to run
-        vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
-            str(options.kmer_size), graph_file]
-        
-        RealTimeLogger.get().info("Running VG for {} against {} {}: {}".format(
-            sample, graph_name, region, " ".join(vg_parts)))
-        
-        # Mark when we start the alignment
-        start_time = timeit.default_timer()
-        process = subprocess.Popen(vg_parts, stdout=alignment_file)
-            
-        if process.wait() != 0:
-            # Complain if vg dies
-            raise RuntimeError("vg died with error {}".format(
-                process.returncode))
-                
-        # Mark when it's done
-        end_time = timeit.default_timer()
-        run_time = end_time - start_time
-        
-                
-    RealTimeLogger.get().info("Aligned {}".format(output_file))
+    # Download the alignment
+    out_store.read_input_file(alignment_file_key, alignment_file)
            
     # Read the alignments in in JSON-line format
     view = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
-        output_file], stdout=subprocess.PIPE)
+        alignment_file], stdout=subprocess.PIPE)
        
     # Count up the stats: total reads, total mapped at all, total multimapped,
     # primary alignment score counts, secondary alignment score counts, and
@@ -581,7 +643,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         "secondary_scores": collections.Counter(),
         "secondary_mismatches": collections.Counter(),
         "secondary_indels": collections.Counter(),
-        "run_time": None
+        "run_time": run_time
     }
         
     last_alignment = None
@@ -675,9 +737,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         # Save the stats as JSON
         json.dump(stats, stats_handle)
         
-    # Now send the output files (alignment and stats) to the output store where
-    # they belong.
-    out_store.write_output_file(output_file, alignment_file_key)
+    # Now send the stats to the output store where they belong.
     out_store.write_output_file(stats_file, stats_file_key)
     
         
