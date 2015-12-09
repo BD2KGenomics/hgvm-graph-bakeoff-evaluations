@@ -509,6 +509,9 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
     
+    # How long did the alignment take to run, in seconds?
+    run_time = None
+    
     if not out_store.exists(alignment_file_key) or options.overwrite:
         # We need to actually do the alignment
     
@@ -535,9 +538,6 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # And a temp file for our aligner output
         output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
-        
-        # How long did the alignment take to run, in seconds?
-        run_time = None
         
         # Open the file stream for writing
         with open(output_file, "w") as alignment_file:
