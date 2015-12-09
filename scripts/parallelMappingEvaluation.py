@@ -629,14 +629,13 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     view = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
         alignment_file], stdout=subprocess.PIPE)
        
-    # Count up the stats: total reads, total mapped at all, total multimapped,
-    # primary alignment score counts, secondary alignment score counts, and
-    # aligner run time in seconds.
-    
+    # Count up the stats
     stats = {
         "total_reads": 0,
         "total_mapped": 0,
         "total_multimapped": 0,
+        "mapped_lengths": collections.Counter(),
+        "unmapped_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
         "primary_mismatches": collections.Counter(),
         "primary_indels": collections.Counter(),
@@ -654,6 +653,9 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
         # Parse the alignment JSON
         alignment = json.loads(line)
         
+        # How long is this read?
+        length = len(alignment["sequence"])
+        
         if alignment.has_key("score"):
             # This alignment is aligned.
             # Grab its score
@@ -663,7 +665,6 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
             mappings = alignment.get("path", {}).get("mapping", [])
         
             # Calculate the mismatches and indels
-            length = len(alignment["sequence"])
             matches = 0
             for mapping in mappings:
                 for edit in mapping.get("edit", []):
@@ -735,6 +736,9 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
                 stats["primary_indels"][indels] += 1
                 stats["primary_substitutions"][substitutions] += 1
                 
+                # Record that a read of this length was mapped
+                stats["mapped_lengths"][length] += 1
+                
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read
                 stats["total_reads"] += 1
@@ -744,6 +748,9 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
             
             # Count the read by its primary alignment
             stats["total_reads"] += 1
+            
+            # Record that an unmapped read has this length
+            stats["unmapped_lengths"][length] += 1
             
         # Save the alignment for checking for wayward secondaries
         last_alignment = alignment

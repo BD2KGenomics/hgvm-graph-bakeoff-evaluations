@@ -186,10 +186,15 @@ def collate_region(job, options, region):
                 total_no_indels = sum((stats["primary_indels"].get(str(x), 0)
                     for x in xrange(1)))
                     
-                # How many total substitutions are there?
+                # How many total substitution bases are there?
                 total_substitutions = sum((count * float(weight)
                     for weight, count in 
                     stats["primary_substitutions"].iteritems()))
+                    
+                # How many reads are mapped with no substitutions?
+                total_no_substitutions = sum(
+                    (stats["primary_substitutions"].get(str(x), 0)
+                    for x in xrange(1)))
                     
                 # How many reads are there overall for this sample?
                 total_reads = stats["total_reads"]
@@ -227,6 +232,12 @@ def collate_region(job, options, region):
                 # What portion are mapped at all?
                 sample_stats["portion_mapped_at_all"] = (total_mapped_at_all / 
                     float(total_reads))
+                # What was the portion with no indels?
+                sample_stats["portion_no_indels"] = (total_no_indels / 
+                    float(total_reads))
+                # And the portion with no substitutions
+                sample_stats["portion_no_substitutions"] = \
+                    (total_no_substitutions / float(total_reads))
                 # What was the runtime?
                 sample_stats["runtime"] = runtime
                     
