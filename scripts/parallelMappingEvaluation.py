@@ -185,8 +185,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     # Also for statistics
     stats_dir = "stats/{}/{}".format(region, graph_name)
     
-    # What smaples have been completed?
-    completed_samples = set()
+    # What smaples have been completed? Map from ID to mtime
+    completed_samples = {}
     for filename, mtime in out_store.list_input_directory(stats_dir,
         with_times=True):
         # See if every file is a stats file
@@ -194,7 +194,13 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     
         if match and (options.too_old is None or mtime > options.too_old):
             # We found a sample's stats file, and it's new enough.
-            completed_samples.add(match.group(1))
+            completed_samples[match.group(1)] = mtime
+        
+        if options.too_old is not None and mtime < options.too_old:
+            # Say we hit an mtime thing
+            RealTimeLogger.get().info("Need to re-run {} because "
+                "{} < {}".format(match.group(1), mtime.ctime(),
+                options.too_old.ctime()))
             
     RealTimeLogger.get().info("Already have {} completed samples for {} in "
         "{}".format(len(completed_samples), basename, stats_dir))
@@ -206,10 +212,11 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Split out over each sample
         
         if ((not options.overwrite) and (not options.restat) and 
-            sample in completed_samples):
+            completed_samples.has_key(sample)):
             # This is already done.
             RealTimeLogger.get().info("Skipping completed alignment of "
                 "{} to {} {}".format(sample, graph_name, region))
+                
             continue
         else:
             # We need to run this sample
