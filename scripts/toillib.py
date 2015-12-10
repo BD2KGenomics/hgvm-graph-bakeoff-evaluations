@@ -748,7 +748,7 @@ class AzureIOStore(IOStore):
                     # We found an actual file 
                     if with_times:
                         mtime = dateutil.parser.parse(
-                            blob.properties.last_modified)).replace(
+                            blob.properties.last_modified).replace(
                             tzinfo=dateutil.tz.tzutc)
                         yield relative_path, mtime
                             
@@ -843,7 +843,7 @@ class AzureIOStore(IOStore):
                 if blob.name == self.name_prefix + path:
                     # Found it
                     return dateutil.parser.parse(
-                        blob.properties.last_modified)).replace(
+                        blob.properties.last_modified).replace(
                         tzinfo=dateutil.tz.tzutc)
                 
             # Save the marker
