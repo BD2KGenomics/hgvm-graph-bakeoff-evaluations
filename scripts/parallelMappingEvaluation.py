@@ -575,8 +575,11 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     
     Can take a run time to put in the stats.
 
-    TODO: go through the proper file store (and cache) when not re-computing
+    Assumes that stats actually do need to be computed, and overwrites any old
     stats.
+
+    TODO: go through the proper file store (and cache) for getting alignment
+    data.
     
     """
           
@@ -584,10 +587,6 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     # some reason.
     sample_store = IOStore.get(options.sample_store)
     out_store = IOStore.get(options.out_store)
-    
-    if not options.restat and out_store.exists(stats_file_key):
-        # No need to perform the stat calculations.
-        return
     
     RealTimeLogger.get().info("Computing stats for {}".format(stats_file_key))
     
