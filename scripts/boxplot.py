@@ -89,6 +89,8 @@ def parse_args(args):
         help="maximum Y value")
     parser.add_argument("--max_max", type=float, default=None,
         help="limit on maximum Y value")
+    parser.add_argument("--min_min", type=float, default=None,
+        help="limit on maximum Y value")
     parser.add_argument("--means", action="store_true",
         help="include means for each category")
     parser.add_argument("--no_n", dest="show_n", action="store_false",
@@ -408,6 +410,10 @@ def main(args):
     if options.max_max < max_found:
         # Bring in the upper limit
         pyplot.ylim((pyplot.ylim()[0], options.max_max))
+        
+    if options.min_min > min_found:
+        # Bring in the lower limit
+        pyplot.ylim((options.min_min, pyplot.ylim()[1]))
     
     if options.min is not None:
         # Set only the lower y limit

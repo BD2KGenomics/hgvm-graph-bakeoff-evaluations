@@ -125,11 +125,6 @@ do
         SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
         SUBSTRATE_PLOT="${PLOTS_DIR}/substrate.${REGION}.png"
         
-        # Blacklist trivial graph from the singlemapping plots, since it's so
-        # bad
-        mv "${SINGLE_MAPPING_FILE}" "${SINGLE_MAPPING_FILE}.orig"
-        cat "${SINGLE_MAPPING_FILE}.orig" | grep -v "trivial" > "${SINGLE_MAPPING_FILE}"
-        
         echo "Plotting ${REGION^^}..."
         
         # Remove underscores from region names to make them human readable
@@ -160,7 +155,7 @@ do
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Portion uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
-            --x_sideways --hline_median refonly \
+            --x_sideways --hline_median refonly --min_min 0.5 \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
