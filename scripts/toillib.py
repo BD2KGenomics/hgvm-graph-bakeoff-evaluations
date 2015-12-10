@@ -749,7 +749,7 @@ class AzureIOStore(IOStore):
                     if with_times:
                         mtime = dateutil.parser.parse(
                             blob.properties.last_modified).replace(
-                            tzinfo=dateutil.tz.tzutc)
+                            tzinfo=dateutil.tz.tzutc())
                         yield relative_path, mtime
                             
                     else:
@@ -844,7 +844,7 @@ class AzureIOStore(IOStore):
                     # Found it
                     return dateutil.parser.parse(
                         blob.properties.last_modified).replace(
-                        tzinfo=dateutil.tz.tzutc)
+                        tzinfo=dateutil.tz.tzutc())
                 
             # Save the marker
             marker = result.next_marker
