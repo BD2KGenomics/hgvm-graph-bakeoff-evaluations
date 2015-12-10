@@ -16,7 +16,7 @@ import traceback
 import stat
 
 import dateutil.parser
-import pytz
+import dateutil.tz
 
 # We need some stuff in order to have Azure
 try:
@@ -747,9 +747,11 @@ class AzureIOStore(IOStore):
                 else:
                     # We found an actual file 
                     if with_times:
-                        yield relative_path, pytz.UTC.localize(
-                            dateutil.parser.parse(
-                            blob.properties.last_modified))
+                        mtime = dateutil.parser.parse(
+                            blob.properties.last_modified)).replace(
+                            tzinfo=dateutil.tz.tzutc)
+                        yield relative_path, mtime
+                            
                     else:
                         yield relative_path
                 
@@ -840,8 +842,9 @@ class AzureIOStore(IOStore):
                 
                 if blob.name == self.name_prefix + path:
                     # Found it
-                    return pytz.UTC.localize(dateutil.parser.parse(
-                        blob.properties.last_modified))
+                    return dateutil.parser.parse(
+                        blob.properties.last_modified)).replace(
+                        tzinfo=dateutil.tz.tzutc)
                 
             # Save the marker
             marker = result.next_marker
