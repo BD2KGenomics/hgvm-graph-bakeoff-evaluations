@@ -331,67 +331,6 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             
     RealTimeLogger.get().info("Done making children for {}".format(basename))
    
-def split_out_samples(job, options, bin_dir_id, graph_name, region,
-    index_dir_id, samples_to_run):
-    """
-    Create 2 child jobs, each running half of samples_to_run.
-    
-    If one of the jobs fails to serialize, the other will at least run.
-    
-    """
-    
-    if len(samples_to_run) == 0:
-        # Nothing to do
-        return
-    
-    # What's halfway?
-    halfway = len(samples_to_run)/2
-    
-    if halfway >= 1:
-        # We can split more. TODO: these are tiny jobs and the old Parasol
-        # scheduler would break.
-        
-        RealTimeLogger.get().debug("Splitting to {} samples for "
-                "{} {}".format(halfway, graph_name, region))
-        
-        job.addChildJobFn(split_out_samples, options, bin_dir_id,
-            graph_name, region, index_dir_id, samples_to_run[:halfway],
-            cores=1, memory="4G", disk="4G")
-        job.addChildJobFn(split_out_samples, options, bin_dir_id,
-            graph_name, region, index_dir_id, samples_to_run[halfway:],
-            cores=1, memory="4G", disk="4G")
-    else:
-        # We have just one sample and should run it
-    
-        # Work out where samples for this region live
-        region_dir = region.upper()    
-        
-        # Work out the directory for the alignments to be dumped in in the
-        # output
-        alignment_dir = "alignments/{}/{}".format(region, graph_name)
-        
-        # Also for statistics
-        stats_dir = "stats/{}/{}".format(region, graph_name)
-        
-        for sample in samples_to_run:
-            # Split out over each sample that needs to be run
-            
-            # For each sample, know the FQ name
-            sample_fastq = "{}/{}/{}.bam.fq".format(region_dir, sample, sample)
-            
-            # And know where we're going to put the output
-            alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
-            stats_file_key = "{}/{}.json".format(stats_dir, sample)
-            
-            RealTimeLogger.get().debug("Queueing alignment of {} to "
-                "{} {}".format(sample, graph_name, region))
-    
-            job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
-                graph_name, region, index_dir_id, sample_fastq,
-                alignment_file_key, stats_file_key, cores=16, memory="100G",
-                disk="50G")
-        
-            
 def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
     index_dir_id, samples_to_run, num_per_call=10):
     """
@@ -403,7 +342,17 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
     tiny chunks of data and stored as table values, and when you have many table
     store operations one of them is likely to fail and screw up your whole
     serialization process.
+    
+    We have some logic here to decide how much of the sample needs to be rerun.
+    If we get a sample, all we know is that it doesn't have an up to date stats
+    file, but it may or may not have an alignment file already.
+    
     """
+    
+    # Set up the IO stores each time, since we can't unpickle them on Azure for
+    # some reason.
+    sample_store = IOStore.get(options.sample_store)
+    out_store = IOStore.get(options.out_store)
     
     # Get some samples to run
     samples_to_run_now = samples_to_run[:num_per_call]
@@ -428,14 +377,39 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
         stats_file_key = "{}/{}.json".format(stats_dir, sample)
         
-        RealTimeLogger.get().info("Queueing alignment of {} to {} {}".format(
-            sample, graph_name, region))
-    
-        # Go and bang that input fastq against the correct indexed graph.
-        # Its output will go to the right place in the output store.
-        job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
-            graph_name, region, index_dir_id, sample_fastq, alignment_file_key,
-            stats_file_key, cores=16, memory="100G", disk="50G")
+        if (not options.overwrite and out_store.exists(alignment_file_key)):
+            # If the alignment exists and is OK, we can skip the alignment
+            
+            mtime = out_store.get_mtime(stats_file_key)
+            if mtime is None or mtime < options.too_old or options.restat:
+                # All we need to do for this sample is run stats
+                RealTimeLogger.get().info("Queueing stat recalculation"
+                    " of {} on {} {}".format(sample, graph_name, region))
+                
+                job.addFollowOnJobFn(run_stats, options, bin_dir_id,
+                    alignment_file_key, stats_file_key, run_time=None,
+                    cores=2, memory="4G", disk="10G")
+                    
+            else:
+                # The stats are up to date and the alignment doesn't need
+                # rerunning. This shouldn't happen because this sample shouldn't
+                # be on the todo list. But it means we can just skip the sample.
+                RealTimeLogger.get().warning("SKIPPING sample "
+                    "{} on {} {}".format(sample, graph_name, region))
+                    
+        else:
+        
+            # Otherwise we need to do an alignment, and then stats.
+            
+            RealTimeLogger.get().info("Queueing alignment"
+                " of {} to {} {}".format(sample, graph_name, region))
+            
+            # Go and bang that input fastq against the correct indexed graph.
+            # Its output will go to the right place in the output store.
+            job.addChildJobFn(run_alignment, options, bin_dir_id, sample,
+                graph_name, region, index_dir_id, sample_fastq,
+                alignment_file_key, stats_file_key, 
+                cores=16, memory="100G", disk="50G")
             
     if len(samples_to_run_later) > 0:
         # We need to recurse and run more later.
@@ -514,6 +488,8 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     graph (in the file store as a directory) and put the GAM and statistics in
     the given output keys in the output store.
     
+    Assumes that the alignment actually needs to be redone.
+    
     """
     
     # Set up the IO stores each time, since we can't unpickle them on Azure for
@@ -524,110 +500,71 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     # How long did the alignment take to run, in seconds?
     run_time = None
     
-    # Flag that we set to true if we have a new alignment
-    reran_alignment = False
-    
-    if not out_store.exists(alignment_file_key) or options.overwrite:
-        # We need to actually do the alignment
-    
-        if bin_dir_id is not None:
-            # Download the binaries
-            bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
-            read_global_directory(job.fileStore, bin_dir_id, bin_dir)
-            # We define a string we can just tack onto the binary name and get
-            # either the system or the downloaded version.
-            bin_prefix = bin_dir + "/"
-        else:
-            bin_prefix = ""
-        
-        # Download the indexed graph to a directory we can use
-        graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
-        read_global_directory(job.fileStore, index_dir_id, graph_dir)
-        
-        # We know what the vg file in there will be named
-        graph_file = "{}/graph.vg".format(graph_dir)
-        
-        # Also we need the sample fastq
-        fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
-        sample_store.read_input_file(sample_fastq_key, fastq_file)
-        
-        # And a temp file for our aligner output
-        output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
-        
-        # Open the file stream for writing
-        with open(output_file, "w") as alignment_file:
-        
-            # Start the aligner and have it write to the file
-            
-            # Plan out what to run
-            vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-                "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
-                str(options.kmer_size), graph_file]
-            
-            RealTimeLogger.get().info(
-                "Running VG for {} against {} {}: {}".format(sample, graph_name,
-                region, " ".join(vg_parts)))
-            
-            # Mark when we start the alignment
-            start_time = timeit.default_timer()
-            process = subprocess.Popen(vg_parts, stdout=alignment_file)
-                
-            if process.wait() != 0:
-                # Complain if vg dies
-                raise RuntimeError("vg died with error {}".format(
-                    process.returncode))
-                    
-            # Mark when it's done
-            end_time = timeit.default_timer()
-            run_time = end_time - start_time
-            
-                    
-        RealTimeLogger.get().info("Aligned {}".format(output_file))
-        
-        # Upload the alignment
-        out_store.write_output_file(output_file, alignment_file_key)
-        
-        # Say we reran the alignment so we need to do the stats
-        reran_alignment = True
-    
-    # Work out if we need to run the stats
-    run_stats = False
-        
-    if not out_store.exists(stats_file_key):
-        # No stats available yet
-        run_stats = True
-    elif options.restat:
-        # We explicitly asked to do it
-        run_stats = True
-    elif reran_alignment:
-        # We have a new alignment file
-        run_stats = True
-    elif options.too_old is not None:
-        # We need to check the modification time
-        mtime = out_store.get_mtime(stats_file_key)
-        
-        if mtime < options.too_old:
-            RealTimeLogger.get().info("Excessively old stats: {}".format(
-                stats_file_key))
-            run_stats = True
-        else:
-            RealTimeLogger.get().info("Sufficiently new stats: {}".format(
-                stats_file_key))
-        
-        
-    if run_stats:
-        # We have no stats file or we need to redo stats, or we just redid the
-        # alignment above, or our stats file is too old.
-    
-        # Add a follow-on to calculate stats. It only needs 2 cores since it's
-        # not really prarllel.
-        job.addFollowOnJobFn(run_stats, options, bin_dir_id, alignment_file_key,
-            stats_file_key, run_time=run_time, cores=2, memory="4G", disk="10G")
-            
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get
+        # either the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
     else:
-        RealTimeLogger.get().warn("NOT recomputing: {}".format(
-            stats_file_key))
-      
+        bin_prefix = ""
+    
+    # Download the indexed graph to a directory we can use
+    graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
+    read_global_directory(job.fileStore, index_dir_id, graph_dir)
+    
+    # We know what the vg file in there will be named
+    graph_file = "{}/graph.vg".format(graph_dir)
+    
+    # Also we need the sample fastq
+    fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
+    sample_store.read_input_file(sample_fastq_key, fastq_file)
+    
+    # And a temp file for our aligner output
+    output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
+    
+    # Open the file stream for writing
+    with open(output_file, "w") as alignment_file:
+    
+        # Start the aligner and have it write to the file
+        
+        # Plan out what to run
+        vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
+            "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
+            str(options.kmer_size), graph_file]
+        
+        RealTimeLogger.get().info(
+            "Running VG for {} against {} {}: {}".format(sample, graph_name,
+            region, " ".join(vg_parts)))
+        
+        # Mark when we start the alignment
+        start_time = timeit.default_timer()
+        process = subprocess.Popen(vg_parts, stdout=alignment_file)
+            
+        if process.wait() != 0:
+            # Complain if vg dies
+            raise RuntimeError("vg died with error {}".format(
+                process.returncode))
+                
+        # Mark when it's done
+        end_time = timeit.default_timer()
+        run_time = end_time - start_time
+        
+                
+    RealTimeLogger.get().info("Aligned {}".format(output_file))
+    
+    # Upload the alignment
+    out_store.write_output_file(output_file, alignment_file_key)
+    
+    RealTimeLogger.get().info("Need to recompute stats for new "
+        "alignment: {}".format(stats_file_key))
+
+    # Add a follow-on to calculate stats. It only needs 2 cores since it's
+    # not really prarllel.
+    job.addFollowOnJobFn(run_stats, options, bin_dir_id, alignment_file_key,
+        stats_file_key, run_time=run_time, cores=2, memory="4G", disk="10G")
+            
       
 def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     run_time=None):
