@@ -205,8 +205,6 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     RealTimeLogger.get().info("Already have {} completed samples for {} in "
         "{}".format(len(completed_samples), basename, stats_dir))
     
-    return
-    
     # What samples haven't been done yet and need doing
     samples_to_run = []
     
@@ -526,6 +524,9 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     # How long did the alignment take to run, in seconds?
     run_time = None
     
+    # Flag that we set to true if we have a new alignment
+    reran_alignment = False
+    
     if not out_store.exists(alignment_file_key) or options.overwrite:
         # We need to actually do the alignment
     
@@ -586,10 +587,35 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         # Upload the alignment
         out_store.write_output_file(output_file, alignment_file_key)
         
-    if ((not out_store.exists(stats_file_key) or options.restat) or
-        (not out_store.exists(alignment_file_key) or options.overwrite) or
-        (options.too_old is not None and
-            out_store.get_mtime(stats_file_key) < options.too_old)):
+        # Say we reran the alignment so we need to do the stats
+        reran_alignment = True
+    
+    # Work out if we need to run the stats
+    run_stats = False
+        
+    if not out_store.exists(stats_file_key):
+        # No stats available yet
+        run_stats = True
+    elif options.restat:
+        # We explicitly asked to do it
+        run_stats = True
+    elif reran_alignment:
+        # We have a new alignment file
+        run_stats = True
+    elif options.too_old is not None:
+        # We need to check the modification time
+        mtime = out_store.get_mtime(stats_file_key)
+        
+        if mtime < options.too_old:
+            RealTimeLogger.get().info("Excessively old stats: {}".format(
+                stats_file_key))
+            run_stats = True
+        else:
+            RealTimeLogger.get().info("Sufficiently new stats: {}".format(
+                stats_file_key))
+        
+        
+    if run_stats:
         # We have no stats file or we need to redo stats, or we just redid the
         # alignment above, or our stats file is too old.
     
@@ -597,6 +623,10 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         # not really prarllel.
         job.addFollowOnJobFn(run_stats, options, bin_dir_id, alignment_file_key,
             stats_file_key, run_time=run_time, cores=2, memory="4G", disk="10G")
+            
+    else:
+        RealTimeLogger.get().warn("NOT recomputing: {}".format(
+            stats_file_key))
       
       
 def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
