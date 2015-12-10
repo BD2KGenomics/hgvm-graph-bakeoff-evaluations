@@ -196,7 +196,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # We found a sample's stats file, and it's new enough.
             completed_samples[match.group(1)] = mtime
         
-        if options.too_old is not None and mtime < options.too_old:
+        if match and (options.too_old is not None and mtime < options.too_old):
             # Say we hit an mtime thing
             RealTimeLogger.get().info("Need to re-run {} because "
                 "{} < {}".format(match.group(1), mtime.ctime(),
@@ -204,6 +204,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             
     RealTimeLogger.get().info("Already have {} completed samples for {} in "
         "{}".format(len(completed_samples), basename, stats_dir))
+    
+    return
     
     # What samples haven't been done yet and need doing
     samples_to_run = []
