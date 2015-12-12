@@ -350,6 +350,8 @@ def collate_region(job, options, region):
             "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
             "portion_no_indels": "plots/{}/noindels.{}.tsv".format(mode,
                 region),
+            "portion_no_substitutions": "plots/{}/nosubsts.{}.tsv".format(mode,
+                region),
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
                 region)
         }

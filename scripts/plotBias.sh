@@ -42,10 +42,10 @@ HR_NAMES["vglr"]="VGLR"
 for MODE in normalized_distributions distributions
 do
 
-    RELATIVE=""
+    PORTION="Portion"
     if ["${MODE}" == "normalized_distributions"]
     then
-        RELATIVE="Relative "
+        RELATIVE="Difference in portion"
     fi
 
     # Where are the bias files
@@ -80,7 +80,7 @@ do
             
             ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
                 --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
-                --x_label "Population" --y_label "${RELATIVE}portion mapped" --save "${PLOT_PATH}" \
+                --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
                 --x_sideways \
                 "${PLOT_PARAMS[@]}"
         

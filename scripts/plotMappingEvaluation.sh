@@ -81,12 +81,25 @@ PLOTS_ROOT_DIR="${INPUT_DIR}/plots"
 
 for MODE in `ls ${PLOTS_ROOT_DIR}`
 do
+    # We have normalized and absolute modes
 
     if [ "${MODE}" == "cache" ]
     then
         # Skip the cache directory
         continue
     fi
+    
+    # We want to write different axis labels in different modes
+    PORTION="Portion"
+    SECONDS=" (seconds)"
+    RATE="rate"
+    if [ "${MODE}" == "normalized" ]
+    then
+        PORTION="Relative portion"
+        SECONDS=" (relative)"
+        RATE=" relative rate"
+    fi
+
 
     # We may be doing absolute or normalized plotting
     PLOTS_DIR="${PLOTS_ROOT_DIR}/${MODE}"
@@ -136,50 +149,50 @@ do
         
         ./scripts/boxplot.py "${MAPPING_FILE}" \
             --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Portion mapped" --save "${MAPPING_PLOT}" \
+            --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "Portion perfectly mapped" --save "${PERFECT_PLOT}" \
+            --x_label "Graph" --y_label "${PORTION} perfectly mapped" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
             --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Portion" --save "${ONE_ERROR_PLOT}" \
+            --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Portion uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
+            --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly --min_min 0.5 \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
             --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Portion mapped" --save "${ANY_MAPPING_PLOT}" \
+            --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Runtime per read (seconds)" --save "${RUNTIME_PLOT}" \
+            --x_label "Graph" --y_label "Runtime per read${SECONDS}" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${NOINDEL_FILE}" \
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Portion mapped" --save "${NOINDEL_PLOT}" \
-            --x_sideways \
+            --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
+            --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Substitution rate" --save "${SUBSTRATE_PLOT}" \
-            --x_sideways \
+            --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
+            --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
             
         
