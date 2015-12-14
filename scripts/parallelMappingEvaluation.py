@@ -412,8 +412,8 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
                     " of {} on {} {}".format(sample, graph_name, region))
                 
                 job.addFollowOnJobFn(run_stats, options, bin_dir_id,
-                    alignment_file_key, stats_file_key, run_time=None,
-                    cores=2, memory="4G", disk="10G")
+                    index_dir_id, alignment_file_key, stats_file_key,
+                    run_time=None, cores=2, memory="4G", disk="10G")
                     
             else:
                 # The stats are up to date and the alignment doesn't need
