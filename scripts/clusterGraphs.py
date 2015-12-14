@@ -58,6 +58,8 @@ def parse_args(args):
     parser.add_argument("--skip", type=str, default="",
                         help="comma-separated list of keywords"
                         " such that input file will ignored if it contains one")
+    parser.add_argument("--ignore_ns", action="store_true", default=False,
+                        help="Dont include ns in kmer comparison")
                             
     args = args[1:]
 
@@ -177,7 +179,6 @@ def recall_dist_fn(graph1, graph2, options):
             db2_total = float(j["db1_total"])
         intersection = float(j["intersection"])
         recall = intersection / db2_total
-        print graph1, graph2, db2_total, intersection, recall, (1-recall)
         return 1. - recall
     
 def corg_dist_fn(graph1, graph2, options):
@@ -364,8 +365,6 @@ def cluster_comparisons(options, dist_fn, tag):
     """
     mat, names = compute_matrix(options, dist_fn)
 
-    print mat, names, dist_fn
-
     compute_tree(options, mat, names, tag)
 
     compute_heatmap(options, mat, names, tag)
@@ -381,10 +380,13 @@ def compute_kmer_comparison(job, graph1, graph2, options):
     assert os.path.exists(graph2_index_path)
 
     do_comp = options.overwrite or not os.path.exists(out_path)
+    ignore = ""
+    if options.ignore_ns is True:
+        ignore = "-i"
     
     if do_comp:
         robust_makedirs(os.path.dirname(out_path))        
-        os.system("vg compare {} {} -t {} > {}".format(graph1, graph2,
+        os.system("vg compare {} {} {} -t {} > {}".format(graph1, graph2, ignore,
                                                        min(options.vg_cores, 2), out_path))
 
 def compute_corg_comparison(job, graph1, graph2, options):
@@ -425,7 +427,7 @@ def compute_kmer_comparisons(job, options):
                                               cores=min(options.vg_cores, 2))
 
     if not options.no_corg:
-        job.addFollowOnJobFn(compute_corg_self_comparisons, options, cores=1)
+        job.addFollowOnJobFn(compute_corg_self_comparisons, options, cores=options.vg_cores)
 
 def compute_corg_self_comparisons(job, options):
     """ run corg compare on all graphs with themselves.  the results are used 
@@ -461,7 +463,7 @@ def compute_corg_comparisons(job, options):
                     out_path = corg_path(graph1, graph2, options)
                     if options.overwrite or not os.path.exists(out_path):
                         job.addChildJobFn(compute_corg_comparison, graph1, graph2,
-                                          options, cores=1)
+                                          options, cores=options.vg_cores)
 
     
 def compute_kmer_indexes(job, options):

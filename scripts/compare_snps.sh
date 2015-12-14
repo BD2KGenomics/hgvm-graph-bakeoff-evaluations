@@ -20,7 +20,7 @@ REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
 #REGIONS=( "brca1" )
 
 # output for clusteGraphs.py that we rename
-CP_FILES=( "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "heatmap_log_vm1_kmer.pdf" "tree_kmer.dot" "tree_kmer.newick"  "tree_kmer.png" "heatmap_corg.pdf" "heatmap_log_corg.pdf" "heatmap_vm1_corg.pdf" "heatmap_log_vm1_corg.pdf" "tree_corg.dot" "tree_corg.newick"  "tree_corg.png" "heatmap_corg1.pdf" "heatmap_log_corg1.pdf" "heatmap_vm1_corg1.pdf" "heatmap_log_vm1_corg1.pdf" "tree_corg1.dot" "tree_corg1.newick"  "tree_corg1.png")
+CP_FILES=( "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "heatmap_log_vm1_kmer.pdf" "tree_kmer.dot" "tree_kmer.newick"  "tree_kmer.png" "heatmap_recall.pdf" "heatmap_log_recall.pdf" "heatmap_vm1_recall.pdf" "heatmap_log_vm1_recall.pdf" "tree_recall.dot" "tree_recall.newick"  "tree_recall.png" "heatmap_corg.pdf" "heatmap_log_corg.pdf" "heatmap_vm1_corg.pdf" "heatmap_log_vm1_corg.pdf" "tree_corg.dot" "tree_corg.newick"  "tree_corg.png" "heatmap_corg1.pdf" "heatmap_log_corg1.pdf" "heatmap_vm1_corg1.pdf" "heatmap_log_vm1_corg1.pdf" "tree_corg1.dot" "tree_corg1.newick"  "tree_corg1.png" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis
@@ -37,7 +37,7 @@ mkdir $OUT_DIR
 for i in "${REGIONS[@]}"
 do
 	 #heatmap of original
-	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} --no_corg
+	 rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${OUT_DIR}/${i} ${TOIL_OPTS} ${INDEX_OPTS} --ignore_ns
 
 	 for j in "${CP_FILES[@]}"
 	 do
@@ -49,7 +49,7 @@ do
 	 for k in sample
 	 do
 		  # just the category
-		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample --no_corg --skip g1kvcf
+		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --ignore_ns --avg_sample --skip g1kvcf
 
 		  for j in "${CP_FILES[@]}"
 		  do
@@ -57,7 +57,7 @@ do
 		  done
 
 		  #category and original together
-		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --avg_sample --no_corg --skip g1kvcf
+		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --ignore_ns --avg_sample --skip g1kvcf
 
 		  for j in "${CP_FILES[@]}"
 		  do
