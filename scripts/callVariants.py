@@ -199,6 +199,16 @@ def g1k_vcf_path(alignment_path, options, tag=""):
                           "g1kvcf")
     return os.path.join(outdir, name)
 
+def g1k_fa_path(alignment_path, options, tag=""):
+    """ get fa output of sample filtering of 1000 genomes
+    """
+    name = os.path.splitext(os.path.basename(alignment_path))[0]
+    name += "{}_sample.fa".format(tag)
+    outdir = os.path.join(options.out_dir,
+                          alignment_region_tag(alignment_path, options),
+                          "g1kvcf")
+    return os.path.join(outdir, name)
+
 def g1k_vg_path(alignment_path, options, tag=""):
     """ get vg path constructed from g1k filtered sample
     """
@@ -337,6 +347,7 @@ def compute_snp1000g_baseline(job, input_gam, options):
     g1kvcf_path = os.path.join(options.g1kvcf_path, region.upper() + ".vcf")
     g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
     filter_vcf_path = g1k_vcf_path(input_gam, options)
+    filter_fa_path = g1k_fa_path(input_gam, options)
     filter_vg_path = g1k_vg_path(input_gam, options)
     fasta_path = options.chrom_fa_path
 
@@ -356,9 +367,11 @@ def compute_snp1000g_baseline(job, input_gam, options):
     # make filtered compressed vcf for this sample
     if do_filter:            
         robust_makedirs(os.path.dirname(filter_vcf_path))
-        run("scripts/vcfFilterSample.py {} {} > {}".format(g1kvcf_path,
-                                                           sample,
-                                                           filter_vcf_path))
+        run("scripts/vcfFilterSample.py {} {} {} {} {}".format(g1kvcf_path,
+                                                               fasta_path,
+                                                               sample,
+                                                               filter_vcf_path,
+                                                               filter_fa_path))
         run("bgzip -f {}".format(filter_vcf_path))
         run("tabix -f -p vcf {}.gz".format(filter_vcf_path))
 
@@ -368,10 +381,10 @@ def compute_snp1000g_baseline(job, input_gam, options):
             coords = bed_file.readline().split()
             # convert from bed to vcf coordinates by adding one to start
             coords = (coords[0], int(coords[1]) + 1, int(coords[2]))
-            run("vg construct -v {}.gz -r {} -t {} -R {}:{}-{} > {}".format(filter_vcf_path, fasta_path,
-                                                                         options.vg_cores, 
-                                                                         coords[0], coords[1], coords[2],
-                                                                         filter_vg_path))    
+            run("vg construct -v {}.gz -r {} -t {} -R {}:{}-{} > {}".format(filter_vcf_path, filter_fa_path,
+                                                                            options.vg_cores, 
+                                                                            coords[0], coords[1], coords[2],
+                                                                            filter_vg_path))    
         
 def call_variants(job, options):
     """ run everything (root toil job)
