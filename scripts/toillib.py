@@ -17,6 +17,7 @@ import stat
 
 import dateutil.parser
 import dateutil.tz
+import datetime
 
 # We need some stuff in order to have Azure
 try:
@@ -303,7 +304,8 @@ class IOStore(object):
         
         raise NotImplementedError()
         
-    def list_input_directory(self, input_path, recursive=False):
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Yields each of the subdirectories and files in the given input path.
         
@@ -311,6 +313,10 @@ class IOStore(object):
         directory. If recursive is true, yields all files contained within the
         current directory, recursively, but does not yield folders.
         
+        If with_times is True, yields (name, modification time) pairs instead of
+        just names, with modification times represented as datetime objects in
+        the GMT timezone. Modification times may be None on objects that do not
+        support them.
         
         Gives relative file/directory names.
         
@@ -336,6 +342,15 @@ class IOStore(object):
         """
         Returns true if the given input or output file exists in the store
         already.
+        
+        """
+        
+        raise NotImplementedError()
+        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given gile if it exists, or None
+        otherwise.
         
         """
         
@@ -454,7 +469,8 @@ class FileIOStore(IOStore):
             # Clear the bit
             os.chmod(real_path, old_mode ^ stat.S_IWUSR)
         
-    def list_input_directory(self, input_path, recursive=False):
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Loop over directories on the filesystem.
         """
@@ -476,10 +492,36 @@ class FileIOStore(IOStore):
                     
                     # Make relative paths include this directory name and yield
                     # them
-                    yield os.path.join(item, subitem)
+                    name_to_yield = os.path.join(item, subitem)
+                    
+                    if with_times:
+                        # What is the mtime in seconds since epoch?
+                        mtime_epoch_seconds = os.path.getmtime(os.path.join(
+                            input_path, item, subitem))
+                        # Convert it to datetime
+                        mtime_datetime = datetime.datetime.utcfromtimestamp(
+                            mtime_epoch_seconds).replace(
+                            tzinfo=dateutil.tz.tzutc())
+                            
+                        yield name_to_yield, mtime_datetime
+                    else:
+                        yield name_to_yield
             else:
                 # This isn't a directory or we aren't being recursive
-                yield item
+                # Just report this individual item.
+                
+                if with_times:
+                    # What is the mtime in seconds since epoch?
+                    mtime_epoch_seconds = os.path.getmtime(os.path.join(
+                        input_path, item))
+                    # Convert it to datetime
+                    mtime_datetime = datetime.datetime.utcfromtimestamp(
+                        mtime_epoch_seconds).replace(
+                        tzinfo=dateutil.tz.tzutc())
+                        
+                    yield item, mtime_datetime
+                else:
+                    yield item
     
     def write_output_file(self, local_path, output_path):
         """
@@ -521,6 +563,26 @@ class FileIOStore(IOStore):
         """
         
         return os.path.exists(os.path.join(self.path_prefix, path))
+        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given file if it exists, or None
+        otherwise.
+        
+        """
+        
+        if not self.exists(path):
+            return None
+            
+        # What is the mtime in seconds since epoch?
+        mtime_epoch_seconds = os.path.getmtime(os.path.join(self.path_prefix,
+            path))
+        # Convert it to datetime
+        mtime_datetime = datetime.datetime.utcfromtimestamp(
+            mtime_epoch_seconds).replace(tzinfo=dateutil.tz.tzutc())
+            
+        # Return the modification time, timezoned, in UTC
+        return mtime_datetime
 
 class BackoffError(RuntimeError):
     """
@@ -692,7 +754,7 @@ class AzureIOStore(IOStore):
         directory, non-recursively.
         
         If with_times is specified, will yield (name, time) pairs including
-        modification times. Times on directories are None.
+        modification times as datetime objects. Times on directories are None.
         
         """
         
@@ -822,8 +884,6 @@ class AzureIOStore(IOStore):
         """
         Returns the modification time of the given blob if it exists, or None
         otherwise.
-        
-        TODO: port to other IOStores
         
         """
         
