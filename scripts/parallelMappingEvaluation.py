@@ -676,6 +676,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "total_multimapped": 0,
         "mapped_lengths": collections.Counter(),
         "unmapped_lengths": collections.Counter(),
+        "aligned_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
         "primary_mismatches": collections.Counter(),
         "primary_indels": collections.Counter(),
@@ -715,6 +716,10 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # And total up the number of substitutions (mismatching/alternative
             # bases in edits with equal lengths where the reference has no Ns).
             substitutions = 0
+            
+            # What should the denominator for substitution rate be for this
+            # read? How many bases are in the read and aligned?
+            aligned_length = 0
             
             for mapping_number, mapping in enumerate(mappings):
                 # Figure out what the reference sequence for this mapping should
@@ -768,6 +773,11 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                     reference_N_count = count_Ns(ref_sequence[
                         index_in_ref:index_in_ref + edit.get("from_length", 0)])
                         
+                    if edit.get("to_length", 0) == edit.get("from_length", 0):
+                        # Add in the length of this edit if it's actually
+                        # aligned (not an indel)
+                        aligned_length += edit.get("to_length", 0)
+                        
                     if (not edit.has_key("sequence") and 
                         edit.get("to_length", 0) == edit.get("from_length", 0)):
                         # The edit has equal from and to lengths, but no
@@ -801,6 +811,12 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                         # opposite reference Ns. Sequence Ns are ignored.
                         substitutions += (edit.get("to_length", 0) -
                             reference_N_count)
+                            
+                        # Pull those Ns out of the substitution rate denominator
+                        # as well.
+                        aligned_length -= reference_N_count
+                        
+                    # We still count query Ns as "aligned" when not in indels
                         
                     # Advance in the reference sequence
                     index_in_ref += edit.get("from_length", 0)
@@ -842,6 +858,9 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 
                 # Record that a read of this length was mapped
                 stats["mapped_lengths"][length] += 1
+                
+                # And that a read with this many aligned primary bases was found
+                stats["aligned_lengths"][length] += 1
                 
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read
