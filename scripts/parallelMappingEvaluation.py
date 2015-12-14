@@ -10,6 +10,7 @@ BAM files with reads must have been already downloaded.
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
+import string
 
 import dateutil.parser
 
@@ -73,6 +74,30 @@ def parse_args(args):
         
     return parser.parse_args(args)
     
+    
+# Reverse complement needs a global translation table
+reverse_complement_translation_table = string.maketrans("ACGTN", "TGCAN")
+def reverse_complement(sequence):
+    """
+    Compute the reverse complement of a DNA sequence.
+    
+    Follows algorithm from <http://stackoverflow.com/a/26615937>
+    """
+    
+    # Translate and then reverse
+    return sequence.translate(reverse_complement_translation_table)[::-1]
+    
+def count_Ns(sequence):
+    """
+    Return the number of N bases in the given DNA sequence
+    """
+    
+    n_count = 0
+    for item in sequence:
+        if item == "N":
+            n_count += 1
+            
+    return n_count
 
 def run_all_alignments(job, options):
     """
@@ -562,16 +587,20 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
 
     # Add a follow-on to calculate stats. It only needs 2 cores since it's
     # not really prarllel.
-    job.addFollowOnJobFn(run_stats, options, bin_dir_id, alignment_file_key,
-        stats_file_key, run_time=run_time, cores=2, memory="4G", disk="10G")
+    job.addFollowOnJobFn(run_stats, options, bin_dir_id, index_dir_id,
+        alignment_file_key, stats_file_key, run_time=run_time,
+        cores=2, memory="4G", disk="10G")
             
       
-def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
-    run_time=None):
+def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
+    stats_file_key, run_time=None):
     """
     If the stats aren't done, or if they need to be re-done, retrieve the
     alignment file from the output store under alignment_file_key and compute the
     stats file, saving it under stats_file_key.
+    
+    Uses index_dir_id to get the graph, and thus the reference sequence that
+    each read is aligned against, for the purpose of discounting Ns.
     
     Can take a run time to put in the stats.
 
@@ -599,7 +628,36 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
         bin_prefix = bin_dir + "/"
     else:
         bin_prefix = ""
-           
+        
+    # Download the indexed graph to a directory we can use
+    graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
+    read_global_directory(job.fileStore, index_dir_id, graph_dir)
+    
+    # We know what the vg file in there will be named
+    graph_file = "{}/graph.vg".format(graph_dir)
+    
+    # Load the node sequences into memory. This holds node sequence string by
+    # ID.
+    node_sequences = {}
+    
+    # Read the alignments in in JSON-line format
+    read_graph = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-j",
+        graph_file], stdout=subprocess.PIPE)
+        
+    for line in read_graph.stdout:
+        # Parse the graph chunk JSON
+        graph_chunk = json.loads(line)
+        
+        for node_dict in graph_chunk.get("node", []):
+            # For each node, store its sequence under its id. We want to crash
+            # if a node exists for which one or the other isn't defined.
+            node_sequences[node_dict["id"]] = node_dict["sequence"]
+        
+    if read_graph.wait() != 0:
+        # Complain if vg dies
+        raise RuntimeError("vg died with error {}".format(
+            read_graph.returncode))
+ 
     # Declare local files for everything
     stats_file = "{}/stats.json".format(job.fileStore.getLocalTempDir())
     alignment_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
@@ -608,7 +666,7 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     out_store.read_input_file(alignment_file_key, alignment_file)
            
     # Read the alignments in in JSON-line format
-    view = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
+    read_alignment = subprocess.Popen(["{}vg".format(bin_prefix), "view", "-aj",
         alignment_file], stdout=subprocess.PIPE)
        
     # Count up the stats
@@ -631,7 +689,7 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
         
     last_alignment = None
         
-    for line in view.stdout:
+    for line in read_alignment.stdout:
         # Parse the alignment JSON
         alignment = json.loads(line)
         
@@ -646,46 +704,110 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
             # Get the mappings
             mappings = alignment.get("path", {}).get("mapping", [])
         
-            # Calculate the mismatches and indels
+            # Calculate the exact match bases
             matches = 0
-            for mapping in mappings:
-                for edit in mapping.get("edit", []):
-                    if (not edit.has_key("sequence") and 
-                        edit.get("to_length", None) == edit.get(
-                        "from_length", None)):
+            
+            # And total up the instances of indels (only counting those where
+            # the reference has no Ns, and which aren't leading or trailing soft
+            # clips)
+            indels = 0
+            
+            # And total up the number of substitutions (mismatching/alternative
+            # bases in edits with equal lengths where the reference has no Ns).
+            substitutions = 0
+            
+            for mapping_number, mapping in enumerate(mappings):
+                # Figure out what the reference sequence for this mapping should
+                # be
+                
+                position = mapping.get("position", {})
+                if position.has_key("node_id"):
+                    # We actually are mapped to a reference node
+                    ref_sequence = node_sequences[position["node_id"]]
+                    
+                    # Grab the offset
+                    offset = position.get("offset", 0)
+                    
+                    if mapping.get("is_reverse", False):
+                        # We start at the offset base on the reverse strand.
+
+                        # Add 1 to make the offset inclusive as an end poiint                        
+                        ref_sequence = reverse_complement(
+                            ref_sequence[0:offset + 1])
+                    else:
+                        # Just clip so we start at the specified offset
+                        ref_sequence = ref_sequence[offset:]
+                    
+                else:
+                    # We're aligned against no node, and thus an empty reference
+                    # sequence (and thus must be all insertions)
+                    ref_sequence = "" 
+                    
+                # Start at the beginning of the reference sequence for the
+                # mapping.
+                index_in_ref = 0
+                    
+                # Pull out the edits
+                edits = mapping.get("edit", [])
+                    
+                for edit_number, edit in enumerate(edits):
+                    # An edit may be a soft clip if it's either the first edit
+                    # in the first mapping, or the last edit in the last
+                    # mapping. This flag stores whether that is the case
+                    # (although to actually be a soft clip it also has to be an
+                    # insertion, and not either a substitution or a perfect
+                    # match as spelled by the aligner).
+                    may_be_soft_clip = ((edit_number == 0 and 
+                        mapping_number == 0) or 
+                        (edit_number == len(edits) - 1 and 
+                        mapping_number == len(mappings) - 1))
                         
+                    # Count up the Ns in the reference sequence for the edit. We
+                    # get the part of the reference string that should belong to
+                    # this edit.
+                    reference_N_count = count_Ns(ref_sequence[
+                        index_in_ref:index_in_ref + edit.get("from_length", 0)])
+                        
+                    if (not edit.has_key("sequence") and 
+                        edit.get("to_length", 0) == edit.get("from_length", 0)):
+                        # The edit has equal from and to lengths, but no
+                        # sequence provided.
+
                         # We found a perfect match edit. Grab its length
                         matches += edit["from_length"]
 
-            # Calculate mismatches as what's left
+                        # We don't care about Ns when evaluating perfect
+                        # matches. VG already split out any mismatches into non-
+                        # perfect matches, and we ignore the N-matched-to-N
+                        # case.
+
+                    if not may_be_soft_clip and (edit.get("to_length", 0) !=
+                        edit.get("from_length", 0)):
+                        # This edit is an indel and isn't on the very end of a
+                        # read.
+                        if reference_N_count == 0:
+                            # Only count the indel if it's not against an N in
+                            # the reference
+                            indels += 1
+
+                    if (edit.get("to_length", 0) == 
+                        edit.get("from_length", 0) and 
+                        edit.has_key("sequence")):
+                        # The edit has equal from and to lengths, and a provided
+                        # sequence. This edit is thus a SNP or MNP. It
+                        # represents substitutions.
+
+                        # We take as substituted all the bases except those
+                        # opposite reference Ns. Sequence Ns are ignored.
+                        substitutions += (edit.get("to_length", 0) -
+                            reference_N_count)
+                        
+                    # Advance in the reference sequence
+                    index_in_ref += edit.get("from_length", 0)
+
+            # Calculate mismatches as what's not perfect matches
             mismatches = length - matches
                     
-            # Aggregate all the edits
-            edits = []
-            for mapping in mappings:
-                # Add in this mapping's edits
-                edits += mapping.get("edit", [])
-                
-            # Total up the instances of indels
-            indels = 0
-                
-            for edit in edits[1:-1]:
-                # For every edit that isn't potentially a soft clip
-                if edit.get("to_length", None) != edit.get("from_length", None):
-                    # This edit isn't a SNP or MNP. Must be an indel
-                    indels += 1
-                    
-            # Total up the number of substitutions (mismatching/alternative
-            # bases in edits with equal lengths).
-            substitutions = 0
-            for edit in edits:
-                if (edit.get("to_length", None) == 
-                    edit.get("from_length", None) and 
-                    edit.get("sequence", None) is not None):
-                    # This edit is a SNP or MNP.
-                    substitutions += len(edit.get("sequence", ""))
-            
-        
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
                 # multimapped read.
@@ -740,6 +862,11 @@ def run_stats(job, options, bin_dir_id, alignment_file_key, stats_file_key,
     with open(stats_file, "w") as stats_handle:
         # Save the stats as JSON
         json.dump(stats, stats_handle)
+        
+    if read_alignment.wait() != 0:
+        # Complain if vg dies
+        raise RuntimeError("vg died with error {}".format(
+            read_alignment.returncode))
         
     # Now send the stats to the output store where they belong.
     out_store.write_output_file(stats_file, stats_file_key)

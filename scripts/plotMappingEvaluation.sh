@@ -188,11 +188,19 @@ do
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
-            
+           
+        if [ "${MODE}" == "absolute" ]
+        then
+            # Limit max Y for absolute substitution rates
+            SUBSTRATE_LIMIT="--max 0.10"
+        else
+            SUBSTRATE_LIMIT=""
+        fi
+        
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
-            --x_sideways --hline_median refonly \
+            --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} \
             "${PLOT_PARAMS[@]}"
             
         
