@@ -380,8 +380,9 @@ def compute_corg_comparison(job, graph1, graph2, options):
     if do_comp:
         robust_makedirs(os.path.dirname(out_path))
         try:
-            os.system("corg {} {} > {} 2> {}".format(graph1, graph2, corg_vg,
-                                                     out_path.replace(".txt", ".log")))
+            os.system("corg {} {} -e {} -k {} > {} 2> {}".format(graph1, graph2, options.edge_max,
+                                                                 options.kmer, corg_vg,
+                                                                 out_path.replace(".txt", ".log")))
             len1 = vg_length(graph1, options)
             len2 = vg_length(graph2, options)
             lenC = vg_length(corg_vg, options)
