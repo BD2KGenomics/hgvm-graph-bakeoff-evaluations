@@ -775,7 +775,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                         
                     if edit.get("to_length", 0) == edit.get("from_length", 0):
                         # Add in the length of this edit if it's actually
-                        # aligned (not an indel)
+                        # aligned (not an indel or softclip)
                         aligned_length += edit.get("to_length", 0)
                         
                     if (not edit.has_key("sequence") and 
@@ -860,7 +860,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["mapped_lengths"][length] += 1
                 
                 # And that a read with this many aligned primary bases was found
-                stats["aligned_lengths"][length] += 1
+                stats["aligned_lengths"][aligned_length] += 1
                 
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read

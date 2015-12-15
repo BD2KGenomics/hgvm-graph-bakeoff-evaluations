@@ -251,24 +251,19 @@ def collate_region(job, options, region):
                 try:
                     # See if we have access to these extra stats
                     
-                    # How many total bases of reads have primary alignments?
-                    total_bases = sum((count * float(weight)
+                    # How many total bases of reads have primary alignments (to
+                    # non-Ns)?
+                    total_aligned = sum((count * float(weight)
                         for weight, count in 
-                        stats["mapped_lengths"].iteritems()))
+                        stats["aligned_lengths"].iteritems()))
                         
                     # The aligned bases are the ones that aren't in indels or
                     # leading/trailing softclips.
-                        
-                    # Indel bases = mismatch bases - substitution bases
-                    # Aligned bases = total bases - indel bases
-                    # Substitution rate = substitution bases / aligned bases
-                    indel_bases = mismatch_bases - substitution_bases
-                    aligned_bases = total_bases - indel_bases
                     
                     # Calculate portion of aligned bases that are substitutions
                     # (even if we're "substituting" the same sequence in).
                     sample_stats["substitution_rate"] = (mismatch_bases /
-                        float(aligned_bases))
+                        float(total_aligned))
                         
                 except:
                     # Sometimes we just won't have these stats available
