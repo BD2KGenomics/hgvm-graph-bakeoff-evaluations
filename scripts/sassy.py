@@ -4,10 +4,9 @@
 Quick script to generate Azure SAS credentials, to grant people access
 to your blob storage containers.
 
-This script supports "Account SAS" (--mode account), which lets you grant access
-to services of a certain type across all containers in an account, and "Service
-SAS" (--mode service), which lets you grant access to a single blob or
-container.
+This script supports "Account SAS", which lets you grant access to services of a
+certain type across all containers in an account, and "Service SAS", which lets
+you grant access to a single blob or container.
 
 Currently, in service mode, only the blob service is supported.
 
