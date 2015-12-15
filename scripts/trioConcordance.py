@@ -35,18 +35,29 @@ def is_base(value):
 
 def score_call(child_call, dad_call, mom_call):
     """ return tuple of (concordant, discordant) calls in child
+    now compares everything including non-calls.  a call is
+    concordant if it has a match in either parent.  both calls
+    can only be concordant if they do not share a match
     """
-    score = [0, 0]
-    def check_call(value, score):
-        if is_base(value):
-            if value in dad_call or value in mom_call:
-                score[0] += 1
-            else:
-                score[1] += 1
-    check_call(child_call[0], score)
-    check_call(child_call[1], score)
-
-    return score
+    parent_call = tuple(dad_call) + tuple(mom_call)
+    c0_idx = None
+    c1_idx = None
+    concordant = 0
+    discordant = 2
+    assert len(child_call) == 2
+    assert len(dad_call) == 2
+    assert len(mom_call) == 2
+    for i in range(len(parent_call)):
+        if c0_idx is None and child_call[0] == parent_call[i]:
+            c0_idx = i
+            concordant += 1
+        elif c1_idx is None and i != c0_idx and\
+             child_call[1] == parent_call[i]:
+            c1_idx = i
+            concordant += 1
+    discordant -= concordant
+    
+    return concordant, discordant
 
 def find_line(node_id, offset, in_line, in_file):
     """ scan ahead until we find a position that's >= to given id / offset
