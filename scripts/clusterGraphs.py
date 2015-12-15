@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 """
 Do an all-to-all comparison of all input graphs.  Two distance measures are used:
-1)kmer set jaccard 
+1)kmer set (jaccard and recall)
 2)corg overlap
 Heatmaps and trees are created for each metric in the output directory.  
 Several heatmap versions are written with various combinations of scaling and ymax values
@@ -31,7 +31,7 @@ def parse_args(args):
     
     # General options
     parser.add_argument("graphs", nargs="+",
-                        help="other graph(s) to compare to baseline")
+                        help="graphs to compare to each other")
     parser.add_argument("out_dir", type=str,
                         help="directory to which results will be written.")
     parser.add_argument("--kmer", type=int, default=27,
@@ -119,10 +119,10 @@ def corg_graph_path(graph1, graph2, options):
     
     return os.path.join(options.out_dir, "corg", name1 + "_vs_" + name2 + ".vg")
 
-def mat_path(options):
+def mat_path(options, tag=""):
     """ get the path of the distance matrix
     """
-    return os.path.join(options.out_dir, "distmat.tsv")
+    return os.path.join(options.out_dir, "distmat{}.tsv".format(tag))
 
 def tree_path(options, tag=""):
     """ path for newick tree
@@ -180,7 +180,12 @@ def recall_dist_fn(graph1, graph2, options):
         intersection = float(j["intersection"])
         recall = intersection / db2_total
         return 1. - recall
-    
+
+def precision_dist_fn(graph1, graph2, options):
+    """ get 1 - precision of graph1 on graph2
+    """
+    return recall_dist_fn(graph2, graph1, options)
+
 def corg_dist_fn(graph1, graph2, options):
     """ scrape corg dist from corg output 
     """
@@ -355,7 +360,18 @@ def compute_heatmap(options, mat, names, tag):
                 logNorm=True,
                 vmax=1.0)
 
-
+def write_tsv(options, mat, names, tag):
+    """ write tsv distance matrx
+    """
+    with open(mat_path(options, tag), "w") as f:
+        # header
+        f.write("\t".join(names) + "\n")
+        for graph1 in names:
+            f.write(graph1)
+            for graph2 in names:
+                f.write("\t{}".format(mat[graph1][graph2]))
+            f.write("\n")
+        
 def cluster_comparisons(options, dist_fn, tag):
     """ write a (tsv) distance matrix
               a graphviz dot upgma tree (and png)
@@ -364,6 +380,8 @@ def cluster_comparisons(options, dist_fn, tag):
     is tacked on to the results files. 
     """
     mat, names = compute_matrix(options, dist_fn)
+
+    write_tsv(options, mat, names, tag)
 
     compute_tree(options, mat, names, tag)
 
@@ -520,6 +538,8 @@ def main(args):
     cluster_comparisons(options, jaccard_dist_fn, "_kmer")
 
     cluster_comparisons(options, recall_dist_fn, "_recall")
+
+    cluster_comparisons(options, recall_dist_fn, "_precision")
     
     if not options.no_corg:
         # hack out non-corg-able graphs

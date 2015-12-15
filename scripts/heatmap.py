@@ -264,6 +264,7 @@ def plotHeatMap(inputArray, rowNames, colNames, outFile, leftTree = False, topTr
     
     fig.savefig(pdf, format = 'pdf')
     pdf.close()
+    plt.close()
     
 
 ### Crappy sandbox for testing ###

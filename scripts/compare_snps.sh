@@ -20,7 +20,7 @@ REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
 #REGIONS=( "brca1" )
 
 # output for clusteGraphs.py that we rename
-CP_FILES=( "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "heatmap_log_vm1_kmer.pdf" "tree_kmer.dot" "tree_kmer.newick"  "tree_kmer.png" "heatmap_recall.pdf" "heatmap_log_recall.pdf" "heatmap_vm1_recall.pdf" "heatmap_log_vm1_recall.pdf" "tree_recall.dot" "tree_recall.newick"  "tree_recall.png" "heatmap_corg.pdf" "heatmap_log_corg.pdf" "heatmap_vm1_corg.pdf" "heatmap_log_vm1_corg.pdf" "tree_corg.dot" "tree_corg.newick"  "tree_corg.png" "heatmap_corg1.pdf" "heatmap_log_corg1.pdf" "heatmap_vm1_corg1.pdf" "heatmap_log_vm1_corg1.pdf" "tree_corg1.dot" "tree_corg1.newick"  "tree_corg1.png" )
+CP_FILES=( "distmat_kmer.tsv" "heatmap_kmer.pdf" "heatmap_log_kmer.pdf" "heatmap_vm1_kmer.pdf" "heatmap_log_vm1_kmer.pdf" "tree_kmer.dot" "tree_kmer.newick"  "tree_kmer.png" "distmat_recall.tsv" "heatmap_recall.pdf" "heatmap_log_recall.pdf" "heatmap_vm1_recall.pdf" "heatmap_log_vm1_recall.pdf" "tree_recall.dot" "tree_recall.newick"  "tree_recall.png" "distmat_precision.tsv" "heatmap_precision.pdf" "heatmap_log_precision.pdf" "heatmap_vm1_precision.pdf" "heatmap_log_vm1_precision.pdf" "tree_precision.dot" "tree_precision.newick"  "tree_precision.png" "distmat_corg.tsv" "heatmap_corg.pdf" "heatmap_log_corg.pdf" "heatmap_vm1_corg.pdf" "heatmap_log_vm1_corg.pdf" "tree_corg.dot" "tree_corg.newick"  "tree_corg.png" "heatmap_corg1.pdf" "heatmap_log_corg1.pdf" "heatmap_vm1_corg1.pdf" "heatmap_log_vm1_corg1.pdf" "tree_corg1.dot" "tree_corg1.newick"  "tree_corg1.png" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis
@@ -54,6 +54,14 @@ do
 		  for j in "${CP_FILES[@]}"
 		  do
 				mv ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/${k}_${i}_avg_${j}
+		  done
+
+		  # include g1kvcf
+		  rm -rf ${TOIL_DIR} ; scripts/clusterGraphs.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*${k}*.vg ${OUT_DIR}/${i} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} ${OPTS} --ignore_ns --avg_sample
+
+		  for j in "${CP_FILES[@]}"
+		  do
+				mv ${OUT_DIR}/${i}/${j} ${OUT_DIR}/${i}/${k}_${i}_avg_g1kvcf_${j}
 		  done
 
 		  #category and original together
