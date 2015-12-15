@@ -84,6 +84,10 @@ def reverse_complement(sequence):
     Follows algorithm from <http://stackoverflow.com/a/26615937>
     """
     
+    if isinstance(sequence, unicode):
+        # Encode the sequence in ASCII for easy translation
+        sequence = sequence.encode("ascii", "replace")
+    
     # Translate and then reverse
     return sequence.translate(reverse_complement_translation_table)[::-1]
     
