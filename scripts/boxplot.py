@@ -71,6 +71,9 @@ def parse_args(args):
         help="draw a horizontal line at the given Y value")
     parser.add_argument("--hline_median", default=None,
         help="draw a horizontal line at the median of the given category")
+    parser.add_argument("--best_low", dest="best_sense", default=1,
+        action="store_const", const=-1,
+        help="call out the lowest category as best, instead of the highest")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
     parser.add_argument("--save",
@@ -382,7 +385,8 @@ def main(args):
             
             percent = (portion - 1) * 100
             
-            if best_deviation is None or percent > best_deviation:
+            if best_deviation is None or (percent * options.best_sense > 
+                best_deviation * options.best_sense):
                 # We found the best thing
                 best_category = i
                 best_deviation = percent

@@ -200,7 +200,7 @@ do
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
-            --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} \
+            --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
             "${PLOT_PARAMS[@]}"
             
         
