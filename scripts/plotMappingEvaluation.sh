@@ -107,13 +107,13 @@ do
 
     # We need overall files for mapped and multimapped
     OVERALL_MAPPING_FILE="${PLOTS_DIR}/mapping.tsv"
-    OVERALL_MAPPING_PLOT="${PLOTS_DIR}/mapping.ALL.png"
+    OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.png"
     OVERALL_PERFECT_FILE="${PLOTS_DIR}/perfect.tsv"
-    OVERALL_PERFECT_PLOT="${PLOTS_DIR}/perfect.ALL.png"
+    OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.png"
     OVERALL_ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.tsv"
-    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/oneerror.ALL.png"
+    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.ALL.png"
     OVERALL_SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.tsv"
-    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/singlemapping.ALL.png"
+    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.png"
 
     for REGION in `ls ${PLOTS_DIR}/mapping.*.tsv | xargs -n 1 basename | sed 's/mapping.\(.*\).tsv/\1/'`
     do
@@ -121,22 +121,22 @@ do
         
         # We have intermediate data files for plotting from
         MAPPING_FILE="${PLOTS_DIR}/mapping.${REGION}.tsv"
-        MAPPING_PLOT="${PLOTS_DIR}/mapping.${REGION}.png"
+        MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.png"
         PERFECT_FILE="${PLOTS_DIR}/perfect.${REGION}.tsv"
-        PERFECT_PLOT="${PLOTS_DIR}/perfect.${REGION}.png"
+        PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.png"
         ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.${REGION}.tsv"
-        ONE_ERROR_PLOT="${PLOTS_DIR}/oneerror.${REGION}.png"
+        ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.${REGION}.png"
         SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
-        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/singlemapping.${REGION}.png"
+        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.png"
         ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
-        ANY_MAPPING_PLOT="${PLOTS_DIR}/anymapping.${REGION}.png"
+        ANY_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-anymapping.${REGION}.png"
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
-        RUNTIME_PLOT="${PLOTS_DIR}/runtime.${REGION}.png"
+        RUNTIME_PLOT="${PLOTS_DIR}/${MODE}-runtime.${REGION}.png"
         
         NOINDEL_FILE="${PLOTS_DIR}/noindels.${REGION}.tsv"
-        NOINDEL_PLOT="${PLOTS_DIR}/noindels.${REGION}.png"
+        NOINDEL_PLOT="${PLOTS_DIR}/${MODE}-noindels.${REGION}.png"
         SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
-        SUBSTRATE_PLOT="${PLOTS_DIR}/substrate.${REGION}.png"
+        SUBSTRATE_PLOT="${PLOTS_DIR}/${MODE}-substrate.${REGION}.png"
         
         echo "Plotting ${REGION^^}..."
         
