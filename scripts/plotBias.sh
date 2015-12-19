@@ -42,16 +42,20 @@ HR_NAMES["vglr"]="VGLR"
 for MODE in normalized_distributions distributions
 do
 
+    # Are we absolute or normalized?
+    NORMALIZED="absolute"
+
     PORTION="Portion"
-    if ["${MODE}" == "normalized_distributions"]
+    if [ "${MODE}" == "normalized_distributions" ]
     then
         RELATIVE="Difference in portion"
+        NORMALIZED="normalized"
     fi
 
     # Where are the bias files
     DISTRIBUTION_DIR="${INPUT_DIR}/bias/${MODE}"
 
-    for REGION in `ls "${DISTRIBUTION_DIR}"`
+    for REGION in `ls "${DISTRIBUTION_DIR}" | grep -v '\.png$'`
     do
         # For every region, plot every graph
         
@@ -71,7 +75,7 @@ do
             GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
             
             # Where should the plot go?
-            PLOT_PATH="${REGION_DIR}/bias_${REGION}_${GRAPH}.png"
+            PLOT_PATH="${DISTRIBUTION_DIR}/${NORMALIZED}_bias_${REGION}_${GRAPH}.png"
             
             # Get the human readable graph name
             HR_GRAPH=${HR_NAMES["${GRAPH}"]}

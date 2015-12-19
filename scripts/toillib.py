@@ -459,15 +459,31 @@ class FileIOStore(IOStore):
         # Where is the file actually?
         real_path = os.path.abspath(os.path.join(self.path_prefix, input_path))
         
+        if !os.path.exists(real_path):
+            RealTimeLogger.get().error(
+                "Can't find {} from FileIOStore in {}!".format(input_path,
+                self.path_prefix))
+            raise RuntimeError("File {} missing!".format(real_path))
+        
         # Make a symlink to grab things
         os.symlink(real_path, local_path)
             
-        # Clear the user write bit, so the user can't accidentally clobber the
-        # file in the actual store through the symlink.
-        old_mode = os.stat(real_path).st_mode
-        if old_mode & stat.S_IWUSR:
-            # Clear the bit
-            os.chmod(real_path, old_mode ^ stat.S_IWUSR)
+        # Look at the file stats
+        file_stats = os.stat(real_path)
+        
+        if (file_stats.st_uid == os.getuid() and 
+            file_stats.st_mode & stat.S_IWUSR):
+            # We own this file and can write to it. We don't want the user
+            # script messing it up through the symlink.
+            
+            try:
+                # Clear the user write bit, so the user can't accidentally
+                # clobber the file in the actual store through the symlink.
+                os.chmod(real_path, file_stats.st_mode ^ stat.S_IWUSR)
+            except OSError:
+                # If something goes wrong here (like us not having permission to
+                # change permissions), ignore it.
+                pass
         
     def list_input_directory(self, input_path, recursive=False,
         with_times=False):
@@ -480,6 +496,10 @@ class FileIOStore(IOStore):
         
         if not os.path.exists(os.path.join(self.path_prefix, input_path)):
             # Nothing to list over
+            return
+            
+        if not os.path.isdir(os.path.join(self.path_prefix, input_path)):
+            # Can't list a file, only a directory.
             return
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
