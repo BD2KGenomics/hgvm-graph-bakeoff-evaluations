@@ -56,8 +56,13 @@ def score_call(child_call, dad_call, mom_call):
             c1_idx = i
             concordant += 1
     discordant -= concordant
-    
-    return concordant, discordant
+
+    # move to calling pair of calls concordant or discordant for now
+    #return concordant, discordant
+    if concordant == 2:
+        return 1, 0
+    else:
+        return 0, 1
 
 def find_line(node_id, offset, in_line, in_file):
     """ scan ahead until we find a position that's >= to given id / offset
