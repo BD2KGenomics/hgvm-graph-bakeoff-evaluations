@@ -459,7 +459,7 @@ class FileIOStore(IOStore):
         # Where is the file actually?
         real_path = os.path.abspath(os.path.join(self.path_prefix, input_path))
         
-        if !os.path.exists(real_path):
+        if not os.path.exists(real_path):
             RealTimeLogger.get().error(
                 "Can't find {} from FileIOStore in {}!".format(input_path,
                 self.path_prefix))
