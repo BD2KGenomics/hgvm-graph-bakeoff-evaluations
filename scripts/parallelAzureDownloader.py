@@ -7,6 +7,8 @@ parallelAzureDownloader.py: download files from Azure.
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import tempfile
+import traceback
+import fnmatch
 
 from toil.job import Job
 
@@ -40,6 +42,8 @@ def parse_args(args):
         help="input IOStore to download from")
     parser.add_argument("out_store",
         help="output IOStore to put things in")
+    parser.add_argument("--pattern", default="*", 
+        help="fnmatch-style pattern for file names to copy")
     parser.add_argument("--overwrite", default=False, action="store_true",
         help="overwrite existing files")
     parser.add_argument("--batch_size", type=int, default=1000,
@@ -59,8 +63,22 @@ def group(iterable, max_count):
     
     """
     
-    # Zip a bunch of copies of the iterable.
-    return itertools.izip_longest(*([iter(iterable)] * max_count))
+    batch = []
+    
+    while True:
+        try:
+            # Grab the next thing from the underlying iterator and put it in our
+            # batch
+            batch.append(iterable.next())
+        except StopIteration:
+            # Underlying iterator ran out. Yield what we have and stop.
+            yield batch
+            break
+            
+        if len(batch) >= max_count:
+            # If we have enough items, yield a batch and start a new one
+            yield batch
+            batch = []
 
 def copy_everything(job, options):
     """
@@ -74,8 +92,17 @@ def copy_everything(job, options):
     
     batch_count = 0;
     
-    for batch in group(in_store.list_input_directory("", recursive=True), options.batch_size):
-        # For every batch, strip out the Nones
+    # List all the files.
+    blobs_iterator = in_store.list_input_directory("", recursive=True)
+    
+    # Make an iterator that filters them
+    filtered_iterator = (x for x in blobs_iterator if
+        fnmatch.fnmatchcase(x, options.pattern))
+    
+    # Batch them up
+    for batch in group(filtered_iterator, options.batch_size):
+        
+        # For every batch, strip out any Nones that got put in when grouping
         batch = [x for x in batch if x is not None]
     
         # Copy everything in that batch
@@ -85,13 +112,18 @@ def copy_everything(job, options):
         batch_count += 1
         
         if batch_count % 10 == 0:
+        
+            RealTimeLogger.get().info("Queued {} batches...".format(
+                batch_count))
             
-            RealTimeLogger.get().info("Queued {} batches...".format(batch_count))
+    RealTimeLogger.get().info("Queued {} total batches".format(batch_count))
     
 def copy_batch(job, options, batch):
     """
     Copy a batch of files from input to output.
     """
+        
+    RealTimeLogger.get().info("Copying a batch")
         
     # Set up the IO stores.
     in_store = IOStore.get(options.in_store)
@@ -106,21 +138,31 @@ def copy_batch(job, options, batch):
         Download each file
         """
         
-        if (not options.overwrite) and out_store.exists(filename):
-            # Skip existing file
-            return
+        try:
         
-        # Make a temp file
-        (handle, path) = tempfile.mkstemp(dir=job.fileStore.getLocalTempDir())
-        os.close(handle)        
-        
-        # Download
-        in_store.read_input_file(filename, path)
-        # Store
-        out_store.write_output_file(path, filename)
-        
-        # Clean up
-        os.unlink(path)
+            if (not options.overwrite) and out_store.exists(filename):
+                # Skip existing file
+                RealTimeLogger.get().info("Skipped {}".format(filename))
+                return
+            
+            # Make a temp file
+            (handle, path) = tempfile.mkstemp(dir=job.fileStore.getLocalTempDir())
+            os.close(handle)        
+            
+            # Download
+            in_store.read_input_file(filename, path)
+            # Store
+            out_store.write_output_file(path, filename)
+            
+            # Clean up
+            os.unlink(path)
+            
+        except:
+            # Put all exception text into an exception and raise that
+            raise Exception("".join(traceback.format_exception(
+                *sys.exc_info())))
+                
+        RealTimeLogger.get().info("Copied {}".format(filename))
         
     # Run all the downloads in parallel
     pool.map(download, batch)
@@ -143,7 +185,7 @@ def main(args):
     
     # Make a root job
     root_job = Job.wrapJobFn(copy_everything, options,
-        cores=1, memory="1G", disk="1G")
+        cores=1, memory="1G", disk="4G")
     
     # Run it and see how many jobs fail
     failed_jobs = Job.Runner.startToil(root_job,  options)
