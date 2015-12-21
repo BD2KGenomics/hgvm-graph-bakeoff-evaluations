@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 """
 Do an all-to-all comparison of all input graphs.  Two distance measures are used:
-1)kmer set jaccard 
+1)kmer set (jaccard and recall)
 2)corg overlap
 Heatmaps and trees are created for each metric in the output directory.  
 Several heatmap versions are written with various combinations of scaling and ymax values
@@ -31,7 +31,7 @@ def parse_args(args):
     
     # General options
     parser.add_argument("graphs", nargs="+",
-                        help="other graph(s) to compare to baseline")
+                        help="graphs to compare to each other")
     parser.add_argument("out_dir", type=str,
                         help="directory to which results will be written.")
     parser.add_argument("--kmer", type=int, default=27,
@@ -51,6 +51,15 @@ def parse_args(args):
     parser.add_argument("--only_summary", action="store_true", default=False,
                         help="Only generate summary output.  Do not do any"
                         " compute")
+    parser.add_argument("--no_corg", action="store_true", default=False,
+                        help="Dont try to do corg comparison or heatmap")
+    parser.add_argument("--no_kmer", action="store_true", default=False,
+                        help="dont try to do kmer comparison or heatmap")
+    parser.add_argument("--skip", type=str, default="",
+                        help="comma-separated list of keywords"
+                        " such that input file will ignored if it contains one")
+    parser.add_argument("--ignore_ns", action="store_true", default=False,
+                        help="Dont include ns in kmer comparison")
                             
     args = args[1:]
 
@@ -110,10 +119,10 @@ def corg_graph_path(graph1, graph2, options):
     
     return os.path.join(options.out_dir, "corg", name1 + "_vs_" + name2 + ".vg")
 
-def mat_path(options):
+def mat_path(options, tag=""):
     """ get the path of the distance matrix
     """
-    return os.path.join(options.out_dir, "distmat.tsv")
+    return os.path.join(options.out_dir, "distmat{}.tsv".format(tag))
 
 def tree_path(options, tag=""):
     """ path for newick tree
@@ -145,7 +154,7 @@ def draw_len(weight):
 def jaccard_dist_fn(graph1, graph2, options):
     """ scrape jaccard dist from vg compare output
     """
-    jpath = comp_path(graph1, graph2, options)
+    jpath = comp_path(min(graph1, graph2), max(graph1, graph2), options)    
     jaccard = -1.
     with open(jpath) as f:
         j = json.loads(f.read())
@@ -155,14 +164,54 @@ def jaccard_dist_fn(graph1, graph2, options):
             jaccard = float(j["intersection"]) / float(j["union"])
         return 1. - jaccard
 
+def recall_dist_fn(graph1, graph2, options):
+    """ assymmetric version of above to compute recall of graph1 on graph2
+    return 1 - recall to be consistent with other functions where similar is smaller. 
+    """
+    jpath = comp_path(min(graph1, graph2), max(graph1, graph2), options)
+    jaccard = -1.
+    with open(jpath) as f:
+        j = json.loads(f.read())
+        if graph1 <= graph2:
+            db2_total = float(j["db2_total"])
+        else:
+            # we go the other direction if graphs flipped
+            db2_total = float(j["db1_total"])
+        intersection = float(j["intersection"])
+        recall = intersection / db2_total
+        return 1. - recall
+
+def precision_dist_fn(graph1, graph2, options):
+    """ get 1 - precision of graph1 on graph2
+    """
+    return recall_dist_fn(graph2, graph1, options)
+
 def corg_dist_fn(graph1, graph2, options):
     """ scrape corg dist from corg output 
     """
-    cpath = corg_path(graph1, graph2, options)
+    cpath = corg_path(min(graph1, graph2), max(graph1, graph2), options)
+        
     with open(cpath) as f:
         c = f.readline().strip()
         dist = float(c)
         return dist
+
+def sample_name(graph):
+    """ Try to extract a sample name from the graph path.  Will succeed
+    only in cases like .../<SAMPLE_ID>_[linear|augmented|sample].vg
+    """
+    toks = os.path.splitext(os.path.basename(graph))[0].split("_")
+    if len(toks) == 2 and toks[1] in ["sample", "linear", "augmented"]:
+        return toks[0]
+    return ""
+
+def different_sample(graph1, graph2):
+    """ Are two graphs from different samples?  If either doesn't 
+    have a sample name, then return false
+    """
+    sample1 = sample_name(graph1)
+    sample2 = sample_name(graph2)
+    return len(sample1) > 0 and len(sample2) > 0 and sample1 != sample2
     
 def compute_matrix(options, dist_fn):
     """ make a distance matrix (dictionary), also write it to file
@@ -199,17 +248,15 @@ def compute_matrix(options, dist_fn):
     # fill the matrix, summing if two graphs map to same label 
     for graph1 in options.graphs:
         for graph2 in options.graphs:
-            if graph1 <= graph2:
+            if not options.avg_samples or not different_sample(graph1, graph2):
                 val = dist_fn(graph1, graph2, options)
                 mat[label_fn(graph1)][label_fn(graph2)] += val
-                mat[label_fn(graph2)][label_fn(graph1)] += val
                 counts[label_fn(graph1)][label_fn(graph2)] += 1.
-                counts[label_fn(graph2)][label_fn(graph1)] += 1.
 
     # divide by counts to get mean
-    for graph1 in map(label_fn, options.graphs):
-        for graph2 in map(label_fn, options.graphs):
-            mat[graph1][graph2] /= counts[graph1][graph2]
+    for graph1 in set(map(label_fn, options.graphs)):
+        for graph2 in set(map(label_fn, options.graphs)):
+            mat[graph1][graph2] /= max(1, counts[graph1][graph2])
 
     return mat, list(set(map(label_fn, options.graphs)))
 
@@ -313,7 +360,18 @@ def compute_heatmap(options, mat, names, tag):
                 logNorm=True,
                 vmax=1.0)
 
-
+def write_tsv(options, mat, names, tag):
+    """ write tsv distance matrx
+    """
+    with open(mat_path(options, tag), "w") as f:
+        # header
+        f.write("\t".join(names) + "\n")
+        for graph1 in names:
+            f.write(graph1)
+            for graph2 in names:
+                f.write("\t{}".format(mat[graph1][graph2]))
+            f.write("\n")
+        
 def cluster_comparisons(options, dist_fn, tag):
     """ write a (tsv) distance matrix
               a graphviz dot upgma tree (and png)
@@ -322,6 +380,8 @@ def cluster_comparisons(options, dist_fn, tag):
     is tacked on to the results files. 
     """
     mat, names = compute_matrix(options, dist_fn)
+
+    write_tsv(options, mat, names, tag)
 
     compute_tree(options, mat, names, tag)
 
@@ -338,10 +398,13 @@ def compute_kmer_comparison(job, graph1, graph2, options):
     assert os.path.exists(graph2_index_path)
 
     do_comp = options.overwrite or not os.path.exists(out_path)
+    ignore = ""
+    if options.ignore_ns is True:
+        ignore = "-i"
     
     if do_comp:
         robust_makedirs(os.path.dirname(out_path))        
-        os.system("vg compare {} {} -t {} > {}".format(graph1, graph2,
+        os.system("vg compare {} {} {} -t {} > {}".format(graph1, graph2, ignore,
                                                        min(options.vg_cores, 2), out_path))
 
 def compute_corg_comparison(job, graph1, graph2, options):
@@ -354,29 +417,73 @@ def compute_corg_comparison(job, graph1, graph2, options):
     if do_comp:
         robust_makedirs(os.path.dirname(out_path))
         try:
-            os.system("corg {} {} > {}".format(graph1, graph2, corg_vg))
+            os.system("corg {} {} -e {} -k {} -t {} > {} 2> {}".format(graph1, graph2, options.edge_max,
+                                                                       options.kmer, options.vg_cores, corg_vg,
+                                                                 out_path.replace(".txt", ".log")))
             len1 = vg_length(graph1, options)
             len2 = vg_length(graph2, options)
             lenC = vg_length(corg_vg, options)
-            corg_val = (2. * lenC) / float(len1 + len2) -1. 
+            corg_val = abs((2. * lenC) / float(len1 + len2) -1.) 
         except:
             pass
     with open(out_path, "w") as f:
         f.write("{}\n".format(corg_val))
     return corg_val
 
-def compute_comparisons(job, options):
+def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
+    """
+    if not options.no_kmer:
+        for graph1 in options.graphs:
+            for graph2 in options.graphs:
+                if graph1 <= graph2:
+                    if not options.avg_samples or not different_sample(graph1, graph2):
+                        out_path = comp_path(graph1, graph2, options)
+                        if options.overwrite or not os.path.exists(out_path):
+                            job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
+                                              cores=min(options.vg_cores, 2))
+
+    if not options.no_corg:
+        job.addFollowOnJobFn(compute_corg_self_comparisons, options, cores=options.vg_cores)
+
+def compute_corg_self_comparisons(job, options):
+    """ run corg compare on all graphs with themselves.  the results are used 
+    to decide if a graph is corg-able. 
+    """    
+    for graph1 in options.graphs:
+        graph2 = graph1
+        out_path = corg_path(graph1, graph2, options)
+        if options.overwrite or not os.path.exists(out_path):
+            job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
+                              cores=options.vg_cores)
+
+    job.addFollowOnJobFn(compute_corg_comparisons, options, cores=1)
+
+def can_corg(graph, options, threshold):
+    """ return whether a corg self compare returned distance 0 for this graph
+    """
+    try:
+        out_path = corg_path(graph, graph, options)
+        with open(out_path) as f:
+            val = float(f.readline().strip())
+        return val <= threshold
+    except:
+        return False
+        
+def compute_corg_comparisons(job, options):
+    """ run corg compare on all corg-ablegraphs. 
     """
     for graph1 in options.graphs:
         for graph2 in options.graphs:
             if graph1 <= graph2:
-                job.addChildJobFn(compute_kmer_comparison, graph1, graph2, options,
-                                  cores=min(options.vg_cores, 2))
-                job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
-                                  cores=1)
+                if not options.avg_samples or not different_sample(graph1, graph2):
+                    out_path = corg_path(graph1, graph2, options)
+                    if options.overwrite or not os.path.exists(out_path):
+                        job.addChildJobFn(compute_corg_comparison, graph1, graph2,
+                                          options, cores=options.vg_cores)
 
+    
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
     first all indexes are computed,
@@ -384,21 +491,33 @@ def compute_kmer_indexes(job, options):
     then summary (follow on of that)
     """
     # do all the indexes
-    for graph in options.graphs:
-        job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
+    if not options.no_kmer:
+        for graph in options.graphs:
+            job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
     # do the comparisons
-    job.addFollowOnJobFn(compute_comparisons, options, cores=1)
+    job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
     
 def main(args):
     
-    options = parse_args(args) 
+    options = parse_args(args)
     
     RealTimeLogger.start_master()
 
+    skipList = options.skip.split(",")
+    goodGraphs = []
     for graph in options.graphs:
         if os.path.splitext(graph)[1] != ".vg":
             raise RuntimeError("Input graphs expected to have .vg extension")
+        toAdd = True
+        for skip in skipList:
+            if len(skip) > 0 and skip in graph:
+                toAdd = False
+                break
+        if toAdd is True:
+            goodGraphs.append(graph)
+
+    options.graphs = sorted(goodGraphs)
 
     # Make a root job
     root_job = Job.wrapJobFn(compute_kmer_indexes, options,
@@ -417,8 +536,28 @@ def main(args):
 
     # Do the drawing outside toil to get around weird import problems
     cluster_comparisons(options, jaccard_dist_fn, "_kmer")
-    cluster_comparisons(options, corg_dist_fn, "_corg")
+
+    cluster_comparisons(options, recall_dist_fn, "_recall")
+
+    cluster_comparisons(options, recall_dist_fn, "_precision")
     
+    if not options.no_corg:
+        # hack out non-corg-able graphs
+        graphs = []
+        input_graphs = options.graphs
+        for graph in input_graphs:
+            if can_corg(graph, options, 0.0001):
+                graphs.append(graph)
+        options.graphs = graphs
+        cluster_comparisons(options, corg_dist_fn, "_corg")
+
+        graphs = []
+        for graph in input_graphs:
+            if can_corg(graph, options, 0.5):
+                graphs.append(graph)
+        options.graphs = graphs
+        cluster_comparisons(options, corg_dist_fn, "_corg1")
+
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
         

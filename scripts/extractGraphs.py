@@ -57,15 +57,15 @@ def main(args):
     assert os.path.isdir(out_dir)
 
     for in_file in options.in_files:
-        # extract into output dir
-        os.system("tar zxf {} -C {}".format(in_file, out_dir))
-        # expect graph.vg and graph.vg.index, which we rename
         dest = out_name(in_file)
         if options.overwrite or not os.path.isfile("{}/{}.vg".format(out_dir, dest)):
+            # extract into output dir
+            os.system("tar zxf {} -C {}".format(in_file, out_dir))
+            # expect graph.vg and graph.vg.index
+            # rename graph.vg
             os.system("mv {}/graph.vg {}/{}.vg".format(out_dir, out_dir, dest))
-        if options.overwrite or not os.path.isdir("{}/{}.vg.index".format(out_dir, dest)):
-            os.system("rm -rf {}/{}.vg.index".format(out_dir, dest))
-            os.system("mv {}/graph.vg.index {}/{}.vg.index".format(out_dir, out_dir, dest))
+            # delete graph.vg.index 
+            os.system("rm -rf {}/graph.vg.index".format(out_dir))
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
