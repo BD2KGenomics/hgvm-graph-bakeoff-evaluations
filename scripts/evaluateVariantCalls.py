@@ -141,6 +141,13 @@ def getRegions(metadata_url):
     # Give back our region info dict
     return ranges_by_region
     
+# We want pickleable defaultdicts
+def defaultdict_dict():
+    return collections.defaultdict(dict)
+
+def defaultdict_set():
+    return collections.defaultdict(set)
+
 def compareAllSamples(job, options):
     """
     Root job that kicks off jobs to compare all the samples.
@@ -232,8 +239,7 @@ def compareAllSamples(job, options):
     
     # Find the actual sample call files that exist. Stores sets of sample names
     # by region, then graph.
-    found_samples = collections.defaultdict(
-        lambda: collections.defaultdict(set))
+    found_samples = collections.defaultdict(defaultdict_set)
     
     # Loop through all the sample call files
     for region_dir in call_store.list_input_directory(""):
@@ -296,17 +302,14 @@ def compareAllSamples(job, options):
     
     # Make jobs to convert called samples to VCF. Stores jobs by region, graph,
     # and then sample name.
-    conversion_jobs = collections.defaultdict(
-        lambda: collections.defaultdict(dict))
+    conversion_jobs = collections.defaultdict(defaultdict_dict)
         
     # Make another dict for the promises
-    conversion_promises = collections.defaultdict(
-        lambda: collections.defaultdict(dict))
+    conversion_promises = collections.defaultdict(defaultdict_dict)
         
     # Make follow-ons that depend on the conversion and the truth download and
     # actually compare things.
-    comparison_jobs = collections.defaultdict(
-        lambda: collections.defaultdict(dict))
+    comparison_jobs = collections.defaultdict(defaultdict_dict)
         
     for graph_dir, regions_for_graph in found_samples.iteritems():
         # For each graph we actually have samples for...
@@ -531,10 +534,10 @@ def saveBasesDropped(job, options, return_value_dict, out_key):
     
     # Save the aggregated output    
     writer.close()  
-    out_store.writeOutputFile(local_filename, out_key)  
+    out_store.write_output_file(local_filename, out_key)  
     
 def compareVcfs(job, options, gatk_id, reference_id, reference_index_id,
-    reference_dict_id, truth_id, query_id, out_key):
+    reference_dict_id, truth_id, query_id_and_count, out_key):
     """
     Given the GATK JAR file ID, reference FASTA ID, ID of the index for said
     reference FASTA, ID of the "dict" file for said reference FASTA, and two VCF
@@ -569,7 +572,7 @@ def compareVcfs(job, options, gatk_id, reference_id, reference_index_id,
     
     # Download the VCFs
     truth_filename = job.fileStore.readGlobalFile(truth_id)
-    query_filename = job.fileStore.readGlobalFile(query_id)
+    query_filename = job.fileStore.readGlobalFile(query_id_and_count[0])
     
     # Now sort the VCFs
     truth_sorted = os.path.join(job.fileStore.getLocalTempDir(),
