@@ -554,7 +554,9 @@ def compareVcfs(job, options, gatk_id, reference_id, reference_index_id,
     out_store = IOStore.get(options.out_store)
     
     # Download the GTAK
-    gatk_jar = job.fileStore.readGlobalFile(gatk_id)
+    gatk_jar = os.path.join(job.fileStore.getLocalTempDir(),
+        "GenomeAnalysisTK.jar")
+    job.fileStore.readGlobalFile(gatk_id, userPath=gatk_jar)
     
     # Download the reference FASTA. We need to specify names manually because
     # GATK explodes unless you feed it a particular folder structure.
@@ -581,9 +583,9 @@ def compareVcfs(job, options, gatk_id, reference_id, reference_index_id,
         "query.sorted.vcf")
         
     # TODO: make this file come with the script on Mesos
-    subprocess.check_call(["scripts/sortvcf.pl", reference_dict,
+    subprocess.check_call(["scripts/vcfsorter.pl", reference_dict,
         truth_filename], stdout=open(truth_sorted, "w"))
-    subprocess.check_call(["scripts/sortvcf.pl", reference_dict,
+    subprocess.check_call(["scripts/vcfsorter.pl", reference_dict,
         query_filename], stdout=open(query_sorted, "w"))
         
     # Decide on an output filename for GTAK's weird table
