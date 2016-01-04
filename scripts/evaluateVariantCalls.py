@@ -596,9 +596,19 @@ def compareVcfs(job, options, gatk_id, reference_id, reference_index_id,
     RealTimeLogger.get().info("Running GATK VCF comparison for {}...".format(
         out_key))
     
-    subprocess.check_call(["java", "-Xmx8g", "-jar", gatk_jar, "-T",
-        "GenotypeConcordance", "-R", reference_fasta, "--eval", query_sorted,
-        "--comp", truth_sorted, "-o", output_filename])
+    
+    try:
+        subprocess.check_call(["java", "-Xmx8g", "-jar", gatk_jar, "-T",
+            "GenotypeConcordance", "-R", reference_fasta, "--eval", query_sorted,
+            "--comp", truth_sorted, "-o", output_filename])
+    except:
+        # If GATK fails, save out input VCFs
+        RealTimeLogger.get().error(
+            "GATK failed; saving input files for debugging")
+        out_store.write_output_file(reference_fasta, "error/ref.fa")
+        out_store.write_output_file(query_sorted, "error/query.vcf")
+        out_store.write_output_file(truth_sorted, "error/truth.vcf")
+        raise
         
     # Upload the answer
     out_store.write_output_file(output_filename, out_key)
