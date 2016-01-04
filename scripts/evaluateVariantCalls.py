@@ -76,7 +76,7 @@ def parse_args(args):
         default=["BRCA1", "BRCA2", "CENX", "MHC", "SMA", "LRC_KIR"],
         help="region names to extract variants for (upper case)")
     parser.add_argument("--samples", action="append",
-        default=["NA12877", "NA12872"],
+        default=["NA12877", "NA12878"],
         help="sample names to process")
     parser.add_argument("--overwrite", action="store_true",
         help="overwrite already downloaded samples")
@@ -487,6 +487,11 @@ def convertGlennToVcf(job, options, glenn_file_key, graph_file_id,
         
     if conversion.wait() != 0:
         # Complain if the conversion fails
+        
+        # Save the files that confused us
+        out_store.write_output_file(local_graph_file, "error/graph.vg")
+        out_store.write_output_file(local_glenn_file, "error/glenn.txt")
+        
         raise RuntimeError("VCF conversion of {} via '{}' returned {}".format(
             glenn_file_key, " ".join(command), conversion.returncode))
             
