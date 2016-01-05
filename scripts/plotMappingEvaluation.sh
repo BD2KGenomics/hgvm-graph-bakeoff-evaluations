@@ -51,9 +51,9 @@ PLOT_PARAMS=(
     Level2
     Level3
     PRG
-    Reference
+    Primary
     SGDP
-    Trivial
+    Unmerged
     VGLR
     "1KG Haplo 30"
     "1KG Haplo 50"
