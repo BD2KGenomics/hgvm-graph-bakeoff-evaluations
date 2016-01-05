@@ -34,6 +34,9 @@ PLOT_PARAMS=(
     simons
     trivial
     vglr
+    haplo1kg30
+    haplo1kg50
+    shifted1kg
     --category_labels 
     1KG
     1KG
@@ -52,6 +55,9 @@ PLOT_PARAMS=(
     SGDP
     Trivial
     VGLR
+    "1KG Haplo 30"
+    "1KG Haplo 50"
+    Control
     --colors
     "#fb9a99"
     "#fb9a99"
@@ -70,6 +76,9 @@ PLOT_PARAMS=(
     "#b2df8a"
     "#b1b300"
     "#cab2d6"
+    "#00FF00"
+    "#0000FF"
+    "#FF0000"
     --font_size 20 --dpi 90 --no_n
 )
 
