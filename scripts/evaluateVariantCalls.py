@@ -296,8 +296,8 @@ def compareAllSamples(job, options):
             
             # Do the download, returning a file store ID for a VCF file.
             truth_jobs[region_dir.lower()][sample_name] = job.addChildJobFn(
-                downloadTruth, options, sample_name, ref_name, ref_start,
-                ref_end, cores=1, memory="10G", disk="4G")
+                downloadTruth, options, sample_name, region_dir, ref_name,
+                ref_start, ref_end, cores=1, memory="10G", disk="4G")
             
     
     # Make jobs to convert called samples to VCF. Stores jobs by region, graph,
@@ -344,7 +344,7 @@ def compareAllSamples(job, options):
                     "{}_sample.txt".format(sample_name))
                 
                 # Construct the key where we want the resulting VCF to go
-                vcf_key = os.path.join("vcf", region_dir, graph_dir,
+                vcf_key = os.path.join("calls", region_dir, graph_dir,
                     "{}.vcf".format(sample_name))
                 
                 # Unpack the range parameters
@@ -392,12 +392,18 @@ def compareAllSamples(job, options):
                         
     RealTimeLogger.get().info("Done making children")
    
-def downloadTruth(job, options, sample_name, ref_name, ref_start, ref_end):
+def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
+    ref_end):
     """
     Download the specified range of the VCF for the specified sample, store it
     in the file store, and return the ID.
     
     """
+    
+    # Make the IOStores
+    graph_store = IOStore.get(options.graph_store)
+    call_store = IOStore.get(options.call_store)
+    out_store = IOStore.get(options.out_store)
     
     RealTimeLogger.get().info("Get truth for {}:{}-{} for {}".format(ref_name,
         ref_start, ref_end, sample_name))
@@ -418,6 +424,10 @@ def downloadTruth(job, options, sample_name, ref_name, ref_start, ref_end):
     
     # Upload it
     file_id = job.fileStore.writeGlobalFile(local_filename)
+    
+    # Save it in our output directory
+    out_store.write_output_file(local_filename, "truth/{}/{}.vcf".format(
+        region_name, sample_name))
     
     return file_id
    
