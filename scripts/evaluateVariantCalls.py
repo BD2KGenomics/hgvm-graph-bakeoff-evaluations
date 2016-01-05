@@ -355,7 +355,7 @@ def compareAllSamples(job, options):
                 
                 # Add a conversion job
                 conversion_jobs[region_dir][graph_dir][sample_name] = \
-                    job.addChildJobFn(convertGlennToVcf, options, 
+                    job.addChildJobFn(convertGlennToVcf, options, sample_name,
                     sample_key, graph_file_id, vcf_key, ref_name, ref_start,
                     cores=1, memory="10G", disk="4G")
                 
@@ -431,7 +431,7 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     
     return file_id
    
-def convertGlennToVcf(job, options, glenn_file_key, graph_file_id,
+def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
     vcf_file_key, ref_name, ref_start):
     """
     Given the key for a Glenn-format variant file, and the graph file ID in the
@@ -471,13 +471,17 @@ def convertGlennToVcf(job, options, glenn_file_key, graph_file_id,
     # "ref_name" is actually the name we *want* to have after conversion, not
     # the name we have now.
     
+    RealTimeLogger.get().info("Starting glenn2vcf")
+    
     # TODO: we subtract 1 off the ref start here because we agree at all with
     # the truth set VCF only if we do that. I'm not sure where exactly we're
     # fixing a coordinate mis-conversion.
     command = ["glenn2vcf", local_graph_file, local_glenn_file, "--contig",
-        ref_name, "--offset", str(ref_start - 1)]
+        ref_name, "--offset", str(ref_start - 1), "--sample", sample_name]
     conversion = subprocess.Popen(command,
         stdout=vcf_file, stderr=subprocess.PIPE)
+        
+    RealTimeLogger.get().info("Started glenn2vcf")
         
     # How many unrepresentable bases were dropped?
     bases_dropped = None
@@ -506,6 +510,8 @@ def convertGlennToVcf(job, options, glenn_file_key, graph_file_id,
             glenn_file_key, " ".join(command), conversion.returncode))
             
     vcf_file.close()
+    
+    RealTimeLogger.get().info("Upload results...")
     
     # Now upload the VCF
     out_store.write_output_file(local_vcf_file, vcf_file_key)
