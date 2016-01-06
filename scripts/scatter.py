@@ -252,13 +252,15 @@ def main(args):
         else:
             category_names = {category: label for (category, label) in 
                 itertools.izip(category_order,
-                flatten(options.category_labels))}
+                category_order)}
             
         if options.dotplot:
             # Assign X coordinates in series order
             for i, category in enumerate(category_order):
                 # Each item gets an x coordinate equal to its series number
                 series[category][0] = [i] * len(series[category][1])
+    
+        print category_names
     
         for series_name, series_color, series_symbol in \
             itertools.izip(category_order, series_colors, 

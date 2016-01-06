@@ -143,14 +143,14 @@ do
             echo "Processing ${SAMPLE_FILE} concordance..."
             
             # Add graph and concordance value for comparable sites to the concordance TSV
-            printf "${GRAPH}" >> "${CONCORDANCE_TSV}"
+            printf "${GRAPH}\t" >> "${CONCORDANCE_TSV}"
             cat ${SAMPLE_FILE} | tail -n 7 | head -n 1 | awk '{print $4}' >> "${CONCORDANCE_TSV}"
             
             echo "Processing ${SAMPLE_FILE} comparable sites..."
             
             # Add graph and portion of sites comparable value to the comparable TSV
             # Calculate sites with matching alleles / sites with any variant in the truth set
-            printf "${GRAPH}" >> "${COMPARABLE_TSV}"
+            printf "${GRAPH}\t" >> "${COMPARABLE_TSV}"
             cat ${SAMPLE_FILE} | tail -n 2 | head -n 1 | awk '{print ($1 / ($1 + $2 + $3 + $4 + $6))}' >> "${COMPARABLE_TSV}"
             
             echo "Processing ${SAMPLE_FILE} precision and recall..."
