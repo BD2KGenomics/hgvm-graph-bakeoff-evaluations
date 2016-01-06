@@ -419,8 +419,25 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
         options.truth_url.format(sample_name), "-r",
         "{}:{}-{}".format(ref_name, ref_start, ref_end)], stdout=vcf_file)
         
-    # Close the file
+    # Close the file, syncing it really hard to try and make sure data written
+    # by the child is on disk.
+    vcf_file.flush()
+    os.fsync(vcf_file.fileno())
     vcf_file.close()
+    
+    # Count the variants
+    variant_count = 0
+    for line in open(local_filename, "r"):
+        if "#" not in line:
+            variant_count += 1
+            
+    RealTimeLogger.get().info("Found {} variants for {}:{}-{} for {}".format(
+        variant_count, ref_name, ref_start, ref_end, sample_name))
+    
+    if variant_count < 10:
+        raise RuntimeError("Suspiciously few variants ({}) in {}:{}-{} "
+            "sample {}".format(variant_count, ref_name, ref_start, ref_end,
+            sample_name))
     
     # Upload it
     file_id = job.fileStore.writeGlobalFile(local_filename)
@@ -508,7 +525,8 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
         
         raise RuntimeError("VCF conversion of {} via '{}' returned {}".format(
             glenn_file_key, " ".join(command), conversion.returncode))
-            
+    
+    vcf_file.flush()        
     vcf_file.close()
     
     RealTimeLogger.get().info("Upload results...")

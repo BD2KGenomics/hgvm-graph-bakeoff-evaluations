@@ -25,6 +25,14 @@ def natural_keys(text):
     (See Toothy's implementation in the comments)
     """
     return [atoi(c) for c in re.split('(\d+)', text)]
+    
+def flatten(iterables):
+    """
+    Flatten an iterable of iterables into a single iterable. See
+    <https://docs.python.org/2/library/itertools.html>.
+    
+    """
+    return itertools.chain.from_iterable(iterables)
 
 def parse_args(args):
     """
@@ -86,6 +94,9 @@ def parse_args(args):
         help="do not sort categories from input file")
     parser.add_argument("--categories", nargs="+", default=None,
         help="categories to plot, in order")
+    parser.add_argument("--category_labels", nargs="+", action="append",
+        default=None,
+        help="labels for all categories, in order")
     parser.add_argument("--legend_overlay", default=None,
         help="display the legend overlayed on the graph at this location")
     parser.add_argument("--colors", nargs="+", default=None,
@@ -235,6 +246,14 @@ def main(args):
             # Grab the series names in the order they originally appeared.
             category_order = initial_series_order.keys()
             
+        # Assign names to categories
+        if options.category_labels is None:
+            category_names = {category: category for category in category_order}
+        else:
+            category_names = {category: label for (category, label) in 
+                itertools.izip(category_order,
+                flatten(options.category_labels))}
+            
         if options.dotplot:
             # Assign X coordinates in series order
             for i, category in enumerate(category_order):
@@ -250,7 +269,8 @@ def main(args):
                 
             # Do the actual plot
             plot_func(series[series_name][0], series[series_name][1],
-                label=series_name, color=series_color, marker=series_symbol)
+                label=category_names[series_name], color=series_color,
+                marker=series_symbol)
                 
     else:
         # Just plot the only series in the default color

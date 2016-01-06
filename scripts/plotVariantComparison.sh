@@ -103,6 +103,106 @@ do
     DROPPED_TSV="${PLOTS_ROOT_DIR}/dropped-${REGION}.tsv"
     DROPPED_PNG="${PLOTS_ROOT_DIR}/plot-dropped-${REGION}.png"
     cat "${STATS_DIR}/bases_dropped.tsv" | grep "${REGION}" | cut -f2,4 > "${DROPPED_TSV}"
-    scripts/barchart.py "${DROPPED_TSV}" --save "${DROPPED_PNG}" --title "Bases Dropped in ${REGION^^}" --x_label "Graph" --y_label "Bases" --x_sideways "${PLOT_PARAMS[@]}"
+    scripts/barchart.py "${DROPPED_TSV}" --save "${DROPPED_PNG}" --title "Bases Dropped in ${REGION^^}" --x_label "Graph" --y_label "Bases" --x_sideways --log_y "${PLOT_PARAMS[@]}"
+    
+    # Plot the concordances somehow
+    
+    # Where will the concordance data for comparable sites go?
+    CONCORDANCE_TSV="${PLOTS_ROOT_DIR}/concordance-${REGION}.tsv"
+    CONCORDANCE_PNG="${PLOTS_ROOT_DIR}/plot-concordance-${REGION}.png"
+    
+    # And the fraction of true variants that were able to be used for comparison
+    COMPARABLE_TSV="${PLOTS_ROOT_DIR}/comparable-${REGION}.tsv"
+    COMPARABLE_PNG="${PLOTS_ROOT_DIR}/plot-comparable-${REGION}.png"
+    
+    # And precision and recall for there being a variant?
+    PRECISION_RECALL_TSV="${PLOTS_ROOT_DIR}/precisionrecall-${REGION}.tsv"
+    PRECISION_RECALL_PNG="${PLOTS_ROOT_DIR}/plot-precisionrecall-${REGION}.png"
+    
+    # Clear up any old values
+    truncate -s 0 "${CONCORDANCE_TSV}"
+    truncate -s 0 "${COMPARABLE_TSV}"
+    truncate -s 0 "${PRECISION_RECALL_TSV}"
+    
+    for GRAPH in `ls ${REGION_DIR}`
+    do
+        # For every graph
+        GRAPH_DIR="${REGION_DIR}/${GRAPH}"
+    
+    
+        for SAMPLE in `ls ${GRAPH_DIR}`
+        do
+            # For each grp statistics file for that graph type
+            
+            # Grab the sample name
+            SAMPLE_NAME="${SAMPLE%.grp}"
+            
+            # Grab the file name
+            SAMPLE_FILE="${GRAPH_DIR}/${SAMPLE}"
+            
+            echo "Processing ${SAMPLE_FILE} concordance..."
+            
+            # Add graph and concordance value for comparable sites to the concordance TSV
+            printf "${GRAPH}" >> "${CONCORDANCE_TSV}"
+            cat ${SAMPLE_FILE} | tail -n 7 | head -n 1 | awk '{print $4}' >> "${CONCORDANCE_TSV}"
+            
+            echo "Processing ${SAMPLE_FILE} comparable sites..."
+            
+            # Add graph and portion of sites comparable value to the comparable TSV
+            # Calculate sites with matching alleles / sites with any variant in the truth set
+            printf "${GRAPH}" >> "${COMPARABLE_TSV}"
+            cat ${SAMPLE_FILE} | tail -n 2 | head -n 1 | awk '{print ($1 / ($1 + $2 + $3 + $4 + $6))}' >> "${COMPARABLE_TSV}"
+            
+            echo "Processing ${SAMPLE_FILE} precision and recall..."
+            
+            # Calculate precision and recall (to handle zero denominators)
+            PR_LINE=`cat ${SAMPLE_FILE} | tail -n 2 | head -n 1`
+            
+            PR_NUM=`echo "${PR_LINE}" | awk '{print ($1 + $2 + $3 + $4)}'`
+            PRECISION_DENOM=`echo "${PR_LINE}" | awk '{print ($1 + $2 + $3 + $4 + $5)}'`
+            RECALL_DENOM=`echo "${PR_LINE}" | awk '{print ($1 + $2 + $3 + $4 + $6)}'`
+            
+            if [ "${PRECISION_DENOM}" == "0" ]
+            then
+                # Limit of precision is 1
+                PRECISION=1
+            else
+                PRECISION=`echo "${PR_NUM} / ${PRECISION_DENOM}" | bc -l`
+            fi
+            
+            if [ "${RECALL_DENOM}" == "0" ]
+            then
+                # Limit of recall is 1
+                RECALL=1
+            else
+                RECALL=`echo "${PR_NUM} / ${RECALL_DENOM}" | bc -l`
+            fi
+            
+            
+            # Do precision (portion of sites with any variant in the truth when there's a variant in the sample)
+            printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> "${PRECISION_RECALL_TSV}"
+            
+            
+        done
+        
+    done
+    
+    # Now plot the plots
+    scripts/boxplot.py "${CONCORDANCE_TSV}" --save "${CONCORDANCE_PNG}" --title "Genotype Concordance in ${REGION^^}" --x_label "Graph" --y_label "$(printf "Portion of identical variants\nwith concordant genotypes")" --x_sideways "${PLOT_PARAMS[@]}"
+    
+    scripts/boxplot.py "${COMPARABLE_TSV}" --save "${COMPARABLE_PNG}" --title "Identical Variants in ${REGION^^}" --x_label "Graph" --y_label "$(printf "Portion of true variants\nwith correct alleles identified")" --x_sideways "${PLOT_PARAMS[@]}"
+    
+    scripts/scatter.py "${PRECISION_RECALL_TSV}" --save "${PRECISION_RECALL_PNG}" --title "Variant Existence Precision vs. Recall in ${REGION^^}" --x_label "Recall" --y_label "Precision" "${PLOT_PARAMS[@]}"
     
 done
+
+
+
+
+
+
+
+
+
+
+
