@@ -173,11 +173,19 @@ do
             --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
             --x_sideways --hline_median refonly \
             "${PLOT_PARAMS[@]}"
+        
+        if [ "${HR_REGION}" == "CENX" ]
+        then
+            # There's hardly any single mapping in CENX, so we need to go down all the way.
+            SINGLE_MAPPING_MIN=0
+        else
+            SINGLE_MAPPING_MIN=0.5
+        fi
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
-            --x_sideways --hline_median refonly --min_min 0.5 \
+            --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
