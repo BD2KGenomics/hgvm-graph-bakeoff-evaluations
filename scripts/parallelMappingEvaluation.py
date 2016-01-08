@@ -11,6 +11,7 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
 import string
+import urlparse
 
 import dateutil.parser
 
@@ -187,14 +188,22 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Download the binaries
         bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
         read_global_directory(job.fileStore, bin_dir_id, bin_dir)
-        # We define a string we can just tack onto the binary name and get either
-        # the system or the downloaded version.
+        # We define a string we can just tack onto the binary name and get
+        # either the system or the downloaded version.
         bin_prefix = bin_dir + "/"
     else:
         bin_prefix = ""
     
-    # Get graph basename (last URL component) from URL
-    basename = re.match(".*/(.*)/$", url).group(1)
+    # Parse the graph URL. It may be either an http(s) URL to a GA4GH server, or
+    # a direct file: URL to a vg graph.
+    url_parts = urlparse.urlparse(url, "file")
+    
+    # Either way, it has to include the graph base name, which we use to
+    # identify the graph, and which has to contain the region name (like brca2)
+    # and the graph type name (like cactus). For a server it's the last folder
+    # in the YURL, with a trailing slash, and for a file it's the name of the
+    # .vg file.
+    basename = re.match('.*/(.*)(/|\.vg)$', url_parts.path).group(1)
         
     # Get graph name (without region and its associated dash) from basename
     graph_name = basename.replace("-{}".format(region), "").replace(
@@ -257,9 +266,6 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Nothing to align to {}".format(basename))
         return
     
-    # Make the real URL with the version
-    versioned_url = url + options.server_version
-    
     # Where will the indexed graph go in the output
     index_key = "indexes/{}/{}.tar.gz".format(region, graph_name)
     
@@ -297,25 +303,43 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         
         with open(graph_filename, "w") as output_file:
         
-            RealTimeLogger.get().info("Downloading {} to {}".format(
-                versioned_url, graph_filename))
-        
             # Hold all the popen objects we need for this
             tasks = []
             
-            # Do the download
-            tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
-                versioned_url, "-u"], stdout=subprocess.PIPE))
+            if url_parts.scheme == "file":
+                # Grab the vg graph from a local file
+                
+                RealTimeLogger.get().info("Reading {} to {}".format(
+                    url, graph_filename))
+                    
+                # Just cat the file. We need a process so we can do the
+                # tasks[-1].stdout trick.
+                tasks.append(subprocess.Popen(["cat", url_parts.path],
+                    stdout=subprocess.PIPE))
             
-            # Pipe through zcat
-            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "view",
-                "-Jv", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
+            else:
+                # Assume it's on a server
+                
+                # Make the real URL with the version
+                versioned_url = url + options.server_version
+                
+                RealTimeLogger.get().info("Downloading {} to {}".format(
+                    versioned_url, graph_filename))
+                
+                # Do the download
+                tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
+                    versioned_url, "-u"], stdout=subprocess.PIPE))
+                
+                # Convert to vg
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                    "view", "-Jv", "-"], stdin=tasks[-1].stdout,
+                    stdout=subprocess.PIPE))
             
-            # And cut
+            # And cut nodes
             tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
                 "-X100", "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
                 
-            # And uniq
+            # And sort ids
             tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "ids",
                 "-s", "-"], stdin=tasks[-1].stdout, stdout=output_file))
                 
@@ -324,6 +348,14 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 if task.wait() != 0:
                     raise RuntimeError("Pipeline step returned {}".format(
                         task.returncode))
+                     
+        # TODO: we may not be able to read others' writes to the filesystem
+        # immediately, because the OS keeps them in nebulously specified
+        # possibly-process-specific buffers even after a file is closed and the
+        # process id dead. This is a probably useless magic charm against that
+        # causing problems, while I look for a way to wait on the sync of a dead
+        # process's buffers that may or may not exist.
+        time.sleep(1)
         
         # Now run the indexer.
         # TODO: support both indexing modes
