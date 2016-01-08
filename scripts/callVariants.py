@@ -23,6 +23,7 @@ all output will be in the variants/ folder.
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit, string
+from threading import Timer
 from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
 
@@ -56,14 +57,22 @@ def parse_args(args):
                         help="comma-separated list of keywords that "
                         "will cause input gam to be skipped if found in path")
     parser.add_argument("--g1kvcf_path", type=str, default="data/g1kvcf",
-                        help="path to search for 1000 genomes vcf sequences. expects "
+                        help="path to search for 1000 genomes vcf and sequences. expects "
                         "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")
+    parser.add_argument("--platinum_path", type=str, default="data/platinum",
+                        help="path to search for platinum genomes vcf. expects "
+                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")    
     parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
                         help="fasta file with entire chromosome info for all regions")
     parser.add_argument("--call_opts", type=str, default="",
                         help="options to pass to vg call.  wrap in \"\"")
     parser.add_argument("--pileup_opts", type=str, default="",
                         help="options to pass to vg pileup. wrap in \"\"")
+    parser.add_argument("--platinum_samples", type=str, default="NA12877,NA12878",
+                        help="comma-separated list of sample names that have vcf"
+                        " data in platinum folder")
+    parser.add_argument("--timeout", type=int, default=sys.maxint,
+                        help="timeout in seconds for long jobs (vg surject in this case)")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -189,45 +198,67 @@ def linear_vg_path(alignment_path, options, tag=""):
     name += "{}_linear.vg".format(tag)
     return os.path.join(out_dir(alignment_path, options), name)
 
-def g1k_vcf_path(alignment_path, options, tag=""):
+def g1k_vcf_path(alignment_path, platinum, options, tag=""):
     """ get (compressed) vcf output of sample filtering of 1000 genomes
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}_sample.vcf".format(tag)
     outdir = os.path.join(options.out_dir,
                           alignment_region_tag(alignment_path, options),
-                          "g1kvcf")
+                          "g1kvcf" if platinum is False else "platvcf")
     return os.path.join(outdir, name)
 
-def g1k_fa_path(alignment_path, options, tag=""):
+def g1k_fa_path(alignment_path, platinum, options, tag=""):
     """ get fa output of sample filtering of 1000 genomes
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}_sample.fa".format(tag)
     outdir = os.path.join(options.out_dir,
                           alignment_region_tag(alignment_path, options),
-                          "g1kvcf")
+                          "g1kvcf" if platinum is False else "platvcf")
     return os.path.join(outdir, name)
 
-def g1k_vg_path(alignment_path, options, tag=""):
+def g1k_vg_path(alignment_path, platinum, options, tag=""):
     """ get vg path constructed from g1k filtered sample
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}_sample.vg".format(tag)
     outdir = os.path.join(options.out_dir,
                           alignment_region_tag(alignment_path, options),
-                          "g1kvcf")
+                          "g1kvcf" if platinum is False else "platvcf")
     return os.path.join(outdir, name)
 
-def run(cmd, stdout = sys.stdout, stderr = sys.stderr):
-    """ run command in shell and barf if it doesn't work
-    (copied from system() in sonlib.bioio
+def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
+        timeout_dep = None, fail_hard = False):
+    """ run command in shell and barf if it doesn't work or times out 
     """
     RealTimeLogger.get().info("RUN: {}".format(cmd))
 
-    sts = subprocess.call(cmd, shell=True, bufsize=-1,
-                          stdout=stdout, stderr=stderr)
-    if sts != 0:
+    proc = subprocess.Popen(cmd, shell=True, bufsize=-1,
+                            stdout=stdout, stderr=stderr)
+    
+    def timeout_fail(proc, cmd):
+        proc.kill()
+        # we often check to see if some output file exists before running
+        # if we timeout, make sure the file exists so rerunning wont timeout again
+        # at same place (unless overwrite explicitly desired)
+        if timeout_dep is not None and os.path.exists(timeout_dep):
+            os.system("rm -rf {}; echo timeout > {}".format(timeout_dep, timeout_dep))
+        if fail_hard is True:
+            raise RuntimeError("Command: {} timed out".format(cmd))
+        else:
+            RealtimeLogger.get().warning("Command: {} timed out".format(cmd))
+
+    # based on a comment in http://stackoverflow.com/questions/1191374/using-module-subprocess-with-timeout
+    timer = Timer(timeout_sec, timeout_fail, [proc, cmd])
+    try:
+        timer.start()
+        stdout, stderr = proc.communicate()
+    finally:
+        timer.cancel()
+    sts = proc.wait()
+    
+    if sts != 0 and fail_hard is True:
         raise RuntimeError("Command: %s exited with non-zero status %i" %
                            (cmd, sts))
     return sts
@@ -265,7 +296,9 @@ def compute_linear_variants(job, input_gam, options):
                 input_gam,
                 options.vg_cores,
                 prefix_path,
-                surject_path))
+                surject_path),
+                timeout_sec=options.timeout,
+                timeout_dep=surject_path)
             run("rm -f {}".format(prefix_path))
 
         if do_vcf:
@@ -333,7 +366,7 @@ def compute_vg_variants(job, input_gam, options):
                                                                                 options.vg_cores,
                                                                                 out_augmented_vg_path))
 
-def compute_snp1000g_baseline(job, input_gam, options):
+def compute_snp1000g_baseline(job, input_gam, platinum, options):
     """ make 1000 genomes sample graph by filtering the vcf
     """
     # there is only one g1vcf graph per region per sample
@@ -341,14 +374,21 @@ def compute_snp1000g_baseline(job, input_gam, options):
     # so we hack here to only run on trivial graphs (arbitrary choice)
     if alignment_graph_tag(input_gam, options) != "trivial":
         return
-        
+
     sample = alignment_sample_tag(input_gam, options)
+
+    if platinum is True and sample not in options.platinum_samples.split(","):
+        return
+    
     region = alignment_region_tag(input_gam, options)
-    g1kvcf_path = os.path.join(options.g1kvcf_path, region.upper() + ".vcf")
+    if platinum is False:
+        g1kvcf_path = os.path.join(options.g1kvcf_path, region.upper() + ".vcf")
+    else:
+        g1kvcf_path = os.path.join(options.platinum_path, sample, region.upper() + ".vcf")
     g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
-    filter_vcf_path = g1k_vcf_path(input_gam, options)
-    filter_fa_path = g1k_fa_path(input_gam, options)
-    filter_vg_path = g1k_vg_path(input_gam, options)
+    filter_vcf_path = g1k_vcf_path(input_gam, platinum, options)
+    filter_fa_path = g1k_fa_path(input_gam, platinum, options)
+    filter_vg_path = g1k_vg_path(input_gam, platinum, options)
     fasta_path = options.chrom_fa_path
 
     do_filter = options.overwrite or not os.path.isfile(filter_vcf_path)
@@ -392,8 +432,10 @@ def call_variants(job, options):
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, options,
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, options,
                           cores=options.vg_cores)
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, options,
+                          cores=options.vg_cores)        
         if not options.vg_only:
             job.addChildJobFn(compute_linear_variants, input_gam, options,
                               cores=options.vg_cores)

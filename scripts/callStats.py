@@ -7,6 +7,7 @@ import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit, string
 from collections import defaultdict
 from operator import sub
+from toillib import robust_makedirs
 from callVariants import sample_vg_path, sample_txt_path, augmented_vg_path, alignment_region_tag, alignment_graph_tag
 from callVariants import graph_path, index_path, augmented_vg_path, linear_vg_path, linear_vcf_path, sample_vg_path
 from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag
@@ -18,16 +19,17 @@ def parse_args(args):
     # General options
     parser.add_argument("in_gams", nargs="+",
                         help="input alignment files. (must have been run through callVariants.py!)")
+    parser.add_argument("output_path", type=str,
+                        help="directory to write output to.  not to be confused with --out_dir"
+                        "which is the output directory used for callVariants.py")
     parser.add_argument("--out_dir", type=str, default="variants",
                         help="output directory (used for callVariants.py)")
     parser.add_argument("--graph_dir", type=str, default="graphs",
                         help="name of input graphs directory")
     parser.add_argument("--avg_samples", action="store_true", default=False,
                         help="Average samples into mean value")
-    parser.add_argument("--dir_tag", action="store_true", default=False,
-                         help="Use directory of graph as name tag")
-    parser.add_argument("--out_sub", type=str, default="",
-                        help="make a subfolder with this name for output")
+    parser.add_argument("--tag", type=str, default = "",
+                        help="add tag to all output files")
                             
     args = args[1:]
         
@@ -36,31 +38,22 @@ def parse_args(args):
 def compare_out_path(options):
     """ get root output dir for comparison output
     """
-    tag = ""
-    if len(options.out_sub) > 0:
-        tag += os.path.join(tag, options.out_sub)
-    return os.path.join(options.out_dir, tag)
-    
-def count_tsv_path(options):
-    tag = ""
-    if len(options.out_sub) > 0:
-        tag = options.out_sub + "_"    
+    return options.output_path
+
+def tsv_out_path(options, name):
+    """ path for output tsv"""
+    tag = "_{}".format(options.tag) if len(options.tag) > 0 else ""
     return os.path.join(compare_out_path(options),
-                        "{}call_count.tsv".format(tag))
+                        "{}{}.tsv".format(name, tag))
+        
+def count_tsv_path(options):
+    return tsv_out_path(options, "call_count")
 
 def size_tsv_path(options):
-    tag = ""
-    if len(options.out_sub) > 0:
-        tag = options.out_sub + "_"    
-    return os.path.join(compare_out_path(options),
-                        "{}call_size.tsv".format(tag))
+    return tsv_out_path(options, "call_size")
 
 def detailed_call_coutns_tsv_path(options):
-    tag = ""
-    if len(options.out_sub) > 0:
-        tag = options.out_sub + "_"    
-    return os.path.join(compare_out_path(options),
-                        "{}call_details.tsv".format(tag))
+    return tsv_out_path(options, "call_details")
                
 def count_vg_paths(vg, options):
     """ assuming output of vg call here, where one path written per snp 
@@ -157,8 +150,8 @@ def snp_count_table(options):
         vg_sample = sample_vg_path(gam, options)        
         vg_augmented = augmented_vg_path(gam, options)
         vcf_snps = count_vcf_snps(linear_vcf, options)
-        # ugly hack to get g1kvcf sample from vcf
-        if vg_sample.split("/")[-2] == "g1kvcf":
+        # ugly hack to get g1kvcf / platvcf sample from vcf
+        if vg_sample.split("/")[-2] == "g1kvcf" or vg_sample.split("/")[-2] == "platvcf":
             sample_snps = count_vcf_snps(vg_sample.replace(".vg", ".vcf.gz"), options)
         else:
             sample_snps = count_vg_paths(vg_sample, options)
@@ -324,14 +317,18 @@ def main(args):
     
     options = parse_args(args)
 
+    robust_makedirs(options.output_path)
+
     # hack in some fake alignments so that the g1kvcf sample graphs
-    # get added to the tables
+    # get added to the tables (same for platvcf)
     added = []
     orig_gams = options.in_gams
     for gam in options.in_gams:
         if os.path.dirname(gam).split("/")[-1] == "trivial":
             added.append(gam.replace("trivial/" + os.path.basename(gam),
                                      "g1kvcf/" + os.path.basename(gam)))
+            added.append(gam.replace("trivial/" + os.path.basename(gam),
+                                     "platvcf/" + os.path.basename(gam)))            
     options.in_gams = options.in_gams + added
         
                         

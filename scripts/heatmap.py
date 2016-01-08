@@ -1,6 +1,10 @@
+#!/usr/bin/env python
+"""
+Create a heatmap in PDF format from a tsv file.  Expects labels in 0th columns and rows. Rows or columns containing None values are omitted.
+"""
+
 # note to self: copied over from https://github.com/glennhickey/teHmm/blob/master/parameterAnalysis.py
 
-#!/usr/bin/env python
 
 #Copyright (C) 2014 by Glenn Hickey
 #
@@ -32,6 +36,28 @@ import matplotlib.cm as cm
 from matplotlib.colors import LogNorm, NoNorm, Normalize
 import scipy.cluster.hierarchy as sch
 
+from computeDistances import read_tsv
+
+def parse_args(args):
+    parser = argparse.ArgumentParser(description=__doc__, 
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+        
+    # General options
+    parser.add_argument("dist_mat", type=str,
+                        help="distance matrix tsv file")
+    parser.add_argument("out_file", type=str,
+                        help="path to output pdf for heatmap")
+    parser.add_argument("--log_scale", action="store_true", default=False,
+                        help="use log scaling (linear by default)")
+    parser.add_argument("--vmax", type=float, default=None,
+                        help="maximum value of colorbar (automatic by default)")
+    parser.add_argument("--skip", type=str, default="",
+                        help="comma-separated list of keywords"
+                        " such that input row or column will ignored if its header contains one")
+                            
+    args = args[1:]
+
+    return parser.parse_args(args)
 
 
 def hierarchicalCluster(points, normalizeDistances=False, linkageMethod='average'):
@@ -265,23 +291,50 @@ def plotHeatMap(inputArray, rowNames, colNames, outFile, leftTree = False, topTr
     fig.savefig(pdf, format = 'pdf')
     pdf.close()
     plt.close()
-    
 
-### Crappy sandbox for testing ###
+def remove_skips(mat, col_names, row_names, skips):
+    """ remove rows and columns if their name contains something in list
+    """
+    dead_rows = []
+    dead_cols = []
+    # scan rows and columns, remembering indexes to delete
+    for skip in skips:
+        if len(skip) > 0:
+            for i in range(len(row_names)):
+                if skip in row_names[i]:
+                    dead_rows.append(i)
+            for j in range(len(col_names)):
+                if skip in col_names[j]:
+                    dead_cols.append(j)
 
-def main(argv=None):
-    if argv is None:
-        argv = sys.argv
+    # go ahead and delete the indexes, remembering to decrement by offset
+    # in dead list to account for shrinking..
+    for x in range(len(dead_rows)):
+        del mat[dead_rows[x] - x]
+        del row_names[dead_rows[x] - x]
 
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    for x in range(len(dead_cols)):
+        for i in range(len(row_names)):
+            del mat[dead_cols[x] - x]
+        del col_names[dead_rows[x] - x]
+        
+    return mat, col_names, row_names
 
-    args = parser.parse_args()
+def main(args):
 
-    linkageMat = hierarchicalCluster([(0,1), (1,2), (10,10), (10, 15)],
-                                     normalizeDistances = True)
-    plotHierarchicalClusters([linkageMat, linkageMat, linkageMat], ["yon", "Title", "Blin"], ["A", "B", "C", "D"],
-                             "blin.pdf")
+    options = parse_args(args)
+    assert os.path.splitext(options.out_file)[1] == ".pdf"
+    options.skip = options.skip.split(",")
+
+    mat, col_names, row_names, row_label = read_tsv(options.dist_mat)
+    mat, col_names, row_names = remove_skips(mat, col_names, row_names, options.skip)
+
+    plotHeatMap(mat, row_names, col_names,
+                options.out_file,
+                leftTree=True,
+                topTree=True,
+                logNorm=options.log_scale,
+                vmax=options.vmax)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))
