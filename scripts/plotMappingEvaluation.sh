@@ -179,7 +179,7 @@ do
             # There's hardly any single mapping in CENX, so we need to go down all the way.
             SINGLE_MAPPING_MIN=0
         else
-            SINGLE_MAPPING_MIN=0.5
+            SINGLE_MAPPING_MIN=0.8
         fi
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
