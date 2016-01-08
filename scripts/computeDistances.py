@@ -336,7 +336,11 @@ def compute_corg_comparison(job, graph1, graph2, options):
         len1 = vg_length(graph1, options)
         len2 = vg_length(graph2, options)
         lenC = vg_length(corg_vg, options)
-        corg_val = abs((2. * lenC) / float(len1 + len2) -1.) 
+        # corg screwing up will leave an empty vg which gives length 0
+        if lenC == 0:
+            corg_val = "error: corg graph not computed. see .log"
+        else:
+            corg_val = abs((2. * lenC) / float(len1 + len2) -1.) 
 
         with open(out_path, "w") as f:
             f.write("{}\n".format(corg_val))
