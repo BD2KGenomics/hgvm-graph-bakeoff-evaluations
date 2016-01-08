@@ -26,12 +26,15 @@ def parse_args(args):
     # General options
     parser.add_argument("in_gams", nargs="+",
                         help="input alignment files. (must have been run through callVariants.py!)")
+    parser.add_argument("output_path", type=str,
+                        help="directory to write output to.  not to be confused with --out_dir"
+                        "which is the output directory used for callVariants.py")    
     parser.add_argument("--out_dir", type=str, default="variants",
                         help="output directory given to callVariants.py")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="Only compute trios if output not found on disk")
-    parser.add_argument("--out_sub", type=str, default=None,
-                        help="Put prefix on output table")
+    parser.add_argument("--tag", type=str, default=None,
+                        help="Tag to add to ouput files")
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands")
 
@@ -47,10 +50,10 @@ def concordance_path(gam, options):
 
 def trio_tsv_path(options):
     """ output table path """
-    name = "trio_concordance.tsv"
-    if options.out_sub is not None:
-        name = options.out_sub + "/" + options.out_sub + "_" + name
-    return os.path.join(options.out_dir, name)
+    name = "trio_concordance"
+    if options.tag is not None:
+        name = name + "_" + options.tag
+    return os.path.join(options.output_path, name + ".tsv")
 
 def get_relative(gam, offset, options):
     """ search gam list for relative by offset"""
@@ -126,6 +129,8 @@ def concordance_tsv(options):
 def main(args):
     
     options = parse_args(args)
+
+    robust_makedirs(options.output_path)
     
     RealTimeLogger.start_master()
 

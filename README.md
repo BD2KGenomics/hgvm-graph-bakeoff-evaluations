@@ -122,6 +122,7 @@ The variant calling scripts require the original FASTA inputs.  Uncompress them 
 Fasta and vcf data is also required to make some baseline sample graphs for the 1000 Genomes data.  This is prepared with the following commands:
 
 	  tar xzf data/g1kvcf.tar.gz -C data
+	  tar xzf data/platinum.tar.gz -C data
 	  scripts/downloadChromFa.py
 
 To run both the vg and samtools variant calling pipeline on all samples, use the following script
@@ -135,6 +136,7 @@ This will create a structure in `./high_coverage_variants` similar to that in `a
 To generate basic statistics of the calls, as well as do pairwise kmer comparisons of all output graphs, run
 
      ./scripts/compare_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants ./variants_analysis
+	  ./scripts/draw_heatmaps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants ./variants_analysis
 
 The output of this script is organized by region.  In each region directory, will be a variety of heatmaps comparing various output gaphs with each other, as well as some tables in `.tsv` format with some basic counting and size statistics. 
 
