@@ -13,6 +13,11 @@ import functools
 import random
 import time
 import traceback
+import stat
+
+import dateutil.parser
+import dateutil.tz
+import datetime
 
 # We need some stuff in order to have Azure
 try:
@@ -299,7 +304,8 @@ class IOStore(object):
         
         raise NotImplementedError()
         
-    def list_input_directory(self, input_path, recursive=False):
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Yields each of the subdirectories and files in the given input path.
         
@@ -307,6 +313,10 @@ class IOStore(object):
         directory. If recursive is true, yields all files contained within the
         current directory, recursively, but does not yield folders.
         
+        If with_times is True, yields (name, modification time) pairs instead of
+        just names, with modification times represented as datetime objects in
+        the GMT timezone. Modification times may be None on objects that do not
+        support them.
         
         Gives relative file/directory names.
         
@@ -332,6 +342,15 @@ class IOStore(object):
         """
         Returns true if the given input or output file exists in the store
         already.
+        
+        """
+        
+        raise NotImplementedError()
+        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given gile if it exists, or None
+        otherwise.
         
         """
         
@@ -437,17 +456,51 @@ class FileIOStore(IOStore):
         # Make sure the path is clear for the symlink.
         assert(not os.path.exists(local_path))
         
-        # Make a symlink to grab things
-        os.symlink(os.path.abspath(os.path.join(self.path_prefix, input_path)),
-            local_path)
+        # Where is the file actually?
+        real_path = os.path.abspath(os.path.join(self.path_prefix, input_path))
         
-    def list_input_directory(self, input_path, recursive=False):
+        if not os.path.exists(real_path):
+            RealTimeLogger.get().error(
+                "Can't find {} from FileIOStore in {}!".format(input_path,
+                self.path_prefix))
+            raise RuntimeError("File {} missing!".format(real_path))
+        
+        # Make a symlink to grab things
+        os.symlink(real_path, local_path)
+            
+        # Look at the file stats
+        file_stats = os.stat(real_path)
+        
+        if (file_stats.st_uid == os.getuid() and 
+            file_stats.st_mode & stat.S_IWUSR):
+            # We own this file and can write to it. We don't want the user
+            # script messing it up through the symlink.
+            
+            try:
+                # Clear the user write bit, so the user can't accidentally
+                # clobber the file in the actual store through the symlink.
+                os.chmod(real_path, file_stats.st_mode ^ stat.S_IWUSR)
+            except OSError:
+                # If something goes wrong here (like us not having permission to
+                # change permissions), ignore it.
+                pass
+        
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Loop over directories on the filesystem.
         """
         
         RealTimeLogger.get().info("Enumerating {} from "
             "FileIOStore in {}".format(input_path, self.path_prefix))
+        
+        if not os.path.exists(os.path.join(self.path_prefix, input_path)):
+            # Nothing to list over
+            return
+            
+        if not os.path.isdir(os.path.join(self.path_prefix, input_path)):
+            # Can't list a file, only a directory.
+            return
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
             if(recursive and os.path.isdir(os.path.join(self.path_prefix,
@@ -459,10 +512,36 @@ class FileIOStore(IOStore):
                     
                     # Make relative paths include this directory name and yield
                     # them
-                    yield os.path.join(item, subitem)
+                    name_to_yield = os.path.join(item, subitem)
+                    
+                    if with_times:
+                        # What is the mtime in seconds since epoch?
+                        mtime_epoch_seconds = os.path.getmtime(os.path.join(
+                            input_path, item, subitem))
+                        # Convert it to datetime
+                        mtime_datetime = datetime.datetime.utcfromtimestamp(
+                            mtime_epoch_seconds).replace(
+                            tzinfo=dateutil.tz.tzutc())
+                            
+                        yield name_to_yield, mtime_datetime
+                    else:
+                        yield name_to_yield
             else:
                 # This isn't a directory or we aren't being recursive
-                yield item
+                # Just report this individual item.
+                
+                if with_times:
+                    # What is the mtime in seconds since epoch?
+                    mtime_epoch_seconds = os.path.getmtime(os.path.join(
+                        input_path, item))
+                    # Convert it to datetime
+                    mtime_datetime = datetime.datetime.utcfromtimestamp(
+                        mtime_epoch_seconds).replace(
+                        tzinfo=dateutil.tz.tzutc())
+                        
+                    yield item, mtime_datetime
+                else:
+                    yield item
     
     def write_output_file(self, local_path, output_path):
         """
@@ -504,6 +583,26 @@ class FileIOStore(IOStore):
         """
         
         return os.path.exists(os.path.join(self.path_prefix, path))
+        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given file if it exists, or None
+        otherwise.
+        
+        """
+        
+        if not self.exists(path):
+            return None
+            
+        # What is the mtime in seconds since epoch?
+        mtime_epoch_seconds = os.path.getmtime(os.path.join(self.path_prefix,
+            path))
+        # Convert it to datetime
+        mtime_datetime = datetime.datetime.utcfromtimestamp(
+            mtime_epoch_seconds).replace(tzinfo=dateutil.tz.tzutc())
+            
+        # Return the modification time, timezoned, in UTC
+        return mtime_datetime
 
 class BackoffError(RuntimeError):
     """
@@ -665,13 +764,17 @@ class AzureIOStore(IOStore):
         self.connection.get_blob_to_path(self.container_name,
             self.name_prefix + input_path, local_path)
             
-    def list_input_directory(self, input_path, recursive=False):
+    def list_input_directory(self, input_path, recursive=False,
+        with_times=False):
         """
         Loop over fake /-delimited directories on Azure. The prefix may or may
         not not have a trailing slash; if not, one will be added automatically.
         
         Returns the names of files and fake directories in the given input fake
         directory, non-recursively.
+        
+        If with_times is specified, will yield (name, time) pairs including
+        modification times as datetime objects. Times on directories are None.
         
         """
         
@@ -719,10 +822,20 @@ class AzureIOStore(IOStore):
                         # It's a new subdirectory. Yield and remember it
                         subdirectories.add(subdirectory)
                         
-                        yield subdirectory
+                        if with_times:
+                            yield subdirectory, None
+                        else:
+                            yield subdirectory
                 else:
-                    # We found an actual file  
-                    yield relative_path
+                    # We found an actual file 
+                    if with_times:
+                        mtime = dateutil.parser.parse(
+                            blob.properties.last_modified).replace(
+                            tzinfo=dateutil.tz.tzutc())
+                        yield relative_path, mtime
+                            
+                    else:
+                        yield relative_path
                 
             # Save the marker
             marker = result.next_marker
@@ -784,6 +897,42 @@ class AzureIOStore(IOStore):
                 break 
         
         return False
+        
+        
+    @backoff        
+    def get_mtime(self, path):
+        """
+        Returns the modification time of the given blob if it exists, or None
+        otherwise.
+        
+        """
+        
+        self.__connect()
+        
+        marker = None
+        
+        while True:
+        
+            # Get the results from Azure.
+            result = self.connection.list_blobs(self.container_name, 
+                prefix=self.name_prefix + path, marker=marker)
+                
+            for blob in result:
+                # Look at each blob
+                
+                if blob.name == self.name_prefix + path:
+                    # Found it
+                    return dateutil.parser.parse(
+                        blob.properties.last_modified).replace(
+                        tzinfo=dateutil.tz.tzutc())
+                
+            # Save the marker
+            marker = result.next_marker
+                
+            if not marker:
+                break 
+        
+        return None
 
 
 
