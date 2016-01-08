@@ -53,11 +53,11 @@ do
 
 		  # all vs all sample graphs
 		  rm ${OUT_DIR}/${i}/comp_sample_${j}_distmat_${i}.tsv
-		  #rm -rf ${TOIL_DIR} ; scripts/computeDistances.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*sample*.vg ${OUT_DIR}/${i}/${COMPDIR} ${OUT_DIR}/${i}/comp_sample_${j}_distmat_${i}.tsv ${j} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} --dir_tag --avg_sample
+		  rm -rf ${TOIL_DIR} ; scripts/computeDistances.py ./${TOIL_DIR} ${VARIANTS}/${i}/*/*sample*.vg ${OUT_DIR}/${i}/${COMPDIR} ${OUT_DIR}/${i}/comp_sample_${j}_distmat_${i}.tsv ${j} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} --dir_tag --avg_sample
 
 		  # all vs all original and sample graphs
 		  rm ${OUT_DIR}/${i}/comp_sample_and_orig_${j}_distmat_${i}.tsv
-		  #rm -rf ${TOIL_DIR} ; scripts/computeDistances.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*sample*.vg ${OUT_DIR}/${i}/${COMPDIR} ${OUT_DIR}/${i}/comp_sample_and_orig_${j}_distmat_${i}.tsv ${j} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} --dir_tag --avg_sample 
+		  rm -rf ${TOIL_DIR} ; scripts/computeDistances.py ./${TOIL_DIR} ${GRAPHS}/*${i}*.vg ${VARIANTS}/${i}/*/*sample*.vg ${OUT_DIR}/${i}/${COMPDIR} ${OUT_DIR}/${i}/comp_sample_and_orig_${j}_distmat_${i}.tsv ${j} ${TAG_OPTS} ${TOIL_OPTS} ${INDEX_OPTS} --dir_tag --avg_sample 
 	 done
 	 
 	 # tables
