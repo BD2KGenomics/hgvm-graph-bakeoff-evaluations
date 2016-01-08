@@ -147,6 +147,9 @@ do
         SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
         SUBSTRATE_PLOT="${PLOTS_DIR}/${MODE}-substrate.${REGION}.png"
         
+        PERFECT_UNIQUE_FILE="${PLOTS_DIR}/perfect_vs_unique.${REGION}.tsv"
+        PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.${REGION}.png"
+        
         echo "Plotting ${REGION^^}..."
         
         # Remove underscores from region names to make them human readable
@@ -218,6 +221,14 @@ do
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
+            "${PLOT_PARAMS[@]}"
+
+        # Plot perfect vs unique mapping
+        scripts/scatter.py "${PERFECT_UNIQUE_FILE}" \
+            --save "${PERFECT_UNIQUE_PLOT}" \
+            --title "Perfect vs. Unique Mapping in ${REGION^^}" \
+            --x_label "Portion Uniquely Mapped" \
+            --y_label "Portion Perfectly Mapped" \
             "${PLOT_PARAMS[@]}"
             
         

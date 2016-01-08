@@ -350,7 +350,7 @@ def collate_region(job, options, region):
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
                 region)
         }
-            
+        
         # Make a local temp file for each (dict from stat name to file object
         # with a .name).
         stats_file_temps = {name: tempfile.NamedTemporaryFile(
@@ -358,24 +358,53 @@ def collate_region(job, options, region):
             for name in stat_file_keys.iterkeys()}
             
         for graph, stats_by_sample in mode_stats_cache.iteritems():
-                # For each graph and all the stats for that graph
-                for sample, stats_by_name in stats_by_sample.iteritems():
-                    # For each sample and all the stats for that sample
-                    for stat_name, stat_value in stats_by_name.iteritems():
-                        # For each stat
-                        
-                        # Write graph and value to the file for the stat, for
-                        # plotting
-                        stats_file_temps[stat_name].write("{}\t{}\n".format(
-                            graph, stat_value))
+            # For each graph and all the stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name, stat_value in stats_by_name.iteritems():
+                    # For each stat
+                    
+                    # Write graph and value to the file for the stat, for
+                    # plotting
+                    stats_file_temps[stat_name].write("{}\t{}\n".format(
+                        graph, stat_value))
         
         for stat_name, stat_file in stats_file_temps.iteritems():
             # Flush and close the temp file
+            stat_file.flush()
+            os.fsync(stat_file.fileno())
             stat_file.close()
             
             # Upload the file
             out_store.write_output_file(stat_file.name,
                 stat_file_keys[stat_name])
+                
+        # Special case: perfect vs unique mapping
+        # perfect = precision = y, unique ~= recall = x
+        perfect_vs_unique = tempfile.NamedTemporaryFile(
+            dir=job.fileStore.getLocalTempDir(), delete=False)
+        
+        for graph, stats_by_sample in mode_stats_cache.iteritems():
+            # For each graph and all the stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                
+                # Get the prefect and unique stats
+                perfect = stats_by_name["portion_perfect"]
+                unique = stats_by_name["portion_single_mapped"]
+                
+                # Write them in x, y order
+                perfect_vs_unique.write("{}\t{}\t{}\n".format(graph, unique,
+                    perfect))
+        
+        perfect_vs_unique.flush()            
+        os.fsync(perfect_vs_unique.fileno())
+        perfect_vs_unique.close()
+           
+        # Save the perfect vs unique data
+        # TODO: mean across samples so we don't plot several thousand points???             
+        out_store.write_output_file(perfect_vs_unique.name,
+                "plots/{}/perfect_vs_unique.{}.tsv".format(mode, region))
         
     # Return the cached stats. TODO: break out actual collate and upload into
     # its own function that will also do normalization.

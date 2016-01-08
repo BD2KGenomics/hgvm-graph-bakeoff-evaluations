@@ -151,6 +151,7 @@ def main(args):
         # Unpack the line, splitting on tabs only if requested
         parts = line.split("\t" if options.tsv else None)
         
+        
         if options.dotplot:
             # We parse a two-column name/sample format
             series_name = parts[0]
@@ -170,6 +171,7 @@ def main(args):
             series_name = ""
             x_value = float(parts[0])
             y_value = float(parts[1])
+                
             
         
         # Put each coordinate component in the appropriate list.
