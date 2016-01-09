@@ -9,6 +9,7 @@ import doctest, re, json, collections, time, timeit
 import tempfile
 import copy
 
+import numpy
 import tsv
 
 from toil.job import Job
@@ -386,6 +387,11 @@ def collate_region(job, options, region):
         
         for graph, stats_by_sample in mode_stats_cache.iteritems():
             # For each graph and all the stats for that graph
+            
+            # We're going to make lists and compute medians
+            all_perfect = []
+            all_unique = []
+            
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
                 
@@ -393,9 +399,13 @@ def collate_region(job, options, region):
                 perfect = stats_by_name["portion_perfect"]
                 unique = stats_by_name["portion_single_mapped"]
                 
-                # Write them in x, y order
-                perfect_vs_unique.write("{}\t{}\t{}\n".format(graph, unique,
-                    perfect))
+                all_perfect.append(perfect)
+                all_unique.append(unique)
+                
+            # Write them in x, y order
+            perfect_vs_unique.write("{}\t{}\t{}\n".format(graph,
+                numpy.median(all_unique),
+                numpy.median(all_perfect)))
         
         perfect_vs_unique.flush()            
         os.fsync(perfect_vs_unique.fileno())
