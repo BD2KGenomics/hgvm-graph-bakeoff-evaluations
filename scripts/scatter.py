@@ -26,14 +26,6 @@ def natural_keys(text):
     """
     return [atoi(c) for c in re.split('(\d+)', text)]
     
-def flatten(iterables):
-    """
-    Flatten an iterable of iterables into a single iterable. See
-    <https://docs.python.org/2/library/itertools.html>.
-    
-    """
-    return itertools.chain.from_iterable(iterables)
-
 def parse_args(args):
     """
     Takes in the command-line arguments list (args), and returns a nice argparse
@@ -94,7 +86,7 @@ def parse_args(args):
         help="do not sort categories from input file")
     parser.add_argument("--categories", nargs="+", default=None,
         help="categories to plot, in order")
-    parser.add_argument("--category_labels", nargs="+", action="append",
+    parser.add_argument("--category_labels", nargs="+",
         default=None,
         help="labels for all categories, in order")
     parser.add_argument("--legend_overlay", default=None,
@@ -185,6 +177,9 @@ def main(args):
     if use_series:
         
         if options.categories is not None:
+            # Don't sort, use the input order
+            options.sort = False
+        
             # Fix up the options so we don't ask for categories with no points.
             for i in xrange(len(options.categories)):
                 if series.has_key(options.categories[i]):
@@ -199,6 +194,9 @@ def main(args):
                 
                 if options.markers is not None:
                     options.markers[i] = None
+                    
+                if options.category_labels is not None:
+                    options.category_labels[i] = None
              
             # Now filter out everrything we noned out       
             options.categories = [x for x in options.categories
@@ -210,6 +208,10 @@ def main(args):
                 
             if options.markers is not None:
                 options.markers = [x for x in options.markers
+                if x is not None]
+                
+            if options.category_labels is not None:
+                options.category_labels = [x for x in options.category_labels
                 if x is not None]
         
         if options.colors is not None:
@@ -253,8 +255,7 @@ def main(args):
             category_names = {category: category for category in category_order}
         else:
             category_names = {category: label for (category, label) in 
-                itertools.izip(category_order,
-                category_order)}
+                itertools.izip(category_order, options.category_labels)}
             
         if options.dotplot:
             # Assign X coordinates in series order
@@ -343,7 +344,7 @@ def main(args):
                 bounds.height])
                 
             # Make the legend
-            pyplot.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            pyplot.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
             
         else:
             # We want the legend on top of the plot at the user-specified

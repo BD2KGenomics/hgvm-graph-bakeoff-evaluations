@@ -2,7 +2,7 @@
 # Run after collateSTatistics.py.
 # Makes plots comparing the graphs in each region.
 
-set -e
+set -ex
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -226,9 +226,11 @@ do
         # Plot perfect vs unique mapping
         scripts/scatter.py "${PERFECT_UNIQUE_FILE}" \
             --save "${PERFECT_UNIQUE_PLOT}" \
-            --title "Perfect vs. Unique Mapping in ${REGION^^}" \
+            --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
+            --width 12 --height 9 \
+            --min_x 0 --min_y 0 \
             "${PLOT_PARAMS[@]}"
             
         
