@@ -365,10 +365,11 @@ def main(args):
         
         # Find the color
         line_color = 'r'
-        for i in xrange(len(category_colors)):
-            if category_order[i] == options.hline_median:
-                line_color = category_colors[i]
-                break
+        if category_colors is not None:
+            for i in xrange(len(category_colors)):
+                if category_order[i] == options.hline_median:
+                    line_color = category_colors[i]
+                    break
         
         pyplot.axhline(y=category_median, color=line_color, linestyle='--')
         
