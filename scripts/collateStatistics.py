@@ -186,6 +186,13 @@ def collate_region(job, options, region):
                 # How many reads have no indels?
                 total_no_indels = sum((stats["primary_indels"].get(str(x), 0)
                     for x in xrange(1)))
+                
+                # How many have any?    
+                total_with_indels = sum((count for indels, count in 
+                    stats["primary_indels"].iteritems() if count != "0"))
+                    
+                # How many have one? We'll guess these aren't terrible mappings.
+                total_one_indel = stats["primary_indels"].get("1", 0)
                     
                 # How many total substitution bases are there?
                 substitution_bases = sum((count * float(weight)
@@ -196,6 +203,11 @@ def collate_region(job, options, region):
                 mismatch_bases = sum((count * float(weight)
                     for weight, count in 
                     stats["primary_mismatches"].iteritems()))
+                    
+                # How many total indels are there?
+                indel_instances = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_indels"].iteritems()))
                     
                 # How many reads are mapped with no substitutions?
                 total_no_substitutions = sum(
@@ -243,6 +255,14 @@ def collate_region(job, options, region):
                 # What was the portion with no indels?
                 sample_stats["portion_no_indels"] = (total_no_indels / 
                     float(total_reads))
+                # And the potion mapped with indels (as opposed to unmapped)
+                # TODO: what part of this is horrible mappings with tiny scores
+                # overall?
+                sample_stats["portion_with_indels"] = (total_with_indels / 
+                    float(total_reads))
+                # How many have one indel exactly?
+                sample_stats["portion_one_indel"] = (total_one_indel / 
+                    float(total_reads))    
                 # And the portion with no substitutions
                 sample_stats["portion_no_substitutions"] = \
                     (total_no_substitutions / float(total_reads))
@@ -264,6 +284,10 @@ def collate_region(job, options, region):
                     # Calculate portion of aligned bases that are substitutions
                     # (even if we're "substituting" the same sequence in).
                     sample_stats["substitution_rate"] = (mismatch_bases /
+                        float(total_aligned))
+                        
+                    # Calculate indels per base
+                    sample_stats["indel_rate"] = (indel_instances /
                         float(total_aligned))
                         
                 except:
@@ -307,10 +331,12 @@ def collate_region(job, options, region):
                     # Get the reference value
                     ref_value = stats_cache["refonly"][sample][stat_name]
                     
-                    # Normalize
-                    stats_by_name[stat_name] /= ref_value
-                    
-                    # TODO: handle div by 0?
+                    if ref_value != 0:
+                        
+                        # Normalize
+                        stats_by_name[stat_name] /= ref_value
+                    else:
+                        stats_by_name[stat_name] = None
                     
                     if (graph == "snp1kg" and
                         stat_name == "portion_mapped_at_all" and 
@@ -346,9 +372,15 @@ def collate_region(job, options, region):
             "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
             "portion_no_indels": "plots/{}/noindels.{}.tsv".format(mode,
                 region),
+            "portion_one_indel": "plots/{}/oneindel.{}.tsv".format(mode,
+                region),
+            "portion_with_indels": "plots/{}/hasindels.{}.tsv".format(mode,
+                region),
             "portion_no_substitutions": "plots/{}/nosubsts.{}.tsv".format(mode,
                 region),
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
+                region),
+            "indel_rate": "plots/{}/indelrate.{}.tsv".format(mode,
                 region)
         }
         
