@@ -198,35 +198,30 @@ def linear_vg_path(alignment_path, options, tag=""):
     name += "{}_linear.vg".format(tag)
     return os.path.join(out_dir(alignment_path, options), name)
 
-def g1k_vcf_path(alignment_path, platinum, options, tag=""):
+def g1k_vcf_path(alignment_path, platinum, filter_indels, options, tag=""):
     """ get (compressed) vcf output of sample filtering of 1000 genomes
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}_sample.vcf".format(tag)
+    base = "g1kvcf" if platinum is False else "platvcf"
+    if filter_indels is True:
+        base += "_filter"
     outdir = os.path.join(options.out_dir,
                           alignment_region_tag(alignment_path, options),
-                          "g1kvcf" if platinum is False else "platvcf")
+                          base)
     return os.path.join(outdir, name)
 
-def g1k_fa_path(alignment_path, platinum, options, tag=""):
+def g1k_fa_path(alignment_path, platinum, filter_indels, options, tag=""):
     """ get fa output of sample filtering of 1000 genomes
     """
-    name = os.path.splitext(os.path.basename(alignment_path))[0]
-    name += "{}_sample.fa".format(tag)
-    outdir = os.path.join(options.out_dir,
-                          alignment_region_tag(alignment_path, options),
-                          "g1kvcf" if platinum is False else "platvcf")
-    return os.path.join(outdir, name)
+    vcf = g1k_vcf_path(alignment_path, platinum, filter_indels, options, tag)
+    return os.path.splitext(vcf)[0] + ".fa"
 
-def g1k_vg_path(alignment_path, platinum, options, tag=""):
+def g1k_vg_path(alignment_path, platinum, filter_indels, options, tag=""):
     """ get vg path constructed from g1k filtered sample
     """
-    name = os.path.splitext(os.path.basename(alignment_path))[0]
-    name += "{}_sample.vg".format(tag)
-    outdir = os.path.join(options.out_dir,
-                          alignment_region_tag(alignment_path, options),
-                          "g1kvcf" if platinum is False else "platvcf")
-    return os.path.join(outdir, name)
+    vcf = g1k_vcf_path(alignment_path, platinum, filter_indels, options, tag)
+    return os.path.splitext(vcf)[0] + ".vg"
 
 def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
         timeout_dep = None, fail_hard = False):
@@ -247,7 +242,7 @@ def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
         if fail_hard is True:
             raise RuntimeError("Command: {} timed out".format(cmd))
         else:
-            RealtimeLogger.get().warning("Command: {} timed out".format(cmd))
+            RealTimeLogger.get().warning("Command: {} timed out".format(cmd))
 
     # based on a comment in http://stackoverflow.com/questions/1191374/using-module-subprocess-with-timeout
     timer = Timer(timeout_sec, timeout_fail, [proc, cmd])
@@ -258,9 +253,12 @@ def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
         timer.cancel()
     sts = proc.wait()
     
-    if sts != 0 and fail_hard is True:
-        raise RuntimeError("Command: %s exited with non-zero status %i" %
-                           (cmd, sts))
+    if sts != 0:
+        if fail_hard is True:
+            raise RuntimeError("Command: %s exited with non-zero status %i" %
+                               (cmd, sts))
+        else:
+            RealTimeLogger.get().warning("Command: {} exited with non-zero status {}".format(cmd, sts))
     return sts
 
 def compute_linear_variants(job, input_gam, options):
@@ -347,7 +345,8 @@ def compute_vg_variants(job, input_gam, options):
                                                    input_gam,
                                                    options.pileup_opts,
                                                    options.vg_cores,
-                                                   out_pileup_path))
+                                                   out_pileup_path),
+            fail_hard = True)
 
     if do_call:
         robust_makedirs(os.path.dirname(out_sample_vg_path))
@@ -356,7 +355,8 @@ def compute_vg_variants(job, input_gam, options):
                                                                                     options.call_opts,
                                                                                     out_sample_txt_path,
                                                                                     options.vg_cores,
-                                                                                    out_sample_vg_path))
+                                                                                    out_sample_vg_path),
+            fail_hard = True)
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
@@ -364,9 +364,10 @@ def compute_vg_variants(job, input_gam, options):
                                                                                 out_pileup_path,
                                                                                 options.call_opts,
                                                                                 options.vg_cores,
-                                                                                out_augmented_vg_path))
+                                                                                out_augmented_vg_path),
+            fail_hard = True)
 
-def compute_snp1000g_baseline(job, input_gam, platinum, options):
+def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
     """ make 1000 genomes sample graph by filtering the vcf
     """
     # there is only one g1vcf graph per region per sample
@@ -386,9 +387,9 @@ def compute_snp1000g_baseline(job, input_gam, platinum, options):
     else:
         g1kvcf_path = os.path.join(options.platinum_path, sample, region.upper() + ".vcf")
     g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
-    filter_vcf_path = g1k_vcf_path(input_gam, platinum, options)
-    filter_fa_path = g1k_fa_path(input_gam, platinum, options)
-    filter_vg_path = g1k_vg_path(input_gam, platinum, options)
+    filter_vcf_path = g1k_vcf_path(input_gam, platinum, filter_indels, options)
+    filter_fa_path = g1k_fa_path(input_gam, platinum, filter_indels, options)
+    filter_vg_path = g1k_vg_path(input_gam, platinum, filter_indels, options)
     fasta_path = options.chrom_fa_path
 
     do_filter = options.overwrite or not os.path.isfile(filter_vcf_path)
@@ -407,13 +408,20 @@ def compute_snp1000g_baseline(job, input_gam, platinum, options):
     # make filtered compressed vcf for this sample
     if do_filter:            
         robust_makedirs(os.path.dirname(filter_vcf_path))
-        run("scripts/vcfFilterSample.py {} {} {} {} {}".format(g1kvcf_path,
-                                                               fasta_path,
-                                                               sample,
-                                                               filter_vcf_path,
-                                                               filter_fa_path))
-        run("bgzip -f {}".format(filter_vcf_path))
-        run("tabix -f -p vcf {}.gz".format(filter_vcf_path))
+        if filter_indels is True:
+            filter_input_path = filter_vcf_path + ".in"
+            run("scripts/vcfFilterIndels.py {} > {}".format(g1kvcf_path, filter_input_path),
+                fail_hard = True)
+        else:
+            filter_input_path = g1kvcf_path
+        run("scripts/vcfFilterSample.py {} {} {} {} {}".format(filter_input_path,
+                                                              fasta_path,
+                                                              sample,
+                                                              filter_vcf_path,
+                                                              filter_fa_path),
+            fail_hard = True)
+        run("bgzip -f {}".format(filter_vcf_path), fail_hard = True)
+        run("tabix -f -p vcf {}.gz".format(filter_vcf_path), fail_hard = True)
 
     # load it into a vg graph
     if do_construct:
@@ -424,7 +432,8 @@ def compute_snp1000g_baseline(job, input_gam, platinum, options):
             run("vg construct -v {}.gz -r {} -t {} -R {}:{}-{} > {}".format(filter_vcf_path, filter_fa_path,
                                                                             options.vg_cores, 
                                                                             coords[0], coords[1], coords[2],
-                                                                            filter_vg_path))    
+                                                                            filter_vg_path),
+                fail_hard = True)    
         
 def call_variants(job, options):
     """ run everything (root toil job)
@@ -432,10 +441,16 @@ def call_variants(job, options):
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, options,
+        # all combinations of [G1KVCF , PLATVCF] X [NO_FILTER_INDELS, FILTER_INDELS]
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, False, options,
                           cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, options,
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, True, options,
                           cores=options.vg_cores)        
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, False, options,
+                          cores=options.vg_cores)
+        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, True, options,
+                          cores=options.vg_cores)        
+
         if not options.vg_only:
             job.addChildJobFn(compute_linear_variants, input_gam, options,
                               cores=options.vg_cores)
@@ -465,7 +480,7 @@ def main(args):
 
     # Make a root job
     root_job = Job.wrapJobFn(call_variants, options,
-        cores=1, memory="2G", disk=0)
+                             cores=1, memory="2G", disk="2G")
     
     # Run it and see how many jobs fail
     failed_jobs = Job.Runner.startToil(root_job,  options)

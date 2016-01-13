@@ -14,12 +14,11 @@ ALIGNMENTS=$2
 OUT_DIR=$3
 TOIL_DIR=cs_toil_dir
 
-REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-#REGIONS=( "brca1" )
-
+#REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
+REGIONS=( "brca1" "brca2" )
 OPTS="--maxCores 30 --vg_cores 2 --vg_only"
 
-CALL_OPTS=" -r 0.001 -d 20 -s 10"
+CALL_OPTS=" -r 0.001 -d 15 -s 10"
 #PILEUP_OPTS=" -s "
 PILEUP_OPTS=" "
 
