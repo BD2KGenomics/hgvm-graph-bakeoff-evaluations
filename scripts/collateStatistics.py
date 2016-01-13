@@ -9,6 +9,7 @@ import doctest, re, json, collections, time, timeit
 import tempfile
 import copy
 
+import numpy
 import tsv
 
 from toil.job import Job
@@ -185,6 +186,13 @@ def collate_region(job, options, region):
                 # How many reads have no indels?
                 total_no_indels = sum((stats["primary_indels"].get(str(x), 0)
                     for x in xrange(1)))
+                
+                # How many have any?    
+                total_with_indels = sum((count for indels, count in 
+                    stats["primary_indels"].iteritems() if count != "0"))
+                    
+                # How many have one? We'll guess these aren't terrible mappings.
+                total_one_indel = stats["primary_indels"].get("1", 0)
                     
                 # How many total substitution bases are there?
                 substitution_bases = sum((count * float(weight)
@@ -195,6 +203,11 @@ def collate_region(job, options, region):
                 mismatch_bases = sum((count * float(weight)
                     for weight, count in 
                     stats["primary_mismatches"].iteritems()))
+                    
+                # How many total indels are there?
+                indel_instances = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_indels"].iteritems()))
                     
                 # How many reads are mapped with no substitutions?
                 total_no_substitutions = sum(
@@ -242,6 +255,14 @@ def collate_region(job, options, region):
                 # What was the portion with no indels?
                 sample_stats["portion_no_indels"] = (total_no_indels / 
                     float(total_reads))
+                # And the potion mapped with indels (as opposed to unmapped)
+                # TODO: what part of this is horrible mappings with tiny scores
+                # overall?
+                sample_stats["portion_with_indels"] = (total_with_indels / 
+                    float(total_reads))
+                # How many have one indel exactly?
+                sample_stats["portion_one_indel"] = (total_one_indel / 
+                    float(total_reads))    
                 # And the portion with no substitutions
                 sample_stats["portion_no_substitutions"] = \
                     (total_no_substitutions / float(total_reads))
@@ -263,6 +284,10 @@ def collate_region(job, options, region):
                     # Calculate portion of aligned bases that are substitutions
                     # (even if we're "substituting" the same sequence in).
                     sample_stats["substitution_rate"] = (mismatch_bases /
+                        float(total_aligned))
+                        
+                    # Calculate indels per base
+                    sample_stats["indel_rate"] = (indel_instances /
                         float(total_aligned))
                         
                 except:
@@ -306,10 +331,12 @@ def collate_region(job, options, region):
                     # Get the reference value
                     ref_value = stats_cache["refonly"][sample][stat_name]
                     
-                    # Normalize
-                    stats_by_name[stat_name] /= ref_value
-                    
-                    # TODO: handle div by 0?
+                    if ref_value != 0:
+                        
+                        # Normalize
+                        stats_by_name[stat_name] /= ref_value
+                    else:
+                        stats_by_name[stat_name] = None
                     
                     if (graph == "snp1kg" and
                         stat_name == "portion_mapped_at_all" and 
@@ -345,12 +372,18 @@ def collate_region(job, options, region):
             "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
             "portion_no_indels": "plots/{}/noindels.{}.tsv".format(mode,
                 region),
+            "portion_one_indel": "plots/{}/oneindel.{}.tsv".format(mode,
+                region),
+            "portion_with_indels": "plots/{}/hasindels.{}.tsv".format(mode,
+                region),
             "portion_no_substitutions": "plots/{}/nosubsts.{}.tsv".format(mode,
                 region),
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
+                region),
+            "indel_rate": "plots/{}/indelrate.{}.tsv".format(mode,
                 region)
         }
-            
+        
         # Make a local temp file for each (dict from stat name to file object
         # with a .name).
         stats_file_temps = {name: tempfile.NamedTemporaryFile(
@@ -358,24 +391,62 @@ def collate_region(job, options, region):
             for name in stat_file_keys.iterkeys()}
             
         for graph, stats_by_sample in mode_stats_cache.iteritems():
-                # For each graph and all the stats for that graph
-                for sample, stats_by_name in stats_by_sample.iteritems():
-                    # For each sample and all the stats for that sample
-                    for stat_name, stat_value in stats_by_name.iteritems():
-                        # For each stat
-                        
-                        # Write graph and value to the file for the stat, for
-                        # plotting
-                        stats_file_temps[stat_name].write("{}\t{}\n".format(
-                            graph, stat_value))
+            # For each graph and all the stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name, stat_value in stats_by_name.iteritems():
+                    # For each stat
+                    
+                    # Write graph and value to the file for the stat, for
+                    # plotting
+                    stats_file_temps[stat_name].write("{}\t{}\n".format(
+                        graph, stat_value))
         
         for stat_name, stat_file in stats_file_temps.iteritems():
             # Flush and close the temp file
+            stat_file.flush()
+            os.fsync(stat_file.fileno())
             stat_file.close()
             
             # Upload the file
             out_store.write_output_file(stat_file.name,
                 stat_file_keys[stat_name])
+                
+        # Special case: perfect vs unique mapping
+        # perfect = precision = y, unique ~= recall = x
+        perfect_vs_unique = tempfile.NamedTemporaryFile(
+            dir=job.fileStore.getLocalTempDir(), delete=False)
+        
+        for graph, stats_by_sample in mode_stats_cache.iteritems():
+            # For each graph and all the stats for that graph
+            
+            # We're going to make lists and compute medians
+            all_perfect = []
+            all_unique = []
+            
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                
+                # Get the prefect and unique stats
+                perfect = stats_by_name["portion_perfect"]
+                unique = stats_by_name["portion_single_mapped"]
+                
+                all_perfect.append(perfect)
+                all_unique.append(unique)
+                
+            # Write them in x, y order
+            perfect_vs_unique.write("{}\t{}\t{}\n".format(graph,
+                numpy.median(all_unique),
+                numpy.median(all_perfect)))
+        
+        perfect_vs_unique.flush()            
+        os.fsync(perfect_vs_unique.fileno())
+        perfect_vs_unique.close()
+           
+        # Save the perfect vs unique data
+        # TODO: mean across samples so we don't plot several thousand points???             
+        out_store.write_output_file(perfect_vs_unique.name,
+                "plots/{}/perfect_vs_unique.{}.tsv".format(mode, region))
         
     # Return the cached stats. TODO: break out actual collate and upload into
     # its own function that will also do normalization.

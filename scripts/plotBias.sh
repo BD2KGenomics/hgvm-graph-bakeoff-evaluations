@@ -48,7 +48,7 @@ do
     PORTION="Portion"
     if [ "${MODE}" == "normalized_distributions" ]
     then
-        RELATIVE="Difference in portion"
+        PORTION="Difference in portion"
         NORMALIZED="normalized"
     fi
 
@@ -85,7 +85,7 @@ do
             ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
                 --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
                 --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
-                --x_sideways \
+                --x_sideways --hline_median EUR \
                 "${PLOT_PARAMS[@]}"
         
         done

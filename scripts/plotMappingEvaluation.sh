@@ -2,7 +2,7 @@
 # Run after collateSTatistics.py.
 # Makes plots comparing the graphs in each region.
 
-set -e
+set -ex
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -146,6 +146,11 @@ do
         NOINDEL_PLOT="${PLOTS_DIR}/${MODE}-noindels.${REGION}.png"
         SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
         SUBSTRATE_PLOT="${PLOTS_DIR}/${MODE}-substrate.${REGION}.png"
+        INDELRATE_FILE="${PLOTS_DIR}/indelrate.${REGION}.tsv"
+        INDELRATE_PLOT="${PLOTS_DIR}/${MODE}-indelrate.${REGION}.png"
+        
+        PERFECT_UNIQUE_FILE="${PLOTS_DIR}/perfect_vs_unique.${REGION}.tsv"
+        PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.${REGION}.png"
         
         echo "Plotting ${REGION^^}..."
         
@@ -160,18 +165,21 @@ do
             --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
+            --range \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
             --x_label "Graph" --y_label "${PORTION} perfectly mapped" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
+            --range \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
             --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
             --x_sideways --hline_median refonly \
+            --range \
             "${PLOT_PARAMS[@]}"
         
         if [ "${HR_REGION}" == "CENX" ]
@@ -186,24 +194,28 @@ do
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
+            --range \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
             --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
+            --range \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Runtime per read${SECONDS}" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
+            --range \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${NOINDEL_FILE}" \
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
             --x_sideways --hline_median refonly \
+            --range \
             "${PLOT_PARAMS[@]}"
            
         if [ "${MODE}" == "absolute" ]
@@ -211,13 +223,31 @@ do
             # Limit max Y for absolute substitution rates
             SUBSTRATE_LIMIT="--max 0.10"
         else
-            SUBSTRATE_LIMIT=""
+            SUBSTRATE_LIMIT="--max 2 --min 0"
         fi
         
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
+            --range \
+            "${PLOT_PARAMS[@]}"
+            
+        ./scripts/boxplot.py "${INDELRATE_FILE}" \
+            --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
+            --x_sideways --hline_median refonly --best_low \
+            --range ${SUBSTRATE_LIMIT} \
+            "${PLOT_PARAMS[@]}"
+
+        # Plot perfect vs unique mapping
+        scripts/scatter.py "${PERFECT_UNIQUE_FILE}" \
+            --save "${PERFECT_UNIQUE_PLOT}" \
+            --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
+            --x_label "Portion Uniquely Mapped" \
+            --y_label "Portion Perfectly Mapped" \
+            --width 12 --height 9 \
+            --min_x 0 --min_y 0 \
             "${PLOT_PARAMS[@]}"
             
         
@@ -234,24 +264,28 @@ do
         --title "$(printf "Mapped (<=2 mismatches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         --x_sideways  --hline_median trivial \
+        --range \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
         --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
         --x_sideways --hline_median trivial \
+        --range \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
         --title "$(printf "One-error (<=1 mismatch)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
         --x_sideways --hline_median trivial \
+        --range \
         "${PLOT_PARAMS[@]}"
 
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
         --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
+        --range \
         "${PLOT_PARAMS[@]}"
         
 done

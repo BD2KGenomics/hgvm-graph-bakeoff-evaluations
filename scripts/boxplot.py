@@ -98,6 +98,11 @@ def parse_args(args):
         help="include means for each category")
     parser.add_argument("--no_n", dest="show_n", action="store_false",
         help="don't add n value to title")
+    parser.add_argument("--clip", action="store_true",
+        help="discard values below min or above max")
+    parser.add_argument("--range", action="store_const", const="range",
+        default=None, dest="whiskers",
+        help="use whiskers to denote range instead of outer quartile + 1.5 IQR")
         
     # We take these next 4 options, optionally, in strided groupings. So you can
     # have multiple --categories options, each of which is named with a
@@ -173,14 +178,18 @@ def main(args):
             category = int(category)
         except ValueError:
             pass
-            
+        
+        if parts[1] == "None":
+            # Skip "None" values and don't plot them.
+            continue
+                
         value = float(parts[1])
         
-        if options.min is not None and value < options.min:
+        if options.clip and options.min is not None and value < options.min:
             # Throw out values that are too small (like 0s for log_y)
             continue
             
-        if options.max is not None and value > options.max:
+        if options.clip and options.max is not None and value > options.max:
             # Throw out values that are too large
             continue
             
@@ -325,9 +334,10 @@ def main(args):
                     # passing the color options if needed, as well as all the
                     # other options.
                     pyplot.boxplot([values[j]], positions=[positions[j]],
-                        widths=0.5, boxprops=boxprops, meanprops=boxprops,
-                        medianprops=boxprops, flierprops=boxprops,
-                        whiskerprops=boxprops, capprops=boxprops)
+                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
+                        meanprops=boxprops, medianprops=boxprops,
+                        flierprops=boxprops, whiskerprops=boxprops,
+                        capprops=boxprops)
                     
                 elif options.grouping_colors is not None:
                     # Set a color for this whole grouping
@@ -335,9 +345,10 @@ def main(args):
                     
                     # Only color the box itself to match old behavior.
                     pyplot.boxplot([values[j]], positions=[positions[j]],
-                        widths=0.5, boxprops=boxprops, meanprops=base_props,
-                        medianprops=base_props, flierprops=base_props,
-                        whiskerprops=base_props, capprops=base_props)
+                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
+                        meanprops=boxprops, medianprops=boxprops,
+                        flierprops=boxprops, whiskerprops=boxprops,
+                        capprops=boxprops)
                     
                 
                 
@@ -348,8 +359,9 @@ def main(args):
         # Do the plot for all the categories at once.
         
         pyplot.boxplot([categories[category] for category in category_order],
-            boxprops=base_props, meanprops=base_props, medianprops=base_props,
-            whiskerprops=base_props, capprops=base_props)
+            whis=options.whiskers, boxprops=boxprops, meanprops=boxprops,
+            medianprops=boxprops, flierprops=boxprops, whiskerprops=boxprops,
+            capprops=boxprops)
             
             
         
@@ -365,10 +377,11 @@ def main(args):
         
         # Find the color
         line_color = 'r'
-        for i in xrange(len(category_colors)):
-            if category_order[i] == options.hline_median:
-                line_color = category_colors[i]
-                break
+        if category_colors is not None:
+            for i in xrange(len(category_colors)):
+                if category_order[i] == options.hline_median:
+                    line_color = category_colors[i]
+                    break
         
         pyplot.axhline(y=category_median, color=line_color, linestyle='--')
         
