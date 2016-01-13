@@ -80,6 +80,8 @@ def parse_args(args):
         help="sample names to process")
     parser.add_argument("--overwrite", action="store_true",
         help="overwrite already downloaded samples")
+    parser.add_argument("--filter", action="store_true",
+                        help="only take into account single base substitutions")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -391,7 +393,30 @@ def compareAllSamples(job, options):
                         cores=1, memory="10G", disk="4G")
                         
     RealTimeLogger.get().info("Done making children")
-   
+
+def optionalFilterVCF(cmd, out_file, qual_filter, options):
+    """ if options.filter is true, tack on a call to scripts/vcfFilterIndels.py
+    after cmd which produces out_file, returns pair of lists"""
+    procs = []
+    cmds = [" ".join(cmd)]
+    if options.filter is False:
+        # just execute the command
+        procs.append(subprocess.Popen(cmd, stdout=out_file,
+                                      stderr=subprocess.PIPE))
+    else:
+        # pipe to vcfFilterIndels.py
+        procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE))
+        cmds.append(["scripts/vcfFilterIndels.py", "-"])
+        if qual_filter is True:
+            cmds[-1].append("--qual")
+        procs.append(subprocess.Popen(cmds[-1], stdin=procs[0].stdout,
+                                      stdout=out_file,
+                                      stderr=subprocess.PIPE))
+    # avoid suspiciously few variants error
+    time.sleep(10)
+    return cmds, procs
+    
 def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     ref_end):
     """
@@ -415,9 +440,17 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     vcf_file = open(local_filename, "w")
         
     # Download the region to the file. TODO: 1-based or 0-based range?
-    subprocess.check_call(["bcftools", "view",
-        options.truth_url.format(sample_name), "-r",
-        "{}:{}-{}".format(ref_name, ref_start, ref_end)], stdout=vcf_file)
+    bcftools_cmd = ["bcftools", "view",
+                    options.truth_url.format(sample_name), "-r",
+                    "{}:{}-{}".format(ref_name, ref_start, ref_end)]
+    
+    # filter indels and non-PASS elements if (--simple)
+    cmds, procs = optionalFilterVCF(bcftools_cmd, vcf_file, True, options)
+
+    for cmd, proc in zip(cmds, procs):
+        if proc.wait() != 0:
+            raise RuntimeError("Command, {}, exited with non-zero value".format(
+                " ".join(cmd)))
         
     # Close the file, syncing it really hard to try and make sure data written
     # by the child is on disk.
@@ -434,7 +467,7 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     RealTimeLogger.get().info("Found {} variants for {}:{}-{} for {}".format(
         variant_count, ref_name, ref_start, ref_end, sample_name))
     
-    if variant_count < 10:
+    if variant_count < 1:
         raise RuntimeError("Suspiciously few variants ({}) in {}:{}-{} "
             "sample {}".format(variant_count, ref_name, ref_start, ref_end,
             sample_name))
@@ -495,8 +528,10 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
     # fixing a coordinate mis-conversion.
     command = ["glenn2vcf", local_graph_file, local_glenn_file, "--contig",
         ref_name, "--offset", str(ref_start - 1), "--sample", sample_name]
-    conversion = subprocess.Popen(command,
-        stdout=vcf_file, stderr=subprocess.PIPE)
+
+    # apply optional filtering.
+    cmds, procs = optionalFilterVCF(command, vcf_file, False, options)
+    conversion = procs[0]
         
     RealTimeLogger.get().info("Started glenn2vcf")
         
@@ -525,6 +560,12 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
         
         raise RuntimeError("VCF conversion of {} via '{}' returned {}".format(
             glenn_file_key, " ".join(command), conversion.returncode))
+
+    # check status of vcfFilterIndels if it was run
+    for cmd, proc in zip(cmds, procs)[1:]:
+        if proc.wait() != 0:
+            raise RuntimeError("Command, {}, exited with non-zero value".format(
+                " ".join(cmd)))
     
     vcf_file.flush()        
     vcf_file.close()
