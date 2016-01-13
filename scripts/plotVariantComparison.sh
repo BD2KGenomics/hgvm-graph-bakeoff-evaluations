@@ -192,7 +192,7 @@ do
     
     scripts/boxplot.py "${COMPARABLE_TSV}" --save "${COMPARABLE_PNG}" --title "Identical Variants in ${REGION^^}" --x_label "Graph" --y_label "$(printf "Portion of true variants\nwith correct alleles identified")" --x_sideways "${PLOT_PARAMS[@]}"
     
-    scripts/scatter.py "${PRECISION_RECALL_TSV}" --save "${PRECISION_RECALL_PNG}" --title "Variant Existence Precision vs. Recall in ${REGION^^}" --x_label "Recall" --y_label "Precision" "${PLOT_PARAMS[@]}"
+    scripts/scatter.py "${PRECISION_RECALL_TSV}" --save "${PRECISION_RECALL_PNG}" --title "$(printf "Variant Existence\nPrecision vs. Recall\nin ${REGION^^}")" --x_label "Recall" --y_label "Precision" --width 12 --height 9 "${PLOT_PARAMS[@]}"
     
 done
 

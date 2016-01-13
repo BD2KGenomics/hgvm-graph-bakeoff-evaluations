@@ -39,16 +39,15 @@ brca2	http://ga4gh-test1.cloudapp.net/prg-brca2/	prg	GRCh38	jerome.kelleher@well
 sma	http://ga4gh-test1.cloudapp.net/prg-sma/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
 lrc_kir	http://ga4gh-test1.cloudapp.net/prg-lrc_kir/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-11-18
 mhc	http://ga4gh-test1.cloudapp.net/prg-mhc/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-10
-brca1	http://ga4gh-test1.cloudapp.net/snp1kg-brca1/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-11-05
-brca2	http://ga4gh-test1.cloudapp.net/snp1kg-brca2/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-11-05
-sma	http://ga4gh-test1.cloudapp.net/snp1kg-sma/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-11-05
-lrc_kir	http://ga4gh-test1.cloudapp.net/snp1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-11-05
-mhc	http://ga4gh-test1.cloudapp.net/snp1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-11-05
-brca1	http://ga4gh-test1.cloudapp.net/simons-brca1/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-11-05
-brca2	http://ga4gh-test1.cloudapp.net/simons-brca2/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-11-05
-sma	http://ga4gh-test1.cloudapp.net/simons-sma/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-11-05
-lrc_kir	http://ga4gh-test1.cloudapp.net/simons-lrc_kir/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-11-05
-mhc	http://ga4gh-test1.cloudapp.net/simons-mhc/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-11-05
+brca1	http://ga4gh-test1.cloudapp.net/snp1kg-brca1/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-01-08
+brca2	http://ga4gh-test1.cloudapp.net/snp1kg-brca2/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-01-08
+sma	http://ga4gh-test1.cloudapp.net/snp1kg-sma/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
+lrc_kir	http://ga4gh-test1.cloudapp.net/snp1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
+mhc	http://ga4gh-test1.cloudapp.net/snp1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
+brca1	http://ga4gh-test1.cloudapp.net/simons-brca1/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
+brca2	http://ga4gh-test1.cloudapp.net/simons-brca2/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
+sma	http://ga4gh-test1.cloudapp.net/simons-sma/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
+mhc	http://ga4gh-test1.cloudapp.net/simons-mhc/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
 brca1	http://ga4gh-test1.cloudapp.net/sbg-brca1/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
 brca2	http://ga4gh-test1.cloudapp.net/sbg-brca2/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
 sma	http://ga4gh-test1.cloudapp.net/sbg-sma/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
@@ -62,8 +61,18 @@ brca2	http://ga4gh-test1.cloudapp.net/vglr-brca2/	vg	GRCh38	glenn.hickey@gmail.c
 sma	http://ga4gh-test1.cloudapp.net/vglr-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
 lrc_kir	http://ga4gh-test1.cloudapp.net/vglr-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
 mhc	http://ga4gh-test1.cloudapp.net/vglr-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-brca1	http://ga4gh-test1.cloudapp.net/haplo1kg-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-brca2	http://ga4gh-test1.cloudapp.net/haplo1kg-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-sma	http://ga4gh-test1.cloudapp.net/haplo1kg-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-lrc_kir	http://ga4gh-test1.cloudapp.net/haplo1kg-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-mhc	http://ga4gh-test1.cloudapp.net/haplo1kg-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+brca1	http://ga4gh-test1.cloudapp.net/shifted1kg-brca1/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
+brca2	http://ga4gh-test1.cloudapp.net/shifted1kg-brca2/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
+sma	http://ga4gh-test1.cloudapp.net/shifted1kg-sma/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+lrc_kir	http://ga4gh-test1.cloudapp.net/shifted1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+mhc	http://ga4gh-test1.cloudapp.net/shifted1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+brca1	http://ga4gh-test1.cloudapp.net/haplo1kg30-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
+brca2	http://ga4gh-test1.cloudapp.net/haplo1kg30-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
+sma	http://ga4gh-test1.cloudapp.net/haplo1kg30-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+lrc_kir	http://ga4gh-test1.cloudapp.net/haplo1kg30-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+mhc	http://ga4gh-test1.cloudapp.net/haplo1kg30-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+brca1	http://ga4gh-test1.cloudapp.net/haplo1kg50-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
+brca2	http://ga4gh-test1.cloudapp.net/haplo1kg50-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
+sma	http://ga4gh-test1.cloudapp.net/haplo1kg50-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+lrc_kir	http://ga4gh-test1.cloudapp.net/haplo1kg50-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+mhc	http://ga4gh-test1.cloudapp.net/haplo1kg50-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
