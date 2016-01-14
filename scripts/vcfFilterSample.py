@@ -90,7 +90,7 @@ def main(args):
                     
                     # apply cumulative indel offset from previous events
                     vcf_pos = vcf_pos + indel_offset
-                                        
+                     
                     # change the reference to first alt if it's not in genotype
                     if "0" not in gt:
                         alt = gen_alts[0]
@@ -109,8 +109,12 @@ def main(args):
                             assert False
                         indel_offset += indel_len
                         assert len(sequence) == len(record) + indel_offset
+
+                        # remove the alt
+                        alts = ",".join(gen_alts[1:])
+                        ref = alt
                         
-                    else:
+                    if len(alts) > 0:
                         # write out the snp
                         out_vcf.write("\t".join([seq] + [str(vcf_pos)] + [ref] + [alts] + toks[4:]) + "\n")
 

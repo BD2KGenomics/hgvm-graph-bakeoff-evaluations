@@ -40,7 +40,7 @@ def parse_args(args):
     parser.add_argument("comp_type", type=str,
                         help="comparison type from {kmer,corg}")    
     parser.add_argument("comp_dir", type=str,
-                        help="directory to store intermeidate comparison output")    
+                        help="directory to write comparison output")    
     parser.add_argument("--kmer", type=int, default=27,
                         help="kmer size for indexing")
     parser.add_argument("--edge_max", type=int, default=5,
@@ -129,6 +129,12 @@ def out_tsv_path(options, region, category, distance):
     """
     return os.path.join(options.comp_dir, "comp_tables",
                         category + "-" + distance + "-" + region + ".tsv")
+
+def raw_tsv_path(options, region, category, distance):
+    """ get the output tsv path for "raw" tables (ie with nones for missing data)
+    """
+    return os.path.join(options.comp_dir, "comp_tables_raw",
+                        category + "-" + distance + "-" + region + ".tsv")
                         
 def jaccard_dist_fn(graph1, graph2, options):
     """ scrape jaccard dist from vg compare output
@@ -212,11 +218,16 @@ def make_tsvs(options):
                             mat.append(row)
                         break # shoud not be necessary
                 
-            # write the baseline matrix to file
-            tsv_path = out_tsv_path(options, region, baseline, options.comp_type)
+            # write the baseline matrix (with None for missing data) to file 
+            tsv_path = raw_tsv_path(options, region, baseline, options.comp_type)
             write_tsv(tsv_path, mat, header, row_labels, "Graph")
+
+            # remove Nones and write tsv again
+            clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
+            tsv_path = out_tsv_path(options, region, baseline, options.comp_type)
+            write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
                 
-        # do the all vs all tsvs.  with averaging over samples
+        # do the all vs all tsvs.  with averaging over samples, for heatmaps
         # todo
         
 def write_tsv(out_path, mat, col_names, row_names, row_label):
@@ -267,20 +278,23 @@ def remove_nones(mat, col_names, row_names):
         # could be moved outside loop but that'd be too clever
         for i in range(len(row_names)):
             for j in range(len(col_names)):
-                if mat[row_names[i]][col_names[j]] == None:
+                if mat[i][j] == None:
                     row_counts[i] += 1
                     col_counts[j] += 1
 
         row_max = max(row_counts)
         col_max = max(col_counts)
-        if row_max > 0 and row_max >= col_max:
+        # normalize by length
+        row_frac_max = float(row_max) / float(len(col_counts))
+        col_frac_max = float(col_max) / float(len(row_counts))
+        if row_max > 0 and row_frac_max >= col_frac_max:
             idx = row_counts.index(row_max)
-            del mat[row_names[idx]]
+            del mat[idx]
             del row_names[idx]
-        elif col_max > row_max:
+        elif col_frac_max > row_frac_max:
             idx = col_counts.index(col_max)
             for i in range(len(row_names)):
-                del mat[row_names[i]][col_names[idx]]
+                del mat[i][idx]
             del col_names[idx]
         else:
             keep_going = False

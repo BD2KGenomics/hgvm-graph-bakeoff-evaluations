@@ -357,6 +357,28 @@ def compute_vg_variants(job, input_gam, options):
                                                                                     options.vg_cores,
                                                                                     out_sample_vg_path),
             fail_hard = True)
+        
+        # make the vcf
+        # can only do this if there is a "ref" path in the vg graph
+        res_path = temp_path(options)
+        run("scripts/vgHasPath.sh {} {} > {}".format(input_graph_path, "ref", res_path))
+        has_ref = False
+        with open(res_path) as res_file:
+            has_ref = res_file.read()[0] == "1"
+        run("rm {}".format(res_path))
+        if has_ref:
+            region = alignment_region_tag(input_gam, options)
+            g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
+            with open(g1kbed_path) as f:
+                contig, offset = f.readline().split()[0:2] 
+                run("glenn2vcf {} {} -o {} -r {} -c {} -s {} > {}".format(input_graph_path,
+                                                                          out_sample_txt_path,
+                                                                          offset,
+                                                                          "ref",
+                                                                          contig,
+                                                                          alignment_sample_tag(input_gam, options),
+                                                                          out_sample_txt_path.replace(".txt", ".vcf")),
+                    fail_hard = True)
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
@@ -392,7 +414,7 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
     filter_vg_path = g1k_vg_path(input_gam, platinum, filter_indels, options)
     fasta_path = options.chrom_fa_path
 
-    do_filter = options.overwrite or not os.path.isfile(filter_vcf_path)
+    do_filter = options.overwrite or not os.path.isfile(filter_vcf_path + ".gz")
     do_construct = do_filter or not os.path.isfile(filter_vg_path)
 
     # make sure we're dealing with a sample that's in the vcf
@@ -420,6 +442,10 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
                                                               filter_vcf_path,
                                                               filter_fa_path),
             fail_hard = True)
+        run("vcfsort {} > {}.sort ; mv {}.sort {}".format(filter_vcf_path,
+                                                          filter_vcf_path,
+                                                          filter_vcf_path,
+                                                          filter_vcf_path))
         run("bgzip -f {}".format(filter_vcf_path), fail_hard = True)
         run("tabix -f -p vcf {}.gz".format(filter_vcf_path), fail_hard = True)
 
