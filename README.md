@@ -12,6 +12,7 @@ Todo: I think we have multiple ways of getting the graphs.  I've been piggybacki
 
 Submodules and/or Docker may be the way to go here?
 *  [VG](https://github.com/ekg/vg) Note: vg/vcflib/bin should added to PATH too
+*  [vt](https://github.com/atks/vt)
 *  [toil](https://github.com/BD2KGenomics/toil)
 *  [samtools](https://github.com/samtools/samtools)
 *  [bcftools](https://github.com/samtools/bcftools)

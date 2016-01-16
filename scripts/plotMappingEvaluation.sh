@@ -223,7 +223,16 @@ do
             # Limit max Y for absolute substitution rates
             SUBSTRATE_LIMIT="--max 0.10"
         else
-            SUBSTRATE_LIMIT="--max 2 --min 0"
+            # Set limits by region
+            if [ "${REGION^^}" == "BRCA2" ]
+            then
+                SUBSTRATE_LIMIT="--max 1.5 --min 0.5"
+            elif [ "${REGION^^}" == "MHC" ]
+            then
+                SUBSTRATE_LIMIT="--max 2 --min 0"
+            else
+               SUBSTRATE_LIMIT="--max 2 --min 0"
+            fi
         fi
         
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
@@ -233,12 +242,40 @@ do
             --range \
             "${PLOT_PARAMS[@]}"
             
+        if [ "${MODE}" == "absolute" ]
+        then
+            # Limit max Y for absolute indel rates
+            INDELRATE_LIMIT="--max 0.10"
+        else
+            # Set limits by region
+            if [ "${REGION^^}" == "BRCA2" ]
+            then
+                INDELRATE_LIMIT="--max 1.5 --min 0.5"
+            elif [ "${REGION^^}" == "MHC" ]
+            then
+                INDELRATE_LIMIT="--max 2 --min 0"
+            else
+               INDELRATE_LIMIT="--max 2 --min 0"
+            fi
+        fi
+            
         ./scripts/boxplot.py "${INDELRATE_FILE}" \
             --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
             --x_sideways --hline_median refonly --best_low \
-            --range ${SUBSTRATE_LIMIT} \
+            --range ${INDELRATE_LIMIT} \
             "${PLOT_PARAMS[@]}"
+
+        # Set Perfect/Unique limits by region
+        if [ "${REGION^^}" == "BRCA2" ]
+        then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.915 --min_y 0.74 --max_x 0.930 --max_y 0.80"
+        elif [ "${REGION^^}" == "MHC" ]
+        then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.75 --min_y 0.55 --max_x 0.9 --max_y 0.75"
+        else
+            PERFECT_UNIQUE_LIMITS=""
+        fi
 
         # Plot perfect vs unique mapping
         scripts/scatter.py "${PERFECT_UNIQUE_FILE}" \
@@ -247,7 +284,7 @@ do
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
             --width 12 --height 9 \
-            --min_x 0 --min_y 0 \
+            ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"
             
         
