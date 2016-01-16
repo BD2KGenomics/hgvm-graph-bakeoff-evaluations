@@ -450,6 +450,9 @@ def downloadTruth(job, options, sample_name, region_name,
     # And the FASTA index (which I hope it uses)
     reference_index = reference_fasta + ".fai"
     job.fileStore.readGlobalFile(reference_index_id, userPath=reference_index)
+
+    unnormalized_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
+        "unnormalized.vcf")
         
     with open(local_filename, "w") as vcf_file:
         # Open it for writing, and download and normalize into it
@@ -474,6 +477,9 @@ def downloadTruth(job, options, sample_name, region_name,
                                           stdout=subprocess.PIPE))
 
 
+        # TODO: having a tee in here makes the job never finish
+        #tasks.append(subprocess.Popen(["tee", unnormalized_vcf_file],
+        #    stdin=tasks[-1].stdin, stdout=subprocess.PIPE))
             
         # Decompose horizontally (breaking variants) with vt
         # Make sure to use aggressive alignment
@@ -519,6 +525,10 @@ def downloadTruth(job, options, sample_name, region_name,
     # Save it in our output directory
     out_store.write_output_file(local_filename, "truth/{}/{}.vcf".format(
         region_name, sample_name))
+
+    # Also save the unnormalized VCF
+    #out_store.write_output_file(unnormalized_vcf_file,
+    #    "truth/{}/{}.vcf.raw".format(region_name, sample_name))
     
     return file_id
    
@@ -597,8 +607,8 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
                                           stdout=subprocess.PIPE))
 
     # Tee off into a temp file so we can see the unprocessed converted vcf
-    #unnormalized_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
-    #    "unnormalized.vcf")
+    unnormalized_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
+        "unnormalized.vcf")
     #tasks.append(subprocess.Popen(["tee", unnormalized_vcf_file],
     #    stdin=tasks[-1].stdin, stdout=subprocess.PIPE))
     
