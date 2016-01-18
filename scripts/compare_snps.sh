@@ -21,7 +21,7 @@ COMPS=( "kmer" )
 #COMP_OPTS="--orig --orig_and_sample"
 COMP_OPTS=""
 #REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-REGIONS=( "lrc_kir" )
+REGIONS=( "mhc" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis

@@ -19,7 +19,7 @@ from collections import defaultdict
 from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
 from callVariants import alignment_sample_tag, alignment_region_tag, alignment_graph_tag, run
-from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path
+from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path, sample_txt_path
 from callStats import vg_length
 from evaluateVariantCalls import defaultdict_set
 
@@ -38,7 +38,7 @@ def parse_args(args):
     parser.add_argument("graph_dir", type=str,
                         help="name of input graphs directory")
     parser.add_argument("comp_type", type=str,
-                        help="comparison type from {kmer,corg}")    
+                        help="comparison type from {kmer,corg,vcf}")    
     parser.add_argument("comp_dir", type=str,
                         help="directory to write comparison output")    
     parser.add_argument("--kmer", type=int, default=27,
@@ -47,6 +47,12 @@ def parse_args(args):
                         help="edge-max parameter for vg kmer index")    
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="overwrite existing files (indexes and comparison output)")
+    parser.add_argument("--g1kvcf_path", type=str, default="data/g1kvcf",
+                        help="path to search for 1000 genomes vcf and sequences. expects "
+                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")
+    parser.add_argument("--platinum_path", type=str, default="data/platinum",
+                        help="path to search for platinum genomes vcf. expects "
+                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")        
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
@@ -117,6 +123,21 @@ def corg_path(graph1, graph2, options):
     s2tag = "_" + sample2 if sample2 is not None else ""
     return os.path.join(options.comp_dir, "corg_data", region1,
                         method1 + s1tag + "_vs_" + method2 + s2tag + ".txt")
+
+def comp_path_vcf(graph1, graph2, options):
+    """ get the path for json output of vcf compare
+    """
+    region1, sample1, method1 = options.tags[graph1]
+    region2, sample2, method2 = options.tags[graph2]
+    assert region1 == region2
+    if sample1 is not None and sample2 is not None:
+        assert sample1 == sample2
+
+    s1tag = "_" + sample1 if sample1 is not None else ""
+    s2tag = "_" + sample2 if sample2 is not None else ""
+    return os.path.join(options.comp_dir, "vcf_compare_data", region1,
+                        method1 + s1tag + "_vs_" + method2 + s2tag + ".json")
+
     
 def corg_graph_path(graph1, graph2, options):
     """ get the path for vg output of corg
@@ -146,7 +167,7 @@ def jaccard_dist_fn(graph1, graph2, options):
             jaccard = 2.
         else:
             jaccard = float(j["intersection"]) / float(j["union"])
-        return 1. - jaccard
+        return [1. - jaccard]
 
 def recall_dist_fn(graph1, graph2, options):
     """ assymmetric version of above to compute recall of graph1 on graph2
@@ -162,7 +183,7 @@ def recall_dist_fn(graph1, graph2, options):
             denom = float(j["db1_total"])
         intersection = float(j["intersection"])
         recall = intersection / denom
-        return recall
+        return [recall]
 
 def precision_dist_fn(graph1, graph2, options):
     """ get 1 - precision of graph1 on graph2
@@ -177,7 +198,46 @@ def corg_dist_fn(graph1, graph2, options):
     with open(cpath) as f:
         c = f.readline().strip()
         dist = float(c)
-        return dist
+        return [dist]
+
+def vcf_dist_fn(graph1, graph2, options):
+    """ scrape vcfCompare data"""
+    jpath = vcf_comp_path(graph1, graph2, options)
+    with open(jpath) as f:
+        j = json.loads(f.read())
+        if index_path(graph2, options) == j["db2_path"]:
+            denom = float(j["db2_total"])
+        else:
+            assert index_path(graph2, options) == j["db1_path"]
+            denom = float(j["db1_total"])
+        intersection = float(j["intersection"])
+        recall = intersection / denom
+        return [recall]
+
+def vcf_dist_header(options):
+    """ header"""
+    return ["Alt-SNP-Precision",
+            "Alt-SNP-Recall",
+            "Alt-MB-Precision",
+            "Alt-MB-Recall",
+            "Alt-INS-Precision",
+            "Alt-INS-Recall",
+            "Alt-DEL-Precision",
+            "Alt-DEL-Recall",
+            "Alt-TOT-Precision",
+            "Alt-TOT-Recall",
+            "Allele-REF-Precision",
+            "Allele-REF-Recall",
+            "Allele-SNP-Precision",
+            "Allele-SNP-Recall",
+            "Allele-MB-Precision",
+            "Allele-MB-Recall",
+            "Allele-INS-Precision",
+            "Allele-INS-Recall",
+            "Allele-DEL-Precision",
+            "Allele-DEL-Recall",
+            "Allele-TOT-Precision",
+            "Allele-TOT-Recall"]
 
 def make_mat(options, row_graphs, column_graphs, dist_fns):
     """ make a distance matix """
@@ -204,9 +264,12 @@ def make_tsvs(options):
             if options.comp_type == "kmer":
                 header = ["Jaccard-Dist", "Precision", "Recall"]
                 dist_fns = [jaccard_dist_fn, precision_dist_fn, recall_dist_fn]
-            else:
+            elif options.comp_type == "corg":
                 header = ["Corg-Dist"]
                 dist_fns = [corg_dist_fn]
+            else:
+                header = vcf_dist_header()
+                dist_fns = [vcf_dist_fn]
             for sample in options.sample_graphs[region].keys():
                 for truth in options.baseline_graphs[region][sample]:
                     if options.tags[truth][2] == baseline:
@@ -214,7 +277,7 @@ def make_tsvs(options):
                             row_labels.append(options.tags[graph][2])
                             row = []
                             for d in dist_fns:
-                                row.append(d(graph, truth, options))
+                                row += d(graph, truth, options)
                             mat.append(row)
                         break # shoud not be necessary
                 
@@ -346,6 +409,37 @@ def compute_corg_comparison(job, graph1, graph2, options):
         with open(out_path, "w") as f:
             f.write("{}\n".format(corg_val))
 
+def compute_vcf_comparison(job, graph1, graph2, options):
+    """ run vcf compare between two graphs
+    """
+    out_path = vcf_comp_path(graph1, graph2, options)
+    # we expect graph1 to be a sample graph
+    region1, sample1, method1  = options.tags[graph1]
+    assert method1 != "None" and "g1kvcf" not in method1 and "platvcf" not in method1
+
+    # we expect graph2 to be a baseline graph
+    region2, sample2, method2 = options.tags[graph2]
+    assert method2 in ["g1kvcf", "platvcf"]
+    assert region1 == region2
+    assert sample1  == sample2
+    
+    # get the vcf of the sample graph
+    query_vcf_path = sample_txt_path(graph1, options).replace(".txt", ".vcf")
+
+    # and the baseline
+    if method2 == "g1kvcf":
+        truth_vcf_path = os.path.join(options.g1kvcf_path, region2.upper() + ".vcf")
+    else:
+        truth_vcf_path = os.path.join(options.platinum_path, sample2, region2.upper() + ".vcf")
+
+    do_comp = options.overwrite or not os.path.exists(out_path)
+
+    if do_comp:
+        if os.path.isfile(out_path):
+            os.remove(out_path)
+        robust_makedirs(os.path.dirname(out_path))        
+        run("vg compare {} {} -c -t > {}".format(query_vcf_path, truth_vcf_path))
+        
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
@@ -372,7 +466,20 @@ def compute_corg_comparisons(job, options):
         if options.overwrite or not os.path.exists(out_path):
             job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
                                           cores=min(options.vg_cores, 2))
-    
+
+def compute_vcf_comparisons(job, options):
+    """ run vg compare in parallel on all the graphs,
+    outputting a json file for each
+    """
+    RealTimeLogger.get().info("Running vcf comparison {} pairs of input graphs".format(
+        len(options.pair_comps)))
+    for pair_comp in options.pair_comps:
+        graph1, graph2 = pair_comp[0], pair_comp[1]
+        out_path = vcf_comp_path(graph1, graph2, options)
+        if options.overwrite or not os.path.exists(out_path):
+            job.addChildJobFn(compute_vcf_comparison, graph1, graph2, options,
+                                          cores=min(options.vg_cores, 2))
+
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
     first all indexes are computed,
@@ -387,15 +494,18 @@ def compute_kmer_indexes(job, options):
 
     RealTimeLogger.get().info("Computing indexes for {} input graphs".format(len(input_set)))
 
-    for graph in input_set:
-        if options.overwrite or not os.path.exists(index_path(graph, options)):
-            job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
+    if options.comp_type in ["kmer", "corg"]:
+        for graph in input_set:
+            if options.overwrite or not os.path.exists(index_path(graph, options)):
+                job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
     # do the comparisons
-    if options.comp_type != "corg":
+    if options.comp_type == "kmer":
         job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
-    else:
-        job.addFollowOnJobFn(compute_corg_comparisons, options, cores=options.vg_cores)
+    elif options.comp_type == "corg":
+        job.addFollowOnJobFn(compute_corg_comparisons, options, cores=1)
+    elif options.comp_type == "vcf":
+        job.addFollowOnJobFn(compute_vcf_comparisons, options, cores=1)
 
 def breakdown_gams(in_gams, orig, orig_and_sample, options):
     """ use callVariants methods to find all the relevant graphs given
@@ -432,9 +542,9 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             baseline_graphs[region][sample].add(g1kvcf_path)
         if os.path.isfile(platvcf_path):
             baseline_graphs[region][sample].add(platvcf_path)
-        if os.path.isfile(g1kvcf_filter_path):
+        if options.comp_type != "vcf" and os.path.isfile(g1kvcf_filter_path):
             baseline_graphs[region][sample].add(g1kvcf_filter_path)
-        if os.path.isfile(platvcf_filter_path):
+        if optoins.comp_type != "vcf" and os.path.isfile(platvcf_filter_path):
             baseline_graphs[region][sample].add(platvcf_filter_path)
 
         tags[sample_path] = (region, sample, method)
@@ -449,7 +559,9 @@ def main(args):
     
     options = parse_args(args)
 
-    assert options.comp_type in ["corg", "kmer"]
+    assert options.comp_type in ["corg", "kmer", "vcf"]
+    if options.comp_type == "vcf":
+        assert not options.orig and not options.orig_and_sample
     
     RealTimeLogger.start_master()
 
