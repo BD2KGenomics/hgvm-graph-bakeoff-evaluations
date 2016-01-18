@@ -4,6 +4,8 @@ evaluateVariantCalls.py: download platinum genomes call sets, break them out by
 region, and compare them against Glenn-format variant calls on vg graphs, by
 using a VCF comparison tool.
 
+Requires vt (not to be confused with vg), bcftools, and vg to be installed.
+
 """
 
 import argparse, sys, os, os.path, random, collections, shutil, itertools, glob
@@ -299,7 +301,8 @@ def compareAllSamples(job, options):
             # Do the download, returning a file store ID for a VCF file.
             truth_jobs[region_dir.lower()][sample_name] = job.addChildJobFn(
                 downloadTruth, options, sample_name, region_dir, ref_name,
-                ref_start, ref_end, cores=1, memory="10G", disk="4G")
+                ref_start, ref_end, reference_id, reference_index_id,
+                cores=1, memory="10G", disk="4G")
             
     
     # Make jobs to convert called samples to VCF. Stores jobs by region, graph,
@@ -358,7 +361,8 @@ def compareAllSamples(job, options):
                 # Add a conversion job
                 conversion_jobs[region_dir][graph_dir][sample_name] = \
                     job.addChildJobFn(convertGlennToVcf, options, sample_name,
-                    sample_key, graph_file_id, vcf_key, ref_name, ref_start,
+                    sample_key, graph_file_id, reference_id, reference_index_id,
+                    vcf_key, ref_name, ref_start,
                     cores=1, memory="10G", disk="4G")
                 
                 # Save the promise for the conversion
@@ -417,11 +421,12 @@ def optionalFilterVCF(cmd, out_file, qual_filter, options):
     time.sleep(10)
     return cmds, procs
     
-def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
-    ref_end):
+def downloadTruth(job, options, sample_name, region_name, 
+    ref_name, ref_start, ref_end, reference_id, reference_index_id):
     """
-    Download the specified range of the VCF for the specified sample, store it
-    in the file store, and return the ID.
+    Download the specified range of the VCF for the specified sample, normalize
+    it againbst the given indeded reference, and store it in the file store, and
+    return the ID.
     
     """
     
@@ -433,31 +438,73 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     RealTimeLogger.get().info("Get truth for {}:{}-{} for {}".format(ref_name,
         ref_start, ref_end, sample_name))
     
+    # Where are we putting the truth VCF?
     local_filename = os.path.join(job.fileStore.getLocalTempDir(),
         "sample.vcf")
         
-    # Open it for writing
-    vcf_file = open(local_filename, "w")
-        
-    # Download the region to the file. TODO: 1-based or 0-based range?
-    bcftools_cmd = ["bcftools", "view",
-                    options.truth_url.format(sample_name), "-r",
-                    "{}:{}-{}".format(ref_name, ref_start, ref_end)]
+    # We need the reference for VCF normalization.
+    reference_fasta = os.path.join(job.fileStore.getLocalTempDir(),
+        "ref.fa")
+    job.fileStore.readGlobalFile(reference_id, userPath=reference_fasta)
     
-    # filter indels and non-PASS elements if (--simple)
-    cmds, procs = optionalFilterVCF(bcftools_cmd, vcf_file, True, options)
+    # And the FASTA index (which I hope it uses)
+    reference_index = reference_fasta + ".fai"
+    job.fileStore.readGlobalFile(reference_index_id, userPath=reference_index)
 
-    for cmd, proc in zip(cmds, procs):
-        if proc.wait() != 0:
-            raise RuntimeError("Command, {}, exited with non-zero value".format(
-                " ".join(cmd)))
+    unnormalized_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
+        "unnormalized.vcf")
         
-    # Close the file, syncing it really hard to try and make sure data written
-    # by the child is on disk.
-    vcf_file.flush()
-    os.fsync(vcf_file.fileno())
-    vcf_file.close()
+    with open(local_filename, "w") as vcf_file:
+        # Open it for writing, and download and normalize into it
+        
+        # TODO: Go back to Glenn's optionalFilterVCF when I can actually run a
+        # real-time text editor
+
+        # Hold all the popen objects we need for this
+        tasks = []
+        
+        # Download the region to the file. TODO: 1-based or 0-based range?
+        tasks.append(subprocess.Popen(["bcftools", "view",
+            options.truth_url.format(sample_name), "-r",
+            "{}:{}-{}".format(ref_name, ref_start, ref_end)],
+            stdout=subprocess.PIPE))
     
+        if options.filter:
+            cmds = []
+            cmds.append(["scripts/vcfFilterIndels.py", "-"])
+            cmds[-1].append("--qual")
+            tasks.append(subprocess.Popen(cmds[-1], stdin=tasks[-1].stdout,
+                                          stdout=subprocess.PIPE))
+
+
+        # TODO: having a tee in here makes the job never finish
+        #tasks.append(subprocess.Popen(["tee", unnormalized_vcf_file],
+        #    stdin=tasks[-1].stdin, stdout=subprocess.PIPE))
+            
+        # Decompose horizontally (breaking variants) with vt
+        # Make sure to use aggressive alignment
+        tasks.append(subprocess.Popen(["vt", "decompose_blocksub", "-a",
+            "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
+        
+        # Then normalize (which requires the reference) and write to the file
+        tasks.append(subprocess.Popen(["vt", "normalize", "-r", reference_fasta,
+            "-"], stdin=tasks[-1].stdout, stdout=vcf_file))
+            
+        # Did we make it through all the tasks OK?
+        for i, task in enumerate(tasks):
+            if task.wait() != 0:
+                raise RuntimeError("Pipeline step {} returned {}".format(i,
+                    task.returncode))
+                    
+        # Flush and sync
+        vcf_file.flush()
+        os.fsync(vcf_file.fileno())
+
+    # Wait for stuff to be on disk, because sometimes flush and sync maybe
+    # doesn't work? Actually I just don't trust the filesystem spec on inter-
+    # process consistency.
+    time.sleep(1)
+
     # Count the variants
     variant_count = 0
     for line in open(local_filename, "r"):
@@ -478,15 +525,22 @@ def downloadTruth(job, options, sample_name, region_name, ref_name, ref_start,
     # Save it in our output directory
     out_store.write_output_file(local_filename, "truth/{}/{}.vcf".format(
         region_name, sample_name))
+
+    # Also save the unnormalized VCF
+    #out_store.write_output_file(unnormalized_vcf_file,
+    #    "truth/{}/{}.vcf.raw".format(region_name, sample_name))
     
     return file_id
    
 def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
-    vcf_file_key, ref_name, ref_start):
+    reference_id, reference_index_id, vcf_file_key, ref_name, ref_start):
     """
     Given the key for a Glenn-format variant file, and the graph file ID in the
     file store, convert the Glenn file to a VCF. Pust variants on a reference
     named ref_name, offset from starting at base 1 by ref_start.
+    
+    Also needs the reference .fa and .fai file IDs for normalizing. TODO: is the
+    .fai used?
     
     Returns the file store ID of the converted VCF file, which is also saved
     under the given key, and the number of bases of novel material not
@@ -510,6 +564,16 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
     # And graph
     local_graph_file = job.fileStore.readGlobalFile(graph_file_id)
     
+    # Don't forget a reference for normalization
+    local_reference_fasta = os.path.join(job.fileStore.getLocalTempDir(),
+        "ref.fa")
+    job.fileStore.readGlobalFile(reference_id, userPath=local_reference_fasta)
+    
+    # And the FASTA index (which it uses)
+    local_reference_index = local_reference_fasta + ".fai"
+    job.fileStore.readGlobalFile(reference_index_id,
+        userPath=local_reference_index)
+    
     # Define a local file for the VCF
     local_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
         "out.vcf")
@@ -528,12 +592,34 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
     # fixing a coordinate mis-conversion.
     command = ["glenn2vcf", local_graph_file, local_glenn_file, "--contig",
         ref_name, "--offset", str(ref_start - 1), "--sample", sample_name]
-
-    # apply optional filtering.
-    cmds, procs = optionalFilterVCF(command, vcf_file, False, options)
-    conversion = procs[0]
+    conversion = subprocess.Popen(command,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
     RealTimeLogger.get().info("Started glenn2vcf")
+    
+    # Start up some postprocessing vt normalization steps
+    tasks = [conversion]
+    
+    if options.filter:
+            cmds = []
+            cmds.append(["scripts/vcfFilterIndels.py", "-"])
+            tasks.append(subprocess.Popen(cmds[-1], stdin=tasks[-1].stdout,
+                                          stdout=subprocess.PIPE))
+
+    # Tee off into a temp file so we can see the unprocessed converted vcf
+    unnormalized_vcf_file = os.path.join(job.fileStore.getLocalTempDir(),
+        "unnormalized.vcf")
+    #tasks.append(subprocess.Popen(["tee", unnormalized_vcf_file],
+    #    stdin=tasks[-1].stdin, stdout=subprocess.PIPE))
+    
+    # Decompose horizontally (breaking variants) with vt
+    # Make sure to use aggressive alignment
+    tasks.append(subprocess.Popen(["vt", "decompose_blocksub", "-a",
+        "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
+    
+    # Then normalize (which requires the reference) and write to the file
+    tasks.append(subprocess.Popen(["vt", "normalize", "-r",
+        local_reference_fasta, "-"], stdin=tasks[-1].stdout, stdout=vcf_file))
         
     # How many unrepresentable bases were dropped?
     bases_dropped = None
@@ -551,24 +637,28 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
         # wrong.
         sys.stderr.write(line)
         
-    if conversion.wait() != 0:
-        # Complain if the conversion fails
-        
-        # Save the files that confused us
-        out_store.write_output_file(local_graph_file, "error/graph.vg")
-        out_store.write_output_file(local_glenn_file, "error/glenn.txt")
-        
-        raise RuntimeError("VCF conversion of {} via '{}' returned {}".format(
-            glenn_file_key, " ".join(command), conversion.returncode))
-
-    # check status of vcfFilterIndels if it was run
-    for cmd, proc in zip(cmds, procs)[1:]:
-        if proc.wait() != 0:
-            raise RuntimeError("Command, {}, exited with non-zero value".format(
-                " ".join(cmd)))
+    # Did we make it through all the subsequent tasks OK?
+    for i, task in enumerate(tasks):
+        if task.wait() != 0:
+            # Complain if the conversion fails
+            
+            # Save the files that confused us
+            out_store.write_output_file(local_graph_file, "error/graph.vg")
+            out_store.write_output_file(local_glenn_file, "error/glenn.txt")
+            out_store.write_output_file(local_reference_fasta, "error/ref.fa")
+            
+            raise RuntimeError("VCF conversion task {} for {} via glenn2vcf "
+                "command '{}' returned {}".format(i, glenn_file_key,
+                " ".join(command), task.returncode))
     
-    vcf_file.flush()        
+    vcf_file.flush()
+    os.fsync(vcf_file.fileno())       
     vcf_file.close()
+    
+    # Wait for stuff to be on disk, because sometimes flush and sync maybe
+    # doesn't work? Actually I just don't trust the filesystem spec on inter-
+    # process consistency.
+    time.sleep(1)
     
     RealTimeLogger.get().info("Upload results...")
     
@@ -577,6 +667,9 @@ def convertGlennToVcf(job, options, sample_name, glenn_file_key, graph_file_id,
     
     # Save it to the file store too
     vcf_file_id = job.fileStore.writeGlobalFile(local_vcf_file)
+    
+    # Also save the unnormalized VCF
+    #out_store.write_output_file(unnormalized_vcf_file, vcf_file_key + ".raw")
         
     # Return the VCF file ID and the number of bases dropped, as specified.
     return (vcf_file_id, bases_dropped)
