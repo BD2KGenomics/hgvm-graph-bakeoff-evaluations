@@ -480,7 +480,11 @@ def downloadTruth(job, options, sample_name, region_name,
         # TODO: having a tee in here makes the job never finish
         #tasks.append(subprocess.Popen(["tee", unnormalized_vcf_file],
         #    stdin=tasks[-1].stdin, stdout=subprocess.PIPE))
-            
+
+        # Decompose multiallelic since decompose_blocksub messes up their genotypes
+        tasks.append(subprocess.Popen(["vt", "decompose",
+            "-"], stdin=tasks[-1].stdout, stdout=subprocess.PIPE))
+        
         # Decompose horizontally (breaking variants) with vt
         # Make sure to use aggressive alignment
         tasks.append(subprocess.Popen(["vt", "decompose_blocksub", "-a",
