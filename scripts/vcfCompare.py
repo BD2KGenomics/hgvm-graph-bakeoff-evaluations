@@ -13,9 +13,9 @@ def parse_args(args):
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument("vcf1", type=str,
-                        help="Input vcf file 1"),
+                        help="Input vcf file 1 (query)"),
     parser.add_argument("vcf2", type=str,
-                        help="Input vcf file 2")
+                        help="Input vcf file 2 (truth)")
     parser.add_argument("-c", action="store_true", default=False,
                         help="Ignore sequence name (only look at start)")    
 
@@ -35,7 +35,7 @@ def parse_alleles(toks):
     """ return the alleles (first sample /last column) todo: more general?"""
     if toks[-2] == "GT": 
         gtcol = len(toks) - 1
-        gts = "|".join(toks[gtcol].split("/")).split("|")
+        gts = "|".join(toks[gtcol].replace(".", "0").split("/")).split("|")
         vals = [parse_ref(toks)] + parse_alts(toks)
         alleles = [vals[int(x)] for x in gts]
         # want unique allele values for comparison
@@ -147,14 +147,14 @@ def json_acc(vcf1, vcf2, options):
             fn = total_alts2[c] - tp
             prec = 0. if tp + fp == 0 else float(tp) / float(tp + fp)
             rec = 0. if tp + fn  == 0 else float(tp) / float(tp + fn)
-            json_data["Alts"][cat_name(c)] = [{"TP" : tp}, {"FP" : fp}, {"FN" : fn}, {"Precision" : prec}, {"Recall" : rec}]
+            json_data["Alts"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
         
         tp = found_alleles1[c]
         fp = total_alleles1[c] - tp
         fn = total_alleles2[c] - tp
         prec = 0. if tp + fp == 0 else float(tp) / float(tp + fp)
         rec = 0. if tp + fn  == 0 else float(tp) / float(tp + fn)
-        json_data["Alleles"][cat_name(c)] = [{"TP" : tp}, {"FP" : fp}, {"FN" : fn}, {"Precision" : prec}, {"Recall" : rec}]
+        json_data["Alleles"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
 
     return json.dumps(json_data)
             

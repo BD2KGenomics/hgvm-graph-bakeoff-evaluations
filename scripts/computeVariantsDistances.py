@@ -202,17 +202,48 @@ def corg_dist_fn(graph1, graph2, options):
 
 def vcf_dist_fn(graph1, graph2, options):
     """ scrape vcfCompare data"""
-    jpath = vcf_comp_path(graph1, graph2, options)
+    jpath = comp_path_vcf(graph1, graph2, options)
     with open(jpath) as f:
         j = json.loads(f.read())
-        if index_path(graph2, options) == j["db2_path"]:
-            denom = float(j["db2_total"])
+        path1 = j["Path1"]
+        path2 = j["Path2"]
+
+        query_vcf_path = graph1.replace(".vg", ".vcf")
+
+        # we expect graph2 to be a baseline graph
+        region2, sample2, method2 = options.tags[graph2]
+        assert method2 in ["g1kvcf", "platvcf"]
+        if method2 == "g1kvcf":
+            truth_vcf_path = os.path.join(options.g1kvcf_path, region2.upper() + ".vcf")
         else:
-            assert index_path(graph2, options) == j["db1_path"]
-            denom = float(j["db1_total"])
-        intersection = float(j["intersection"])
-        recall = intersection / denom
-        return [recall]
+            assert method2 == "platvcf"
+            truth_vcf_path = os.path.join(options.platinum_path, sample2, region2.upper() + ".vcf")
+
+        # do we need to flip ever?
+        assert path1 == query_vcf_path
+        assert path2 == truth_vcf_path
+        return [j["Alts"]["SNP"]["Precision"],
+                j["Alts"]["SNP"]["Recall"],
+                j["Alts"]["MULTIBASE_SNP"]["Precision"],
+                j["Alts"]["MULTIBASE_SNP"]["Recall"],
+                j["Alts"]["INSERT"]["Precision"],
+                j["Alts"]["INSERT"]["Recall"],
+                j["Alts"]["DELETE"]["Precision"],
+                j["Alts"]["DELETE"]["Recall"],
+                j["Alts"]["TOTAL"]["Precision"],
+                j["Alts"]["TOTAL"]["Recall"],
+                j["Alleles"]["REF"]["Precision"],
+                j["Alleles"]["REF"]["Recall"],
+                j["Alleles"]["SNP"]["Precision"],
+                j["Alleles"]["SNP"]["Recall"],
+                j["Alleles"]["MULTIBASE_SNP"]["Precision"],
+                j["Alleles"]["MULTIBASE_SNP"]["Recall"],
+                j["Alleles"]["INSERT"]["Precision"],
+                j["Alleles"]["INSERT"]["Recall"],
+                j["Alleles"]["DELETE"]["Precision"],
+                j["Alleles"]["DELETE"]["Recall"],
+                j["Alleles"]["TOTAL"]["Precision"],
+                j["Alleles"]["TOTAL"]["Recall"]]
 
 def vcf_dist_header(options):
     """ header"""
@@ -268,7 +299,7 @@ def make_tsvs(options):
                 header = ["Corg-Dist"]
                 dist_fns = [corg_dist_fn]
             else:
-                header = vcf_dist_header()
+                header = vcf_dist_header(options)
                 dist_fns = [vcf_dist_fn]
             for sample in options.sample_graphs[region].keys():
                 for truth in options.baseline_graphs[region][sample]:
@@ -277,10 +308,14 @@ def make_tsvs(options):
                             row_labels.append(options.tags[graph][2])
                             row = []
                             for d in dist_fns:
-                                row += d(graph, truth, options)
+                                try:
+                                    dist_res = d(graph, truth, options)
+                                except Exception as e:
+                                    RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph, truth, e))
+                                    dist_res = [None] * len(header)
+                                row += dist_res
                             mat.append(row)
                         break # shoud not be necessary
-                
             # write the baseline matrix (with None for missing data) to file 
             tsv_path = raw_tsv_path(options, region, baseline, options.comp_type)
             write_tsv(tsv_path, mat, header, row_labels, "Graph")
@@ -336,6 +371,8 @@ def remove_nones(mat, col_names, row_names):
     """
     keep_going = True
     while keep_going is True:
+        if len(row_names) == 0:
+            break
         row_counts = [0 for x in range(len(row_names))]
         col_counts = [0 for x in range(len(col_names))]
         # could be moved outside loop but that'd be too clever
@@ -412,7 +449,7 @@ def compute_corg_comparison(job, graph1, graph2, options):
 def compute_vcf_comparison(job, graph1, graph2, options):
     """ run vcf compare between two graphs
     """
-    out_path = vcf_comp_path(graph1, graph2, options)
+    out_path = comp_path_vcf(graph1, graph2, options)
     # we expect graph1 to be a sample graph
     region1, sample1, method1  = options.tags[graph1]
     assert method1 != "None" and "g1kvcf" not in method1 and "platvcf" not in method1
@@ -424,7 +461,8 @@ def compute_vcf_comparison(job, graph1, graph2, options):
     assert sample1  == sample2
     
     # get the vcf of the sample graph
-    query_vcf_path = sample_txt_path(graph1, options).replace(".txt", ".vcf")
+    RealTimeLogger.get().info("{} {} blin".format(graph1, graph2))
+    query_vcf_path = graph1.replace(".vg", ".vcf")
 
     # and the baseline
     if method2 == "g1kvcf":
@@ -438,7 +476,7 @@ def compute_vcf_comparison(job, graph1, graph2, options):
         if os.path.isfile(out_path):
             os.remove(out_path)
         robust_makedirs(os.path.dirname(out_path))        
-        run("vg compare {} {} -c -t > {}".format(query_vcf_path, truth_vcf_path))
+        run("scripts/vcfCompare.py {} {} > {}".format(query_vcf_path, truth_vcf_path, out_path))
         
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
@@ -475,7 +513,7 @@ def compute_vcf_comparisons(job, options):
         len(options.pair_comps)))
     for pair_comp in options.pair_comps:
         graph1, graph2 = pair_comp[0], pair_comp[1]
-        out_path = vcf_comp_path(graph1, graph2, options)
+        out_path = comp_path_vcf(graph1, graph2, options)
         if options.overwrite or not os.path.exists(out_path):
             job.addChildJobFn(compute_vcf_comparison, graph1, graph2, options,
                                           cores=min(options.vg_cores, 2))
@@ -544,7 +582,7 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             baseline_graphs[region][sample].add(platvcf_path)
         if options.comp_type != "vcf" and os.path.isfile(g1kvcf_filter_path):
             baseline_graphs[region][sample].add(g1kvcf_filter_path)
-        if optoins.comp_type != "vcf" and os.path.isfile(platvcf_filter_path):
+        if options.comp_type != "vcf" and os.path.isfile(platvcf_filter_path):
             baseline_graphs[region][sample].add(platvcf_filter_path)
 
         tags[sample_path] = (region, sample, method)

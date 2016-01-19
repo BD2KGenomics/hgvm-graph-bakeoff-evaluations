@@ -19,6 +19,7 @@ from callVariants import alignment_sample_tag, alignment_region_tag, alignment_g
 from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path
 from callStats import vg_length
 from evaluateVariantCalls import defaultdict_set
+from computeVariantsDistances import vcf_dist_header
 
 # Set up the plot parameters
 # Include both versions of the 1kg SNPs graph name
@@ -129,7 +130,33 @@ def plot_kmer_comp(tsv_path, options):
     acc_png = out_base_path + "_acc.png"
     run("scripts/scatter.py {} --save {} --title \"{} KMER Set Accuracy\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, region, params))
     
-    # todo : plot_params for labels...
+def plot_vcf_comp(tsv_path, options):
+    """ take the big vcf compare table and make precision_recall plots for all the categories"""
+    out_dir = os.path.join(options.comp_dir, "comp_plots")
+    robust_makedirs(out_dir)
+    out_name = os.path.basename(os.path.splitext(tsv_path)[0])
+    out_base_path = os.path.join(out_dir, out_name)
+    region = out_name.split("-")[-1].upper()
+
+    params = " ".join(PLOT_PARAMS)
+
+    # precision recall scatter plot
+    header = vcf_dist_header(options)
+    for i in range(len(header) / 2):
+        prec_idx = 2 * i
+        rec_idx = prec_idx + 1
+        print prec_idx, header[prec_idx], rec_idx, header[rec_idx]
+        assert "Precision" in header[prec_idx]
+        assert "Recall" in header[rec_idx]
+        label = header[prec_idx].replace("Precision", "acc")
+        acc_tsv = out_base_path + "_" + label + ".tsv"
+        print "Make {} tsv with cols {} {}".format(label, rec_idx, prec_idx)
+        # +1 to convert to awk 1-base coordinates. +1 again since header doesnt include row_label col
+        awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2)
+        awkstr = "awk \'{" + awkcmd + "}\'"
+        run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
+        acc_png = out_base_path + "_" + label + "_acc.png"
+        run("scripts/scatter.py {} --save {} --title \"{} VCF {}\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, region, label, params))
     
 def main(args):
     
@@ -138,7 +165,10 @@ def main(args):
     # look through tsvs in comp_tables
     for tsv in glob.glob(os.path.join(options.comp_dir, "comp_tables", "*.tsv")):
         if "kmer" in tsv.split("-"):
-            plot_kmer_comp(tsv, options)        
+            plot_kmer_comp(tsv, options)
+        elif "vcf" in tsv.split("-"):
+            plot_vcf_comp(tsv, options)
+                                
 
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

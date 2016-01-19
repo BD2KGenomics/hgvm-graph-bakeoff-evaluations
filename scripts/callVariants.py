@@ -331,7 +331,6 @@ def compute_vg_variants(job, input_gam, options):
     out_sample_vg_path = sample_vg_path(input_gam, options)
     out_sample_txt_path = sample_txt_path(input_gam, options)    
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
-
     do_pu = options.overwrite or not os.path.isfile(out_pileup_path)
     do_call = do_pu or not os.path.isfile(out_sample_vg_path)
     do_aug = do_pu or not os.path.isfile(out_augmented_vg_path)
@@ -357,28 +356,41 @@ def compute_vg_variants(job, input_gam, options):
                                                                                     options.vg_cores,
                                                                                     out_sample_vg_path),
             fail_hard = True)
-        
+
+        region = alignment_region_tag(input_gam, options)
+        g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")            
+        with open(g1kbed_path) as f:
+            contig, offset = f.readline().split()[0:2]
+            
         # make the vcf
         # can only do this if there is a "ref" path in the vg graph
+        ref = None
         res_path = temp_path(options)
-        run("scripts/vgHasPath.sh {} {} > {}".format(input_graph_path, "ref", res_path))
-        has_ref = False
-        with open(res_path) as res_file:
-            has_ref = res_file.read()[0] == "1"
+        for ref_name in ["ref", contig]:
+            run("scripts/vgHasPath.sh {} {} > {}".format(input_graph_path, ref_name, res_path))
+            with open(res_path) as res_file:
+                if res_file.read()[0] == "1":
+                    ref = ref_name
+                    break
         run("rm {}".format(res_path))
-        if has_ref:
-            region = alignment_region_tag(input_gam, options)
-            g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")
-            with open(g1kbed_path) as f:
-                contig, offset = f.readline().split()[0:2] 
-                run("glenn2vcf {} {} -o {} -r {} -c {} -s {} > {}".format(input_graph_path,
-                                                                          out_sample_txt_path,
-                                                                          offset,
-                                                                          "ref",
-                                                                          contig,
-                                                                          alignment_sample_tag(input_gam, options),
-                                                                          out_sample_txt_path.replace(".txt", ".vcf")),
-                    fail_hard = True)
+                
+        if ref is not None:
+            tasks = []
+            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} > {}".format(input_graph_path,
+                                                                      out_sample_txt_path,
+                                                                      offset,
+                                                                      ref,
+                                                                      contig,
+                                                                      alignment_sample_tag(input_gam, options),
+                                                                      out_sample_txt_path.replace(".txt", "_orig.vcf")),
+                fail_hard = True)
+            
+            run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - > {}".format(
+                out_sample_txt_path.replace(".txt", "_orig.vcf"),
+                options.chrom_fa_path,
+                out_sample_txt_path.replace(".txt", ".vcf")),
+                fail_hard = True)
+
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
