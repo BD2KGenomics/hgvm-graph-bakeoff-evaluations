@@ -59,7 +59,7 @@ def main(args):
                 skip = False
 
                 # check pass field
-                if options.qual and toks[6] != "PASS":
+                if options.qual is True and toks[6] != "PASS":
                     pass_count +=1
                     skip = True
 

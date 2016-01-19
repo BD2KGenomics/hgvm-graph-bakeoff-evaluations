@@ -16,12 +16,12 @@ OUT_DIR=$4
 TOIL_DIR=cps_toil_dir
 TOIL_OPTS="--maxCores 48 --vg_cores 4"
 INDEX_OPTS="--kmer 20 --edge_max 7 --timeout 10000"
-#COMPS=( "kmer" "corg" )
-COMPS=( "kmer" )
+#COMPS=( "vcf" "kmer" "corg" )
+COMPS=( "vcf" )
 #COMP_OPTS="--orig --orig_and_sample"
 COMP_OPTS=""
-#REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-REGIONS=( "lrc_kir" )
+REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
+#REGIONS=( "brca1" "brca2" "sma" "lrc_kir" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis
