@@ -84,6 +84,8 @@ def parse_args(args):
         help="the width of lines making up the boxes and their parts")
     parser.add_argument("--sparse_ticks", action="store_true",
         help="use sparse tick marks")
+    parser.add_argument("--sparse_axes", action="store_true",
+        help="use only bottom and left axes")
     parser.add_argument("--x_sideways", action="store_true",
         help="write X axis labels vertically")
     parser.add_argument("--min", type=float, default=None,
@@ -450,6 +452,11 @@ def main(args):
         # Set up tickmarks to have only 2 per axis, at the ends
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
+            
+    if options.sparse_axes:
+        # Don't draw top or right axes
+        pyplot.gca().spines["right"].set_visible(False)
+        pyplot.gca().spines["top"].set_visible(False)
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>

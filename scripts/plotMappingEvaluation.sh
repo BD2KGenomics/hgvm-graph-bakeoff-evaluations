@@ -4,6 +4,9 @@
 
 set -ex
 
+# What plot filetype should we produce?
+PLOT_FILETYPE="pdf"
+
 # Grab the input directory to look in
 INPUT_DIR=${1}
 
@@ -19,7 +22,6 @@ PLOT_PARAMS=(
     --categories
     snp1kg
     snp1000g
-    haplo1kg
     sbg
     cactus
     camel
@@ -40,7 +42,6 @@ PLOT_PARAMS=(
     --category_labels 
     1KG
     1KG
-    "1KG Haplo"
     7BG
     Cactus
     Camel
@@ -61,7 +62,6 @@ PLOT_PARAMS=(
     --colors
     "#fb9a99"
     "#fb9a99"
-    "#fdbf6f"
     "#b15928"
     "#1f78b4"
     "#33a02c"
@@ -81,6 +81,8 @@ PLOT_PARAMS=(
     "#FF0000"
     --font_size 20 --dpi 90 --no_n
 )
+
+# Color "#fdbf6f" from haplo1kg is free.
 
 # Where are the stats files
 STATS_DIR="${INPUT_DIR}/stats"
@@ -116,13 +118,13 @@ do
 
     # We need overall files for mapped and multimapped
     OVERALL_MAPPING_FILE="${PLOTS_DIR}/mapping.tsv"
-    OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.png"
+    OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.${PLOT_FILETYPE}"
     OVERALL_PERFECT_FILE="${PLOTS_DIR}/perfect.tsv"
-    OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.png"
+    OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.${PLOT_FILETYPE}"
     OVERALL_ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.tsv"
-    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.ALL.png"
+    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.ALL.${PLOT_FILETYPE}"
     OVERALL_SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.tsv"
-    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.png"
+    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
 
     for REGION in `ls ${PLOTS_DIR}/mapping.*.tsv | xargs -n 1 basename | sed 's/mapping.\(.*\).tsv/\1/'`
     do
@@ -130,27 +132,27 @@ do
         
         # We have intermediate data files for plotting from
         MAPPING_FILE="${PLOTS_DIR}/mapping.${REGION}.tsv"
-        MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.png"
+        MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.${PLOT_FILETYPE}"
         PERFECT_FILE="${PLOTS_DIR}/perfect.${REGION}.tsv"
-        PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.png"
+        PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.${PLOT_FILETYPE}"
         ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.${REGION}.tsv"
-        ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.${REGION}.png"
+        ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.${REGION}.${PLOT_FILETYPE}"
         SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
-        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.png"
+        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
         ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
-        ANY_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-anymapping.${REGION}.png"
+        ANY_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-anymapping.${REGION}.${PLOT_FILETYPE}"
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
-        RUNTIME_PLOT="${PLOTS_DIR}/${MODE}-runtime.${REGION}.png"
+        RUNTIME_PLOT="${PLOTS_DIR}/${MODE}-runtime.${REGION}.${PLOT_FILETYPE}"
         
         NOINDEL_FILE="${PLOTS_DIR}/noindels.${REGION}.tsv"
-        NOINDEL_PLOT="${PLOTS_DIR}/${MODE}-noindels.${REGION}.png"
+        NOINDEL_PLOT="${PLOTS_DIR}/${MODE}-noindels.${REGION}.${PLOT_FILETYPE}"
         SUBSTRATE_FILE="${PLOTS_DIR}/substrate.${REGION}.tsv"
-        SUBSTRATE_PLOT="${PLOTS_DIR}/${MODE}-substrate.${REGION}.png"
+        SUBSTRATE_PLOT="${PLOTS_DIR}/${MODE}-substrate.${REGION}.${PLOT_FILETYPE}"
         INDELRATE_FILE="${PLOTS_DIR}/indelrate.${REGION}.tsv"
-        INDELRATE_PLOT="${PLOTS_DIR}/${MODE}-indelrate.${REGION}.png"
+        INDELRATE_PLOT="${PLOTS_DIR}/${MODE}-indelrate.${REGION}.${PLOT_FILETYPE}"
         
         PERFECT_UNIQUE_FILE="${PLOTS_DIR}/perfect_vs_unique.${REGION}.tsv"
-        PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.${REGION}.png"
+        PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.${REGION}.${PLOT_FILETYPE}"
         
         echo "Plotting ${REGION^^}..."
         
@@ -165,21 +167,21 @@ do
             --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
             --x_label "Graph" --y_label "${PORTION} perfectly mapped" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
             --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
             --x_sideways --hline_median refonly \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
         
         if [ "${HR_REGION}" == "CENX" ]
@@ -194,34 +196,39 @@ do
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
             --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Runtime per read${SECONDS}" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${NOINDEL_FILE}" \
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
             --x_sideways --hline_median refonly \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
            
         if [ "${MODE}" == "absolute" ]
         then
             # Limit max Y for absolute substitution rates
-            SUBSTRATE_LIMIT="--max 0.10"
+            if [ "${REGION^^}" == "MHC" ]
+            then
+                SUBSTRATE_LIMIT="--max 0.10"
+            else
+                SUBSTRATE_LIMIT="--max 0.02"
+            fi
         else
             # Set limits by region
             if [ "${REGION^^}" == "BRCA2" ]
@@ -231,7 +238,7 @@ do
             then
                 SUBSTRATE_LIMIT="--max 2 --min 0"
             else
-               SUBSTRATE_LIMIT="--max 2 --min 0"
+                SUBSTRATE_LIMIT="--max 2 --min 0"
             fi
         fi
         
@@ -239,13 +246,18 @@ do
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
-            --range \
+            --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         if [ "${MODE}" == "absolute" ]
         then
             # Limit max Y for absolute indel rates
-            INDELRATE_LIMIT="--max 0.10"
+            if [ "${REGION^^}" == "MHC" ]
+            then
+                INDELRTE_LIMIT="--max 0.10"
+            else
+                INDELRATE_LIMIT="--max 0.02"
+            fi
         else
             # Set limits by region
             if [ "${REGION^^}" == "BRCA2" ]
@@ -255,7 +267,7 @@ do
             then
                 INDELRATE_LIMIT="--max 2 --min 0"
             else
-               INDELRATE_LIMIT="--max 2 --min 0"
+                INDELRATE_LIMIT="--max 2 --min 0"
             fi
         fi
             
@@ -263,7 +275,7 @@ do
             --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
             --x_sideways --hline_median refonly --best_low \
-            --range ${INDELRATE_LIMIT} \
+            --range --sparse_ticks --sparse_axes ${INDELRATE_LIMIT} \
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
@@ -283,7 +295,7 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
-            --width 12 --height 9 \
+            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "." \
             ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"
             
@@ -301,28 +313,28 @@ do
         --title "$(printf "Mapped (<=2 mismatches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         --x_sideways  --hline_median trivial \
-        --range \
+        --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
         --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
         --x_sideways --hline_median trivial \
-        --range \
+        --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
         --title "$(printf "One-error (<=1 mismatch)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
         --x_sideways --hline_median trivial \
-        --range \
+        --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
 
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
         --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
         --x_sideways --hline_median refonly \
-        --range \
+        --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
 done

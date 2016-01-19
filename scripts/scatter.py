@@ -78,6 +78,8 @@ def parse_args(args):
         help="save the figure with the specified DPI, if applicable")
     parser.add_argument("--sparse_ticks", action="store_true",
         help="use sparse tick marks")
+    parser.add_argument("--sparse_axes", action="store_true",
+        help="use only bottom and left axes")
     parser.add_argument("--lines", action="store_true",
         help="connect points together")
     parser.add_argument("--tsv", action="store_true",
@@ -197,7 +199,7 @@ def main(args):
                 if options.colors is not None:
                     options.colors[i] = None
                 
-                if options.markers is not None:
+                if options.markers is not None and len(options.markers) > i:
                     options.markers[i] = None
                     
                 if options.category_labels is not None:
@@ -341,6 +343,11 @@ def main(args):
             matplotlib.ticker.FixedLocator(pyplot.xlim()))
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
+            
+    if options.sparse_axes:
+        # Don't draw top or right axes
+        pyplot.gca().spines["right"].set_visible(False)
+        pyplot.gca().spines["top"].set_visible(False)
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
