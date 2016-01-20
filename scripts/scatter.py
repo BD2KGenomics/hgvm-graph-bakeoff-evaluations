@@ -289,7 +289,7 @@ def main(args):
                     plot_opt["ms"] = options.marker_size
                 if options.line_width is not None:
                     plot_opt["linewidth"] = options.line_width
-            elif optoins.marker_size is not None:
+            elif options.marker_size is not None:
                 plot_opt["s"] = options.marker_size
                     
             # Do the actual plot

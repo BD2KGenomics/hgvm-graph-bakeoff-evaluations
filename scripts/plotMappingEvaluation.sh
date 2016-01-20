@@ -295,7 +295,7 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
-            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "." \
+            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
             ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"
             

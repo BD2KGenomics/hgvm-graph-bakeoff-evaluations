@@ -105,6 +105,8 @@ def parse_args(args):
     parser.add_argument("--range", action="store_const", const="range",
         default=None, dest="whiskers",
         help="use whiskers to denote range instead of outer quartile + 1.5 IQR")
+    parser.add_argument("--medians_only", action="store_true",
+        help="only draw the medians of the boxes")
         
     # We take these next 4 options, optionally, in strided groupings. So you can
     # have multiple --categories options, each of which is named with a
@@ -325,35 +327,32 @@ def main(args):
             for j in xrange(length):
                 # For each box we have to put in the grouping
     
-                # We need to set its properties
-                boxprops = dict(base_props)
+                # We can do the median separately
+                medianprops = dict(base_props)
                 
                 if options.colors is not None:
                     # We need to do individual item colors
-                    boxprops["color"] = category_colors[start + j]
-                    
-                    # Do the plot for this single box, at the correct place,
-                    # passing the color options if needed, as well as all the
-                    # other options.
-                    pyplot.boxplot([values[j]], positions=[positions[j]],
-#                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
-                                   widths=0.5, boxprops=boxprops,
-                                   
-                        meanprops=boxprops, medianprops=boxprops,
-                        flierprops=boxprops, whiskerprops=boxprops,
-                        capprops=boxprops)
+                    medianprops["color"] = category_colors[start + j]
                     
                 elif options.grouping_colors is not None:
                     # Set a color for this whole grouping
-                    boxprops["color"] = options.grouping_colors[i]
+                    medianprops["color"] = options.grouping_colors[i]
                     
-                    # Only color the box itself to match old behavior.
-                    pyplot.boxplot([values[j]], positions=[positions[j]],
-                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
-                        meanprops=boxprops, medianprops=boxprops,
-                        flierprops=boxprops, whiskerprops=boxprops,
-                        capprops=boxprops)
+                # The rest of the box should look like the median
+                boxprops = dict(medianprops)
                     
+                if options.medians_only:
+                    # Delete the lines that aren't the median
+                    boxprops["linestyle"] = "none"
+                
+                # Do the plot for this single box, at the correct place,
+                # passing the color options if needed, as well as all the
+                # other options.
+                pyplot.boxplot([values[j]], positions=[positions[j]],
+                    widths=0.5, whis=options.whiskers, boxprops=boxprops,
+                    meanprops=boxprops, medianprops=medianprops,
+                    flierprops=boxprops, whiskerprops=boxprops,
+                    capprops=boxprops)    
                 
                 
         # We need to fix up the x limits since boxplot messes them up.
