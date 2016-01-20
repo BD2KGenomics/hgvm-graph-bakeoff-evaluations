@@ -457,6 +457,9 @@ def main(args):
         # Don't draw top or right axes
         pyplot.gca().spines["right"].set_visible(False)
         pyplot.gca().spines["top"].set_visible(False)
+        # Or their tick marks
+        pyplot.gca().yaxis.set_ticks_position("left")
+        pyplot.gca().xaxis.set_ticks_position("bottom")
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
