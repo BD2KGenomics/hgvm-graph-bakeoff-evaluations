@@ -75,6 +75,8 @@ def parse_args(args):
                         " data in platinum folder")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
                         help="timeout in seconds for long jobs (vg surject in this case)")
+    parser.add_argument("--skipBaseline", action="store_true",
+                        help="dont make vg sample graphs from g1k and platinum vcfs")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -402,8 +404,8 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
     """
     # there is only one g1vcf graph per region per sample
     # this function is also going to get called once for each graph type
-    # so we hack here to only run on trivial graphs (arbitrary choice)
-    if alignment_graph_tag(input_gam, options) != "trivial":
+    # so we hack here to only run on refonly graphs (arbitrary choice)
+    if alignment_graph_tag(input_gam, options) != "refonly":
         return
 
     sample = alignment_sample_tag(input_gam, options)
@@ -475,15 +477,12 @@ def call_variants(job, options):
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)
-        # all combinations of [G1KVCF , PLATVCF] X [NO_FILTER_INDELS, FILTER_INDELS]
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, False, options,
-                          cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, True, options,
-                          cores=options.vg_cores)        
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, False, options,
-                          cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, True, options,
-                          cores=options.vg_cores)        
+        if not options.skipBaseline:
+            # all combinations of [G1KVCF , PLATVCF] 
+            job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, False, options,
+                              cores=options.vg_cores)
+            job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, False, options,
+                              cores=options.vg_cores)
 
         if not options.vg_only:
             job.addChildJobFn(compute_linear_variants, input_gam, options,
