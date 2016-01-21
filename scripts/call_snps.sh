@@ -15,8 +15,8 @@ OUT_DIR=$3
 TOIL_DIR=cs_toil_dir
 
 REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-#REGIONS=( "brca1" )
-OPTS="--maxCores 36 --vg_cores 2 --vg_only"
+REGIONS=( "brca1" )
+OPTS="--maxCores 36 --vg_cores 2 --vg_only --skipBaseline"
 
 CALL_OPTS=" -r 0.001 -d 20 -s 15"
 PILEUP_OPTS=" "

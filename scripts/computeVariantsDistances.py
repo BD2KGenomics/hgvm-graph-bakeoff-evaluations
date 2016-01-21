@@ -134,18 +134,18 @@ def corg_path(graph1, graph2, options):
     return os.path.join(options.comp_dir, "corg_data", region1,
                         method1 + s1tag + "_vs_" + method2 + s2tag + ".txt")
 
-def input_vcf_path(graph, options):
-    """ translate a gam to a vcf, with hack to get at the baseline graphs
-    """
-    region, sample, method = options.tags[graph]
+def input_vcf_path(graph, options, region = None, sample = None, method = None):
+    """ translate a gam to a vcf, with hack ot get at the baseline graphs"""
+    if region is None or sample is None or method is None:
+        region, sample, method = options.tags[graph]
     # path names are a bit hacky here, but work for platinum samples
     if method == "g1kvcf":
         return os.path.join(options.platinum_path, sample + ".g1k", region.upper() + ".vcf")
     elif method == "platvcf":
         return os.path.join(options.platinum_path, sample, region.upper() + ".vcf")
     else:
-        return graph.replace(".vg", ".vcf")
-
+        return graph.replace(".vg", ".vcf")    
+ 
 def preprocessed_vcf_path(graph, options):
     """ get the path of the sorted vcf (normalized and/or clipped)
     """
@@ -585,14 +585,14 @@ def compute_kmer_indexes(job, options):
         input_set.add(pair_comp[0])
         input_set.add(pair_comp[1])
 
-    RealTimeLogger.get().info("Computing indexes for {} input graphs".format(len(input_set)))
-
     if options.comp_type in ["kmer", "corg"]:
+        RealTimeLogger.get().info("Computing indexes for {} input graphs".format(len(input_set)))
         for graph in input_set:
             if options.overwrite or not os.path.exists(index_path(graph, options)):
                 job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
     if options.comp_type == "vcf":
+        RealTimeLogger.get().info("Preprocessing {} input vcfs".format(len(input_set)))
         for graph in input_set:
             job.addChildJobFn(preprocess_vcf, graph, options, cores=1)
 
@@ -630,16 +630,20 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             orig_graphs[region].add(orig_path)
             tags[orig_path] = (region, None, method)
 
-        if options.comp_type != "vcf" or os.path.isfile(sample_path.replace(".vg", ".vcf")):
+        def test_path(graph, method):
+            if options.comp_type == "vcf":
+                return input_vcf_path(graph, options, region, sample, method)
+            return graph
+
+        if os.path.isfile(test_path(sample_path, method)):
             sample_graphs[region][sample].add(sample_path)
         else:
             sys.stderr.write("WARNING, input VCF not found: {}\n".format(
-                sample_path.replace(".vg", ".vcf")))
+                test_path(sample_path, method)))
         # we dont expect to have baselines for every sample
-        if os.path.isfile(g1kvcf_path):
-        #if options.comp_type != "vcf" and os.path.isfile(g1kvcf_path):
+        if os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):
             baseline_graphs[region][sample].add(g1kvcf_path)
-        if os.path.isfile(platvcf_path):
+        if os.path.isfile(test_path(platvcf_path, "platvcf")):
             baseline_graphs[region][sample].add(platvcf_path)
 
         tags[sample_path] = (region, sample, method)
@@ -690,9 +694,7 @@ def main(args):
         for sample in options.sample_graphs[region].keys():
             for graph1 in options.sample_graphs[region][sample]:
                 for graph2 in options.baseline_graphs[region][sample]:
-                    # baseline graphs are expected not to exist sometimes
-                    if os.path.isfile(graph2):
-                        options.pair_comps.append((graph1, graph2))
+                    options.pair_comps.append((graph1, graph2))
 
                 # optional smaple vs sample
                 if options.sample:
