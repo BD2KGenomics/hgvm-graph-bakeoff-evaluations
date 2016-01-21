@@ -68,6 +68,8 @@ def parse_args(args):
                         help="options to pass to vg call.  wrap in \"\"")
     parser.add_argument("--pileup_opts", type=str, default="",
                         help="options to pass to vg pileup. wrap in \"\"")
+    parser.add_argument("--filter_opts", type=str, default="",
+                        help="options to pass to vg filter. wrap in \"\"")
     parser.add_argument("--platinum_samples", type=str, default="NA12877,NA12878",
                         help="comma-separated list of sample names that have vcf"
                         " data in platinum folder")
@@ -340,11 +342,12 @@ def compute_vg_variants(job, input_gam, options):
             input_graph_path,
             input_gam))
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg pileup {} {} {} -t {} > {}".format(input_graph_path,
-                                                   input_gam,
-                                                   options.pileup_opts,
-                                                   options.vg_cores,
-                                                   out_pileup_path),
+        run("vg filter {} {} | vg pileup {} - {} -t {} > {}".format(input_gam,
+                                                                    options.filter_opts,
+                                                                    input_graph_path,
+                                                                    options.pileup_opts,
+                                                                    options.vg_cores,
+                                                                    out_pileup_path),
             fail_hard = True)
 
     if do_call:
@@ -382,15 +385,8 @@ def compute_vg_variants(job, input_gam, options):
                                                                       ref,
                                                                       contig,
                                                                       alignment_sample_tag(input_gam, options),
-                                                                      out_sample_txt_path.replace(".txt", "_orig.vcf")),
+                                                                      out_sample_txt_path.replace(".txt", ".vcf")),
                 fail_hard = True)
-            
-            run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - > {}".format(
-                out_sample_txt_path.replace(".txt", "_orig.vcf"),
-                options.chrom_fa_path,
-                out_sample_txt_path.replace(".txt", ".vcf")),
-                fail_hard = True)
-
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))

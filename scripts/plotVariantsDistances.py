@@ -146,6 +146,9 @@ def plot_vcf_comp(tsv_path, options):
         prec_idx = 2 * i
         rec_idx = prec_idx + 1
         print prec_idx, header[prec_idx], rec_idx, header[rec_idx]
+        comp_type, comp_cat = header[prec_idx].split("-")[:2]
+        if comp_cat not in ["TOT", "SNP"]:
+            continue
         assert "Precision" in header[prec_idx]
         assert "Recall" in header[rec_idx]
         label = header[prec_idx].replace("Precision", "acc")
@@ -155,8 +158,18 @@ def plot_vcf_comp(tsv_path, options):
         awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2)
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
-        acc_png = out_base_path + "_" + label + "_acc.png"
-        run("scripts/scatter.py {} --save {} --title \"{} VCF {}\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, region, label, params))
+        acc_png = out_base_path + "_" + label + ".png"
+        title = "VCF "
+        if comp_type == "Allele":
+            title += " Genotype"
+        if comp_cat == "TOT":
+            title += " Total Accuracy"
+        else:
+            title += " {} Accuracy".format(comp_cat)
+        title += " for {}".format(region)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, title, params)
+        print cmd
+        os.system(cmd)
     
 def main(args):
     

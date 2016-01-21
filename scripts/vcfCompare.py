@@ -7,6 +7,8 @@ quick, from scratch vcf compare script to help debug calls / sanity check gatk r
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, json
 from collections import defaultdict
+from toillib import RealTimeLogger, robust_makedirs
+import tempfile
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -17,7 +19,9 @@ def parse_args(args):
     parser.add_argument("vcf2", type=str,
                         help="Input vcf file 2 (truth)")
     parser.add_argument("-c", action="store_true", default=False,
-                        help="Ignore sequence name (only look at start)")    
+                        help="Ignore sequence name (only look at start)")
+    parser.add_argument("-i", action="append", default=[],
+                        help="Ignore lines contaning keyword")
 
     args = args[1:]
     options = parser.parse_args(args)
@@ -61,7 +65,11 @@ def make_vcf_dict(vcf_path, options):
     vcf_dict = defaultdict(list)
     with open(vcf_path) as f:
         for line in f:
-            if line[0] != "#":
+            skip = line[0] == "#"
+            for ignore_keyword in options.i:
+                if ignore_keyword in line:
+                    skip = True
+            if not skip:
                 toks = line.split()
                 chrom = toks[0] if options.c is False else None
                 pos = int(toks[1])
@@ -136,8 +144,8 @@ def json_acc(vcf1, vcf2, options):
     total_alts2, found_alts2, total_alleles2, found_alleles2 = compare_vcf_dicts(vcf_dict2, vcf_dict1)    
 
     json_data = dict()
-    json_data["Path1"] = vcf1
-    json_data["Path2"] = vcf2
+    json_data["Path1"] = options.vcf1
+    json_data["Path2"] = options.vcf2
     json_data["Alts"] = dict()
     json_data["Alleles"] = dict()
     for c in range(6):
@@ -157,12 +165,20 @@ def json_acc(vcf1, vcf2, options):
         json_data["Alleles"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
 
     return json.dumps(json_data)
-            
-        
+
+def system(command):
+    sts = subprocess.call(command, shell=True, bufsize=-1, stdout=sys.stdout, stderr=sys.stderr)
+    if sts != 0:
+        raise RuntimeError("Command: %s exited with non-zero status %i" % (command, sts))
+    return sts
+
 def main(args):
     options = parse_args(args)
 
-    print json_acc(options.vcf1, options.vcf2, options)
+    vcf1 = options.vcf1
+    vcf2 = options.vcf2        
+    
+    print json_acc(vcf1, vcf2, options)
 
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

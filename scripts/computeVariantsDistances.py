@@ -52,7 +52,9 @@ def parse_args(args):
                         "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")
     parser.add_argument("--platinum_path", type=str, default="data/platinum",
                         help="path to search for platinum genomes vcf. expects "
-                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")        
+                        "these to be in <g1kvcf_path>/BRCA1/BRCA1.vcf. etc. ")
+    parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
+                        help="fasta file with entire chromosome info for all regions")    
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
@@ -63,6 +65,14 @@ def parse_args(args):
                         help="do all vs all comparison of sample graphs")
     parser.add_argument("--orig_and_sample", action="store_true",
                         help="do all vs all comparison of sample + input graphs")
+    parser.add_argument("--bed", type=str, default=None,
+                        help="regions to subset for vcf comparison (using bcftools view -R)")
+    parser.add_argument("--ignore", action="append", default=[],
+                        help="keyword to ignore in vcf comparison")
+    parser.add_argument("--normalize", action="store_true", default =False,
+                        help="run vt normalization on all input vcfs")
+    parser.add_argument("--clip", action="store_true", default=False,
+                        help="clip vcf using platinum confidence regions")
                             
     args = args[1:]
 
@@ -124,6 +134,30 @@ def corg_path(graph1, graph2, options):
     return os.path.join(options.comp_dir, "corg_data", region1,
                         method1 + s1tag + "_vs_" + method2 + s2tag + ".txt")
 
+def input_vcf_path(graph, options):
+    """ translate a gam to a vcf, with hack to get at the baseline graphs
+    """
+    region, sample, method = options.tags[graph]
+    # path names are a bit hacky here, but work for platinum samples
+    if method == "g1kvcf":
+        return os.path.join(options.platinum_path, sample + ".g1k", region.upper() + ".vcf")
+    elif method == "platvcf":
+        return os.path.join(options.platinum_path, sample, region.upper() + ".vcf")
+    else:
+        return graph.replace(".vg", ".vcf")
+
+def preprocessed_vcf_path(graph, options):
+    """ get the path of the sorted vcf (normalized and/or clipped)
+    """
+    region, sample, method = options.tags[graph]
+    return os.path.join(options.comp_dir, "preprocessed_vcfs", region,
+                        sample + "_" + method + ".vcf")
+
+def clip_bed_path(graph, options):
+    """ get a bed to clip vcf by """
+    region, sample, method = options.tags[graph]
+    return os.path.join(options.platinum_path, sample + ".bed")
+    
 def comp_path_vcf(graph1, graph2, options):
     """ get the path for json output of vcf compare
     """
@@ -208,16 +242,12 @@ def vcf_dist_fn(graph1, graph2, options):
         path1 = j["Path1"]
         path2 = j["Path2"]
 
-        query_vcf_path = graph1.replace(".vg", ".vcf")
+        query_vcf_path = preprocessed_vcf_path(graph1, options)
 
         # we expect graph2 to be a baseline graph
         region2, sample2, method2 = options.tags[graph2]
         assert method2 in ["g1kvcf", "platvcf"]
-        if method2 == "g1kvcf":
-            truth_vcf_path = os.path.join(options.g1kvcf_path, region2.upper() + ".vcf")
-        else:
-            assert method2 == "platvcf"
-            truth_vcf_path = os.path.join(options.platinum_path, sample2, region2.upper() + ".vcf")
+        truth_vcf_path = preprocessed_vcf_path(graph2, options)
 
         # do we need to flip ever?
         assert path1 == query_vcf_path
@@ -288,7 +318,7 @@ def make_tsvs(options):
 
         # do the baseline tsvs.  this is one row per graph,
         # with one column per comparison type with truth
-        for baseline in ["g1kvcf", "platvcf", "g1kvcf_filter", "platvcf_filter"]:
+        for baseline in ["g1kvcf", "platvcf"]:
             RealTimeLogger.get().info("Making {} baseline tsv for {}".format(baseline, region))
             mat = []
             row_labels = []
@@ -446,6 +476,32 @@ def compute_corg_comparison(job, graph1, graph2, options):
         with open(out_path, "w") as f:
             f.write("{}\n".format(corg_val))
 
+def preprocess_vcf(job, graph, options):
+    """ run vt normalize and bed clip"""
+    input_vcf = input_vcf_path(graph, options)
+    output_vcf = preprocessed_vcf_path(graph, options)
+    robust_makedirs(os.path.dirname(output_vcf))
+
+    run("vcfsort {} > {}".format(input_vcf, output_vcf), fail_hard=True)
+    
+    if options.clip is True:
+        clip_bed = clip_bed_path(graph, options)        
+        if not os.path.isfile(clip_bed):
+            RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
+        else:
+            run("bgzip {}".format(output_vcf), fail_hard=True)
+            run("tabix -f -p vcf {}".format(output_vcf + ".gz"), fail_hard=True)
+            run("bcftools view {} -R {} > {}".format(output_vcf + ".gz", clip_bed, output_vcf), fail_hard=True)
+            run("rm {}".format(output_vcf + ".gz*"))
+
+    if options.normalize is True:
+        run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - > {}".format(
+            output_vcf,
+            options.chrom_fa_path,
+            output_vcf + ".vt"),
+            fail_hard = True)
+        run("mv {} {}".format(output_vcf + ".vt", output_vcf), fail_hard=True)
+
 def compute_vcf_comparison(job, graph1, graph2, options):
     """ run vcf compare between two graphs
     """
@@ -461,22 +517,21 @@ def compute_vcf_comparison(job, graph1, graph2, options):
     assert sample1  == sample2
     
     # get the vcf of the sample graph
-    RealTimeLogger.get().info("{} {} blin".format(graph1, graph2))
-    query_vcf_path = graph1.replace(".vg", ".vcf")
+    query_vcf_path = preprocessed_vcf_path(graph1, options)
 
     # and the baseline
-    if method2 == "g1kvcf":
-        truth_vcf_path = os.path.join(options.g1kvcf_path, region2.upper() + ".vcf")
-    else:
-        truth_vcf_path = os.path.join(options.platinum_path, sample2, region2.upper() + ".vcf")
+    truth_vcf_path = preprocessed_vcf_path(graph2, options)
 
     do_comp = options.overwrite or not os.path.exists(out_path)
 
     if do_comp:
         if os.path.isfile(out_path):
             os.remove(out_path)
-        robust_makedirs(os.path.dirname(out_path))        
-        run("scripts/vcfCompare.py {} {} > {}".format(query_vcf_path, truth_vcf_path, out_path))
+        robust_makedirs(os.path.dirname(out_path))
+        vc_opts = "-b {}".format(options.bed) if options.bed is not None else ""
+        for ignore_keyword in options.ignore:
+            vc_opts += " -i {}".format(ignore_keyword)
+        run("scripts/vcfCompare.py {} {} {} > {}".format(query_vcf_path, truth_vcf_path, vc_opts, out_path))
         
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
@@ -537,6 +592,10 @@ def compute_kmer_indexes(job, options):
             if options.overwrite or not os.path.exists(index_path(graph, options)):
                 job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
+    if options.comp_type == "vcf":
+        for graph in input_set:
+            job.addChildJobFn(preprocess_vcf, graph, options, cores=1)
+
     # do the comparisons
     if options.comp_type == "kmer":
         job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
@@ -566,30 +625,26 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
         sample_path = sample_vg_path(input_gam, options)
         g1kvcf_path = g1k_vg_path(input_gam, False, False, options)
         platvcf_path = g1k_vg_path(input_gam, True, False, options)
-        g1kvcf_filter_path = g1k_vg_path(input_gam, False, True, options)
-        platvcf_filter_path = g1k_vg_path(input_gam, True, True, options)
-        
         
         if orig or orig_and_sample:
             orig_graphs[region].add(orig_path)
             tags[orig_path] = (region, None, method)
 
-        sample_graphs[region][sample].add(sample_path)
+        if options.comp_type != "vcf" or os.path.isfile(sample_path.replace(".vg", ".vcf")):
+            sample_graphs[region][sample].add(sample_path)
+        else:
+            sys.stderr.write("WARNING, input VCF not found: {}\n".format(
+                sample_path.replace(".vg", ".vcf")))
         # we dont expect to have baselines for every sample
         if os.path.isfile(g1kvcf_path):
+        #if options.comp_type != "vcf" and os.path.isfile(g1kvcf_path):
             baseline_graphs[region][sample].add(g1kvcf_path)
         if os.path.isfile(platvcf_path):
             baseline_graphs[region][sample].add(platvcf_path)
-        if options.comp_type != "vcf" and os.path.isfile(g1kvcf_filter_path):
-            baseline_graphs[region][sample].add(g1kvcf_filter_path)
-        if options.comp_type != "vcf" and os.path.isfile(platvcf_filter_path):
-            baseline_graphs[region][sample].add(platvcf_filter_path)
 
         tags[sample_path] = (region, sample, method)
         tags[g1kvcf_path] = (region, sample, "g1kvcf")
         tags[platvcf_path] = (region, sample, "platvcf")
-        tags[g1kvcf_filter_path] = (region, sample, "g1kvcf_filter")
-        tags[platvcf_filter_path] = (region, sample, "platvcf_filter")
 
     return orig_graphs, sample_graphs, baseline_graphs, tags
     
