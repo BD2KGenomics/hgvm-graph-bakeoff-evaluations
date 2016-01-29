@@ -17,15 +17,20 @@ TOIL_DIR=cps_toil_dir
 TOIL_OPTS="--maxCores 48 --vg_cores 4"
 INDEX_OPTS="--kmer 20 --edge_max 7 --timeout 10000"
 #COMPS=( "vcf" "kmer" "corg" )
-COMPS=( "vcf" )
+COMPS=( "happy" )
 #COMP_OPTS="--orig --orig_and_sample"
-COMP_OPTS=""
+COMP_OPTS="--clip --normalize --ignore Conflict --ignore Silver"
+#COMP_OPTS="--clip  --ignore Conflict --ignore Silver"
 REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-#REGIONS=( "brca1" "brca2" "sma" "lrc_kir" )
+REGIONS=( "brca2" "mhc" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis
 GLOBIGNORE="*/lrc_kir/vglr*:*vglr-lrc_kir*"
+#GLOBIGNORE="*vglr*"
+
+# leave simons out for now as its hg19
+GLOBIGNORE="*simons*:${GLOBIGNORE}"
 
 # These are the g1kvcf samples that don't exist.  right now heatmaps are just computed without
 # them.  so squares compareing g1kvcf samples will be average of 5 datapoints whereas all
@@ -40,12 +45,16 @@ do
 	 for j in "${COMPS[@]}"
 	 do
 		  # compute distances
-		  rm -rf ${TOIL_DIR} ; scripts/computeVariantsDistances.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/*.gam ${VARIANTS} ${GRAPHS} ${j} ${OUT_DIR} ${COMP_OPTS}  ${TOIL_OPTS} ${INDEX_OPTS} 
+		  rm -rf ${TOIL_DIR} ; scripts/computeVariantsDistances.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/NA12878.gam ${VARIANTS} ${GRAPHS} ${j} ${OUT_DIR} ${COMP_OPTS}  ${TOIL_OPTS} ${INDEX_OPTS} 
 	 done
-	 
+
+	 # plots
+	 scripts/plotVariantsDistances.py ${OUT_DIR} &
 	 # tables
-	 mkdir ${OUT_DIR}/call_stats
-	 scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/call_stats --out_dir ${VARIANTS}  --tag $i  --graph_dir ${GRAPHS} --avg_sample
-	 mkdir ${OUT_DIR}/trio_stats
-	 rm -rf ${TOIL_DIR} ; scripts/trioStats.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/trio_stats --out_dir ${VARIANTS} --tag $i ${TOIL_OPTS}
+	 #mkdir ${OUT_DIR}/call_stats
+	 #scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/call_stats --out_dir ${VARIANTS}  --tag $i  --graph_dir ${GRAPHS} --avg_sample
+	 #mkdir ${OUT_DIR}/trio_stats
+	 #rm -rf ${TOIL_DIR} ; scripts/trioStats.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/trio_stats --out_dir ${VARIANTS} --tag $i ${TOIL_OPTS}
 done
+
+wait

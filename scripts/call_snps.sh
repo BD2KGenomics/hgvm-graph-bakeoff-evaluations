@@ -15,12 +15,12 @@ OUT_DIR=$3
 TOIL_DIR=cs_toil_dir
 
 REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-REGIONS=( "brca1" )
+#REGIONS=( "brca1" )
 OPTS="--maxCores 36 --vg_cores 2 --vg_only --skipBaseline"
 
 CALL_OPTS=" -r 0.001 -d 20 -s 15"
 PILEUP_OPTS=" "
-FILTER_OPTS=" -e 0.0001 -f -d 1 -r 1"
+FILTER_OPTS=" -e 0.0001 -f -r 1 -s 1"
 
 mkdir $OUT_DIR
 

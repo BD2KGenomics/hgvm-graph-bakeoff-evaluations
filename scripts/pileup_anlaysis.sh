@@ -19,9 +19,9 @@ do
 	 for j in "${GRAPHS[@]}"
 	 do
 		  # True Positives
-		  scripts/vcfDelta.py data/platinum/NA12878/${i^^}_orig.vcf ${VARIANTS}/${i}/${j}/NA12878_sample_orig.vcf -ia | scripts/vcfPileups.py - ${VARIANTS}/${i}/${j}/NA12878_sample.txt > ${OUT_DIR}/${i}_${j}_tp.vcf
+		  scripts/vcfDelta.py data/platinum/NA12878/${i^^}.vcf ${VARIANTS}/${i}/${j}/NA12878_sample.vcf -ia | scripts/vcfPileups.py - ${VARIANTS}/${i}/${j}/NA12878_sample.txt > ${OUT_DIR}/${i}_${j}_tp.vcf
 
 		  # False Positives
-		  scripts/vcfDelta.py data/platinum/NA12878/${i^^}_orig.vcf ${VARIANTS}/${i}/${j}/NA12878_sample_orig.vcf -i | scripts/vcfPileups.py - ${VARIANTS}/${i}/${j}/NA12878_sample.txt > ${OUT_DIR}/${i}_${j}_fp.vcf
+		  scripts/vcfDelta.py data/platinum/NA12878/${i^^}.vcf ${VARIANTS}/${i}/${j}/NA12878_sample.vcf -i | scripts/vcfPileups.py - ${VARIANTS}/${i}/${j}/NA12878_sample.txt > ${OUT_DIR}/${i}_${j}_fp.vcf
 	 done
 done

@@ -22,6 +22,8 @@ def parse_args(args):
                         help="output directory")
     parser.add_argument("--chroms", type=str, default="5,6,13,17,19",
                         help="comma-separated list of chroms to download")
+    parser.add_argument("--leaveChr", action="store_true",
+                        help="dont strip chr from sequence names")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -35,8 +37,9 @@ def downloadChrom(chrom, options, assembly = "hg38"):
 
     # download and uncompress 
     cmd = "curl {} | zcat".format(fa_url)
-    # take chr out of sequence names
-    cmd += " | sed \"s/chr{}/{}/\" ".format(chrom, chrom)
+    if not options.leaveChr:
+        # take chr out of sequence names
+        cmd += " | sed \"s/chr{}/{}/\" ".format(chrom, chrom)
     # convert to upper case
     cmd += " | sed \"s/a/A/g;s/c/C/g;s/g/G/g;s/t/T/g;s/n/N/g\" "
     # tack onto output

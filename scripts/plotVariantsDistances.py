@@ -46,6 +46,8 @@ PLOT_PARAMS = [
     "haplo1kg30",
     "haplo1kg50",
     "shifted1kg",
+    "gatk3",
+    "platypus",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -67,6 +69,8 @@ PLOT_PARAMS = [
     "\"1KG Haplo 30\"",
     "\"1KG Haplo 50\"",
     "Control",
+    "GATK3",
+    "Platypus",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -88,6 +92,8 @@ PLOT_PARAMS = [
     "\"#00FF00\"",
     "\"#0000FF\"",
     "\"#FF0000\"",
+    "\"#00FFFF\"",
+    "\"#33a02c\"",
     "--font_size 20 --dpi 90"]
 
 
@@ -146,28 +152,29 @@ def plot_vcf_comp(tsv_path, options):
         prec_idx = 2 * i
         rec_idx = prec_idx + 1
         print prec_idx, header[prec_idx], rec_idx, header[rec_idx]
-        comp_type, comp_cat = header[prec_idx].split("-")[:2]
-        if comp_cat not in ["TOT", "SNP"]:
+        ptoks = header[prec_idx].split("-")
+        rtoks = header[rec_idx].split("-")
+        assert ptoks[1] == "Precision"
+        assert rtoks[1] == "Recall"
+        assert ptoks[:1] == rtoks[:1]
+        comp_cat  = ptoks[0]
+        if comp_cat not in ["TOT", "SNP", "INDEL"]:
             continue
-        assert "Precision" in header[prec_idx]
-        assert "Recall" in header[rec_idx]
         label = header[prec_idx].replace("Precision", "acc")
         acc_tsv = out_base_path + "_" + label + ".tsv"
         print "Make {} tsv with cols {} {}".format(label, rec_idx, prec_idx)
         # +1 to convert to awk 1-base coordinates. +1 again since header doesnt include row_label col
-        awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2)
+        awkcmd = '''if (NR!=1) print $1 "\t" 1-${} "\t" ${}'''.format(prec_idx + 2, rec_idx + 2)
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
         acc_png = out_base_path + "_" + label + ".png"
         title = "VCF "
-        if comp_type == "Allele":
-            title += " Genotype"
         if comp_cat == "TOT":
             title += " Total Accuracy"
         else:
             title += " {} Accuracy".format(comp_cat)
         title += " for {}".format(region)
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 12 --height 9 {}".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
     
@@ -179,7 +186,7 @@ def main(args):
     for tsv in glob.glob(os.path.join(options.comp_dir, "comp_tables", "*.tsv")):
         if "kmer" in tsv.split("-"):
             plot_kmer_comp(tsv, options)
-        elif "vcf" in tsv.split("-"):
+        elif "vcf" in tsv.split("-") or "sompy" in tsv.split("-") or "happy" in tsv.split("-"):
             plot_vcf_comp(tsv, options)
                                 
 

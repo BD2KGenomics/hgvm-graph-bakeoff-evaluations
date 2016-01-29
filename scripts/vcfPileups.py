@@ -22,7 +22,7 @@ def parse_args(args):
 
 def parse_id(tok):
     snp_toks = tok.split(".")
-    node_id = int(snp_toks[0])
+    node_id = int(snp_toks[0].split("_")[0])
     node_offset = int(snp_toks[1]) if len(snp_toks) > 1 else 0
     return (node_id, node_offset)
     
@@ -52,10 +52,10 @@ def main(args):
                 while txt_line_no < len(txt_lines):
                     txt_line = txt_lines[txt_line_no]
                     txt_toks = txt_line.split()
-                    txt_node_id = int(txt_toks[0])
+                    txt_node_id = int(txt_toks[0].split("_")[0])
                     txt_node_offset = int(txt_toks[1]) - 1
                     if txt_node_id == node_id and txt_node_offset == node_offset:
-                        pileup = "\t".join(["PILEUP"] + txt_toks[0:6])
+                        pileup = "\t".join(["PILEUP"] + txt_toks)
                         break
                     txt_line_no += 1
             except Exception as e:

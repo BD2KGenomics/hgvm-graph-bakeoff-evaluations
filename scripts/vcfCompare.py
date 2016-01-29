@@ -62,7 +62,7 @@ def make_vcf_dict(vcf_path, options):
     """ load up all variants by their coordinates
     map (chrom, pos) -> [(ref, alts, alleles), (ref, alts, alleles) etc.]
     """
-    vcf_dict = defaultdict(list)
+    vcf_dict = defaultdict(set)
     with open(vcf_path) as f:
         for line in f:
             skip = line[0] == "#"
@@ -73,21 +73,29 @@ def make_vcf_dict(vcf_path, options):
                 toks = line.split()
                 chrom = toks[0] if options.c is False else None
                 pos = int(toks[1])
-                vcf_dict[(chrom, pos)].append((parse_ref(toks), parse_alts(toks), parse_alleles(toks)))
+                # break multiallelic
+                ref = parse_ref(toks)
+                alts = parse_alts(toks)
+                alleles = parse_alleles(toks)
+                assert len(alts) + 1 == len(alleles)
+                for i in range(len(alts)):
+                    # todo: dont keep old list interface for alts
+                    # todo: alleles broken 
+                    vcf_dict[(chrom, pos)].add((ref, tuple(alts[i]), tuple(alleles[i])))
+                # old logic (no break)
+                #vcf_dict[(chrom, pos)].append((parse_ref(toks), parse_alts(toks), parse_alleles(toks)))
     return vcf_dict
 
 def alt_cat(ref, alt):
-    """ 0 ref, 1 snp, 2 multibase snp, 3 insert, 4 delete """
+    """ 0 ref, 1 snp, 2 multibase snp, 3 indel """
     if ref == alt:
         return 0
     elif len(ref) == len(alt):
         return 1 if len(ref) == 1 else 2
-    elif len(ref) > len(alt):
-        return 3
-    return 4
+    return 3
 
 def cat_name(c):
-    return ["REF", "SNP", "MULTIBASE_SNP", "INSERT", "DELETE", "TOTAL"][c]
+    return ["REF", "SNP", "MULTIBASE_SNP", "INDEL", "TOTAL"][c]
 
 def find_alt(chrom, pos, ref, alt, vcf_dict):
     """ find an alt in a dict """
@@ -110,11 +118,11 @@ def find_allele(chrom, pos, ref, allele, vcf_dict):
 
 def compare_vcf_dicts(vcf_dict1, vcf_dict2):
     """ check dict1 against dict2 """
-    # see alt_cat() for what 5 values mean
-    total_alts = [0, 0, 0, 0, 0]
-    found_alts = [0, 0, 0, 0, 0]
-    total_alleles = [0, 0, 0, 0, 0]
-    found_alleles = [0, 0, 0, 0, 0]
+    # see alt_cat() for what 4 values mean
+    total_alts = [0, 0, 0, 0]
+    found_alts = [0, 0, 0, 0]
+    total_alleles = [0, 0, 0, 0]
+    found_alleles = [0, 0, 0, 0]
     
     for key1, val1s in vcf_dict1.items():
         chrom1, pos1 = key1
@@ -148,7 +156,7 @@ def json_acc(vcf1, vcf2, options):
     json_data["Path2"] = options.vcf2
     json_data["Alts"] = dict()
     json_data["Alleles"] = dict()
-    for c in range(6):
+    for c in range(len(found_alts1)):
         if c > 0:
             tp = found_alts1[c]
             fp = total_alts1[c] - tp
