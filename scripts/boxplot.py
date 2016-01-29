@@ -334,7 +334,9 @@ def main(args):
                     # passing the color options if needed, as well as all the
                     # other options.
                     pyplot.boxplot([values[j]], positions=[positions[j]],
-                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
+#                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
+                                   widths=0.5, boxprops=boxprops,
+                                   
                         meanprops=boxprops, medianprops=boxprops,
                         flierprops=boxprops, whiskerprops=boxprops,
                         capprops=boxprops)

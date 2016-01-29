@@ -77,6 +77,10 @@ def parse_args(args):
                         help="timeout in seconds for long jobs (vg surject in this case)")
     parser.add_argument("--skipBaseline", action="store_true",
                         help="dont make vg sample graphs from g1k and platinum vcfs")
+    parser.add_argument("--augmented", action="store_true",
+                        help="write augmented vg graphs in addition to sample graphs")
+    parser.add_argument("--bubble", action="store_true", default=False,
+                        help="pass --bubble option to glenn2vcf for more agressive vcf convsersion")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -337,19 +341,20 @@ def compute_vg_variants(job, input_gam, options):
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
     do_pu = options.overwrite or not os.path.isfile(out_pileup_path)
     do_call = do_pu or not os.path.isfile(out_sample_vg_path)
-    do_aug = do_pu or not os.path.isfile(out_augmented_vg_path)
+    do_aug = options.augmented and (do_pu or not os.path.isfile(out_augmented_vg_path))
 
     if do_pu:
         RealTimeLogger.get().info("Computing Variants for {} {}".format(
             input_graph_path,
             input_gam))
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter {} {} | vg pileup {} - {} -t {} > {}".format(input_gam,
-                                                                    options.filter_opts,
-                                                                    input_graph_path,
-                                                                    options.pileup_opts,
-                                                                    options.vg_cores,
-                                                                    out_pileup_path),
+        run("vg filter {} {} {} | vg pileup {} - {} -t {} > {}".format(input_graph_path,
+                                                                       input_gam,
+                                                                       options.filter_opts,
+                                                                       input_graph_path,
+                                                                       options.pileup_opts,
+                                                                       options.vg_cores,
+                                                                       out_pileup_path),
             fail_hard = True)
 
     if do_call:
@@ -381,13 +386,16 @@ def compute_vg_variants(job, input_gam, options):
                 
         if ref is not None:
             tasks = []
-            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} > {}".format(input_graph_path,
-                                                                      out_sample_txt_path,
-                                                                      offset,
-                                                                      ref,
-                                                                      contig,
-                                                                      alignment_sample_tag(input_gam, options),
-                                                                      out_sample_txt_path.replace(".txt", ".vcf")),
+            bub = "--bubble" if options.bubble is True else ""
+            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(input_graph_path,
+                                                                               out_sample_txt_path,
+                                                                               offset,
+                                                                               ref,
+                                                                               contig,
+                                                                               alignment_sample_tag(input_gam, options),
+                                                                               bub,
+                                                                               out_sample_txt_path.replace(".txt", ".vcf"),
+                                                                               out_sample_txt_path.replace(".txt", ".stderr")),
                 fail_hard = True)
 
     if do_aug:
@@ -452,7 +460,7 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
                                                               filter_vcf_path,
                                                               filter_fa_path),
             fail_hard = True)
-        run("vcfsort {} > {}.sort ; mv {}.sort {}".format(filter_vcf_path,
+        run("scripts/vcfsort {} > {}.sort ; mv {}.sort {}".format(filter_vcf_path,
                                                           filter_vcf_path,
                                                           filter_vcf_path,
                                                           filter_vcf_path))
