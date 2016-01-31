@@ -97,7 +97,7 @@ do
 	 run_pipeline ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_${secscore} "-d ${depth}" "$PILEUP_OPTS" "-r ${ident} -e ${delta} -afu -s ${secscore} " "$ROC_FLAG"
 done
 wait
-scripts/rocDistances.py ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_*.${COMP_TAG} ${OUT_DIR}/primary_depth_roc_${COMP_TAG}
+scripts/rocDistances.py ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_*.${COMP_TAG} ${OUT_DIR}/primary_secscore_roc_${COMP_TAG}
 scripts/plotVariantsDistances.py ${OUT_DIR}/primary_secscore_roc_${COMP_TAG}
 
 
