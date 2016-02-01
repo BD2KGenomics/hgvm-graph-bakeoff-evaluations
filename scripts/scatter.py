@@ -91,6 +91,8 @@ def parse_args(args):
         help="labels for all categories, in order")
     parser.add_argument("--legend_overlay", default=None,
         help="display the legend overlayed on the graph at this location")
+    parser.add_argument("--no_legend", dest="show_legend", action="store_false",
+        help="don't draw legend")
     parser.add_argument("--colors", nargs="+", default=None,
         help="use the specified Matplotlib colors")
     parser.add_argument("--markers", nargs="+", default=None,
@@ -102,9 +104,9 @@ def parse_args(args):
     parser.add_argument("--height", type=float, default=6,
         help="plot height in inches")
     parser.add_argument("--marker_size", type=float, default=None,
-                        help="marker size")
+        help="marker size")
     parser.add_argument("--line_width", type=float, default=None,
-                        help="line_width")
+        help="line_width")
     
     return parser.parse_args(args)
     
@@ -347,7 +349,7 @@ def main(args):
     # Make everything fit
     pyplot.tight_layout()
     
-    if use_series:
+    if use_series and options.show_legend:
         # Add a legend if we have multiple series
         
         if options.legend_overlay is None:

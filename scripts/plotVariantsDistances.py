@@ -174,15 +174,19 @@ def plot_vcf_comp(tsv_path, options):
         else:
             title += " {} Accuracy".format(comp_cat)
         title += " for {}".format(region)
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1 --min_y 0 --max_y 1.01".format(acc_tsv, acc_png, title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
         # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5--marker_size 5 --min_x 0 --max_x 0.2 --min_y 0.8 --max_y 1".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.002 --max_x 0.202 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
         print cmd
         os.system(cmd)
+        # top 20
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.004 --max_x 0.204 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
+        print cmd
+        os.system(cmd)        
         # top 40
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0 --max_x 0.4 --min_y 0.6 --max_y 1".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.004 --max_x 0.404 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
         print cmd
         os.system(cmd)
         
