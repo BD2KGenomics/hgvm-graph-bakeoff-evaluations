@@ -68,11 +68,19 @@ def parse_args(args):
                         help="options to pass to vg call.  wrap in \"\"")
     parser.add_argument("--pileup_opts", type=str, default="",
                         help="options to pass to vg pileup. wrap in \"\"")
+    parser.add_argument("--filter_opts", type=str, default="",
+                        help="options to pass to vg filter. wrap in \"\"")
     parser.add_argument("--platinum_samples", type=str, default="NA12877,NA12878",
                         help="comma-separated list of sample names that have vcf"
                         " data in platinum folder")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
                         help="timeout in seconds for long jobs (vg surject in this case)")
+    parser.add_argument("--skipBaseline", action="store_true",
+                        help="dont make vg sample graphs from g1k and platinum vcfs")
+    parser.add_argument("--augmented", action="store_true",
+                        help="write augmented vg graphs in addition to sample graphs")
+    parser.add_argument("--bubble", action="store_true", default=False,
+                        help="pass --bubble option to glenn2vcf for more agressive vcf convsersion")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -333,18 +341,20 @@ def compute_vg_variants(job, input_gam, options):
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
     do_pu = options.overwrite or not os.path.isfile(out_pileup_path)
     do_call = do_pu or not os.path.isfile(out_sample_vg_path)
-    do_aug = do_pu or not os.path.isfile(out_augmented_vg_path)
+    do_aug = options.augmented and (do_pu or not os.path.isfile(out_augmented_vg_path))
 
     if do_pu:
         RealTimeLogger.get().info("Computing Variants for {} {}".format(
             input_graph_path,
             input_gam))
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg pileup {} {} {} -t {} > {}".format(input_graph_path,
-                                                   input_gam,
-                                                   options.pileup_opts,
-                                                   options.vg_cores,
-                                                   out_pileup_path),
+        run("vg filter {} {} {} | vg pileup {} - {} -t {} > {}".format(input_graph_path,
+                                                                       input_gam,
+                                                                       options.filter_opts,
+                                                                       input_graph_path,
+                                                                       options.pileup_opts,
+                                                                       options.vg_cores,
+                                                                       out_pileup_path),
             fail_hard = True)
 
     if do_call:
@@ -376,21 +386,17 @@ def compute_vg_variants(job, input_gam, options):
                 
         if ref is not None:
             tasks = []
-            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} > {}".format(input_graph_path,
-                                                                      out_sample_txt_path,
-                                                                      offset,
-                                                                      ref,
-                                                                      contig,
-                                                                      alignment_sample_tag(input_gam, options),
-                                                                      out_sample_txt_path.replace(".txt", "_orig.vcf")),
+            bub = "--bubble" if options.bubble is True else ""
+            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(input_graph_path,
+                                                                               out_sample_txt_path,
+                                                                               offset,
+                                                                               ref,
+                                                                               contig,
+                                                                               alignment_sample_tag(input_gam, options),
+                                                                               bub,
+                                                                               out_sample_txt_path.replace(".txt", ".vcf"),
+                                                                               out_sample_txt_path.replace(".txt", ".stderr")),
                 fail_hard = True)
-            
-            run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - > {}".format(
-                out_sample_txt_path.replace(".txt", "_orig.vcf"),
-                options.chrom_fa_path,
-                out_sample_txt_path.replace(".txt", ".vcf")),
-                fail_hard = True)
-
 
     if do_aug:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
@@ -406,8 +412,8 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
     """
     # there is only one g1vcf graph per region per sample
     # this function is also going to get called once for each graph type
-    # so we hack here to only run on trivial graphs (arbitrary choice)
-    if alignment_graph_tag(input_gam, options) != "trivial":
+    # so we hack here to only run on refonly graphs (arbitrary choice)
+    if alignment_graph_tag(input_gam, options) != "refonly":
         return
 
     sample = alignment_sample_tag(input_gam, options)
@@ -454,7 +460,7 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
                                                               filter_vcf_path,
                                                               filter_fa_path),
             fail_hard = True)
-        run("vcfsort {} > {}.sort ; mv {}.sort {}".format(filter_vcf_path,
+        run("scripts/vcfsort {} > {}.sort ; mv {}.sort {}".format(filter_vcf_path,
                                                           filter_vcf_path,
                                                           filter_vcf_path,
                                                           filter_vcf_path))
@@ -479,15 +485,12 @@ def call_variants(job, options):
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)
-        # all combinations of [G1KVCF , PLATVCF] X [NO_FILTER_INDELS, FILTER_INDELS]
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, False, options,
-                          cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, True, options,
-                          cores=options.vg_cores)        
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, False, options,
-                          cores=options.vg_cores)
-        job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, True, options,
-                          cores=options.vg_cores)        
+        if not options.skipBaseline:
+            # all combinations of [G1KVCF , PLATVCF] 
+            job.addChildJobFn(compute_snp1000g_baseline, input_gam, False, False, options,
+                              cores=options.vg_cores)
+            job.addChildJobFn(compute_snp1000g_baseline, input_gam, True, False, options,
+                              cores=options.vg_cores)
 
         if not options.vg_only:
             job.addChildJobFn(compute_linear_variants, input_gam, options,

@@ -7,6 +7,8 @@ quick, from scratch vcf compare script to help debug calls / sanity check gatk r
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, json
 from collections import defaultdict
+from toillib import RealTimeLogger, robust_makedirs
+import tempfile
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -17,7 +19,9 @@ def parse_args(args):
     parser.add_argument("vcf2", type=str,
                         help="Input vcf file 2 (truth)")
     parser.add_argument("-c", action="store_true", default=False,
-                        help="Ignore sequence name (only look at start)")    
+                        help="Ignore sequence name (only look at start)")
+    parser.add_argument("-i", action="append", default=[],
+                        help="Ignore lines contaning keyword")
 
     args = args[1:]
     options = parser.parse_args(args)
@@ -31,11 +35,14 @@ def parse_ref(toks):
     """ return reference """
     return toks[3]
 
+# alleles code disabled for now
 def parse_alleles(toks):
     """ return the alleles (first sample /last column) todo: more general?"""
-    if toks[-2] == "GT": 
+    print toks
+    if toks[-2].split(":")[0] == "GT": 
         gtcol = len(toks) - 1
-        gts = "|".join(toks[gtcol].replace(".", "0").split("/")).split("|")
+        gttok = toks[gtcol].split(":")[0]
+        gts = "|".join(gttok.replace(".", "0").split("/")).split("|")
         vals = [parse_ref(toks)] + parse_alts(toks)
         alleles = [vals[int(x)] for x in gts]
         # want unique allele values for comparison
@@ -56,70 +63,57 @@ def parse_alleles(toks):
 
 def make_vcf_dict(vcf_path, options):
     """ load up all variants by their coordinates
-    map (chrom, pos) -> [(ref, alts, alleles), (ref, alts, alleles) etc.]
+    map (chrom, pos) -> [(ref, alt), (ref, alts) etc.]
     """
-    vcf_dict = defaultdict(list)
+    vcf_dict = defaultdict(set)
     with open(vcf_path) as f:
         for line in f:
-            if line[0] != "#":
+            skip = line[0] == "#"
+            for ignore_keyword in options.i:
+                if ignore_keyword in line:
+                    skip = True
+            if not skip:
                 toks = line.split()
                 chrom = toks[0] if options.c is False else None
                 pos = int(toks[1])
-                vcf_dict[(chrom, pos)].append((parse_ref(toks), parse_alts(toks), parse_alleles(toks)))
+                ref = parse_ref(toks)
+                alts = parse_alts(toks)
+                for i in range(len(alts)):
+                    vcf_dict[(chrom, pos)].add((ref, alts[i]))
     return vcf_dict
 
 def alt_cat(ref, alt):
-    """ 0 ref, 1 snp, 2 multibase snp, 3 insert, 4 delete """
+    """ 0 ref, 1 snp, 2 multibase snp, 3 indel """
     if ref == alt:
         return 0
     elif len(ref) == len(alt):
         return 1 if len(ref) == 1 else 2
-    elif len(ref) > len(alt):
-        return 3
-    return 4
+    return 3
 
 def cat_name(c):
-    return ["REF", "SNP", "MULTIBASE_SNP", "INSERT", "DELETE", "TOTAL"][c]
+    return ["REF", "SNP", "MULTIBASE_SNP", "INDEL", "TOTAL"][c]
 
 def find_alt(chrom, pos, ref, alt, vcf_dict):
     """ find an alt in a dict """
     for val in vcf_dict[(chrom, pos)]:
-        ref2, alts2, alleles2 = val
-        if ref2 == ref:
-            for alt2 in alts2:
-                if alt2 == alt:
-                    return True
-    return False
-
-def find_allele(chrom, pos, ref, allele, vcf_dict):
-    """ find an allele in a dict """
-    for val in vcf_dict[(chrom, pos)]:
-        ref2, alts2, alleles2 = val
-        for allele2 in alleles2:
-            if allele2 == allele:
-                return True
+        if val[0] == ref and val[1] == alt:
+            return True
     return False
 
 def compare_vcf_dicts(vcf_dict1, vcf_dict2):
     """ check dict1 against dict2 """
-    # see alt_cat() for what 5 values mean
-    total_alts = [0, 0, 0, 0, 0]
-    found_alts = [0, 0, 0, 0, 0]
-    total_alleles = [0, 0, 0, 0, 0]
-    found_alleles = [0, 0, 0, 0, 0]
+    # see alt_cat() for what 4 values mean
+    total_alts = [0, 0, 0, 0]
+    found_alts = [0, 0, 0, 0]
+    total_alleles = [0, 0, 0, 0]
+    found_alleles = [0, 0, 0, 0]
     
-    for key1, val1s in vcf_dict1.items():
+    for key1, val1 in vcf_dict1.items():
         chrom1, pos1 = key1
-        for val1 in val1s:
-            ref1, alts1, alleles1 = val1
-            for alt1 in alts1:
-                total_alts[alt_cat(ref1, alt1)] += 1
-                if find_alt(chrom1, pos1, ref1, alt1, vcf_dict2):
-                    found_alts[alt_cat(ref1, alt1)] += 1
-            for allele1 in alleles1:
-                total_alleles[alt_cat(ref1, allele1)] += 1
-                if find_allele(chrom1, pos1, ref1, allele1, vcf_dict2):
-                    found_alleles[alt_cat(ref1, allele1)] += 1
+        for ref1, alt1 in val1:
+            total_alts[alt_cat(ref1, alt1)] += 1
+            if find_alt(chrom1, pos1, ref1, alt1, vcf_dict2):
+                found_alts[alt_cat(ref1, alt1)] += 1
 
     total_alts += [sum(total_alts)]
     found_alts += [sum(found_alts)]
@@ -136,11 +130,11 @@ def json_acc(vcf1, vcf2, options):
     total_alts2, found_alts2, total_alleles2, found_alleles2 = compare_vcf_dicts(vcf_dict2, vcf_dict1)    
 
     json_data = dict()
-    json_data["Path1"] = vcf1
-    json_data["Path2"] = vcf2
+    json_data["Path1"] = options.vcf1
+    json_data["Path2"] = options.vcf2
     json_data["Alts"] = dict()
     json_data["Alleles"] = dict()
-    for c in range(6):
+    for c in range(len(found_alts1)):
         if c > 0:
             tp = found_alts1[c]
             fp = total_alts1[c] - tp
@@ -157,12 +151,20 @@ def json_acc(vcf1, vcf2, options):
         json_data["Alleles"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
 
     return json.dumps(json_data)
-            
-        
+
+def system(command):
+    sts = subprocess.call(command, shell=True, bufsize=-1, stdout=sys.stdout, stderr=sys.stderr)
+    if sts != 0:
+        raise RuntimeError("Command: %s exited with non-zero status %i" % (command, sts))
+    return sts
+
 def main(args):
     options = parse_args(args)
 
-    print json_acc(options.vcf1, options.vcf2, options)
+    vcf1 = options.vcf1
+    vcf2 = options.vcf2        
+    
+    print json_acc(vcf1, vcf2, options)
 
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
