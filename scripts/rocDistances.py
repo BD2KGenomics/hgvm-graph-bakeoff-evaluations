@@ -33,6 +33,10 @@ def parse_args(args):
                         help="directories of comparison output written by computeVariantsDistances.py")
     parser.add_argument("out_dir",
                         help="output directory where /comp_tables will be written to.")
+    parser.add_argument("--skip_first", type=int, default=0,
+                        help="skip (alphabetically) first N input dirs")
+    parser.add_argument("--skip_last", type=int, default=0,
+                        help="skip (alphabetically) last N input dirs")
                             
     args = args[1:]
 
@@ -48,7 +52,7 @@ def main(args):
     first = True
     # sort the directories, assuming their names give info on their order
     # in the roc
-    for comp_dir in sorted(options.comp_dirs):
+    for comp_dir in sorted(options.comp_dirs)[options.skip_first:len(options.comp_dirs) - options.skip_last]:
         # this can happen easily using wildcards in input
         if comp_dir == options.out_dir:
             continue

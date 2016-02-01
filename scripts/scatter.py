@@ -101,8 +101,11 @@ def parse_args(args):
         help="plot width in inches")
     parser.add_argument("--height", type=float, default=6,
         help="plot height in inches")
+    parser.add_argument("--marker_size", type=float, default=None,
+                        help="marker size")
+    parser.add_argument("--line_width", type=float, default=None,
+                        help="line_width")
     
-        
     return parser.parse_args(args)
     
 
@@ -271,11 +274,24 @@ def main(args):
                 
             # How do we want to plot (line or just scatter?)
             plot_func = pyplot.plot if options.lines else pyplot.scatter
-                
+
+            # Build up some different options depending on plot style
+            plot_opt = {}
+            if options.lines:
+                # black marker outline doesn't look great on lines
+                plot_opt["markeredgecolor"] = series_color
+                # line and marker size options:
+                if options.marker_size is not None:
+                    plot_opt["ms"] = options.marker_size
+                if options.line_width is not None:
+                    plot_opt["linewidth"] = options.line_width
+            elif optoins.marker_size is not None:
+                plot_opt["s"] = options.marker_size
+                    
             # Do the actual plot
             plot_func(series[series_name][0], series[series_name][1],
                 label=category_names[series_name], color=series_color,
-                marker=series_symbol)
+                      marker=series_symbol, **plot_opt)
                 
     else:
         # Just plot the only series in the default color

@@ -92,8 +92,8 @@ PLOT_PARAMS = [
     "\"#00FF00\"",
     "\"#0000FF\"",
     "\"#FF0000\"",
-    "\"#00FFFF\"",
-    "\"#33a02c\"",
+    "\"#25BBD4\"",
+    "\"#9E7C72\"",
     "--font_size 20 --dpi 90"]
 
 
@@ -134,7 +134,7 @@ def plot_kmer_comp(tsv_path, options):
     awkstr = '''awk '{if (NR!=1) print $1 "\t" $4 "\t" $3}' '''
     run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
     acc_png = out_base_path + "_acc.png"
-    run("scripts/scatter.py {} --save {} --title \"{} KMER Set Accuracy\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 {}".format(acc_tsv, acc_png, region, params))
+    run("scripts/scatter.py {} --save {} --title \"{} KMER Set Accuracy\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 --lines {}".format(acc_tsv, acc_png, region, params))
     
 def plot_vcf_comp(tsv_path, options):
     """ take the big vcf compare table and make precision_recall plots for all the categories"""
@@ -168,15 +168,24 @@ def plot_vcf_comp(tsv_path, options):
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
         acc_png = out_base_path + "_" + label + ".png"
-        title = "VCF "
+        title = "VCF"
         if comp_cat == "TOT":
             title += " Total Accuracy"
         else:
             title += " {} Accuracy".format(comp_cat)
         title += " for {}".format(region)
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 12 --height 9 {}".format(acc_tsv, acc_png, title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1 --min_y 0 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
+        # top 20
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5--marker_size 5 --min_x 0 --max_x 0.2 --min_y 0.8 --max_y 1".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+        print cmd
+        os.system(cmd)
+        # top 40
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0 --max_x 0.4 --min_y 0.6 --max_y 1".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+        print cmd
+        os.system(cmd)
+        
     
 def main(args):
     
