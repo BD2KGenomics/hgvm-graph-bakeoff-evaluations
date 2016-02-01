@@ -84,6 +84,10 @@ def parse_args(args):
         help="the width of lines making up the boxes and their parts")
     parser.add_argument("--sparse_ticks", action="store_true",
         help="use sparse tick marks")
+    parser.add_argument("--sparse_axes", action="store_true",
+        help="use only bottom and left axes")
+    parser.add_argument("--hline_ticks", action="store_true",
+        help="draw only a few ticks, with one at the hline")
     parser.add_argument("--x_sideways", action="store_true",
         help="write X axis labels vertically")
     parser.add_argument("--min", type=float, default=None,
@@ -103,6 +107,8 @@ def parse_args(args):
     parser.add_argument("--range", action="store_const", const="range",
         default=None, dest="whiskers",
         help="use whiskers to denote range instead of outer quartile + 1.5 IQR")
+    parser.add_argument("--medians_only", action="store_true",
+        help="only draw the medians of the boxes")
         
     # We take these next 4 options, optionally, in strided groupings. So you can
     # have multiple --categories options, each of which is named with a
@@ -121,6 +127,9 @@ def parse_args(args):
     
     parser.add_argument("--grouping_colors", nargs="+", default=None,
         help="Matplotlib colors for all the groupings")
+        
+    parser.add_argument("--hide_categories", nargs="+", default=None,
+        help="hide the categories on this list (except as hlines)")
     
     # If we have colors and names for groupings, we will use a legend.
     parser.add_argument("--legend_overlay", default=None,
@@ -274,6 +283,77 @@ def main(args):
             category_labels[i] += "\n(mean={:.3f})".format(sum(
                 categories[category_order[i]]) / float(len(
                 categories[category_order[i]])))
+    
+    # Announce all the medians
+    for category in category_order:
+        print("{} median: {}".format(category, numpy.median(
+            categories[category])))
+    
+    # Where are any hlines we draw? We need to know to do hline_ticks later.
+    hline_positions = []
+                
+    if options.hline is not None:
+        # Add in our horizontal line that the user asked for.
+        pyplot.axhline(y=options.hline, color='r', linestyle='--')
+        hline_positions.append(options.hline)
+        
+    if options.hline_median is not None:
+        # Add in our horizontal mean line
+        
+        # Compute the mean
+        category_median = numpy.median(categories[options.hline_median])
+        
+        # Find the color
+        line_color = 'r'
+        if category_colors is not None:
+            for i in xrange(len(category_colors)):
+                if category_order[i] == options.hline_median:
+                    line_color = category_colors[i]
+                    break
+        
+        pyplot.axhline(y=category_median, color=line_color, linestyle='--')
+        hline_positions.append(category_median)
+        
+        # We want to mark the best thing with its percent deviation
+        best_category = None
+        best_deviation = None
+        
+        for i, category in enumerate(category_order):
+            # Apply a +/- median difference percentage to the label
+            
+            other_median = numpy.median(categories[category])
+            
+            portion = other_median / category_median
+            
+            percent = (portion - 1) * 100
+            
+            if best_deviation is None or (percent * options.best_sense > 
+                best_deviation * options.best_sense):
+                # We found the best thing
+                best_category = i
+                best_deviation = percent
+        
+        if best_category is not None:
+            # Apply a +/-% label to the best thing
+            category_labels[best_category] += "\n({:+.2f}%)".format(
+                best_deviation)
+                
+    # Now that we have our hlines, drop any hidden categories.
+    for i in xrange(len(category_order)):
+        # Look at every category
+        if category_order[i] in options.hide_categories:
+            # We need to remove this one since we are hiding it
+            # We do this by none-ing it out in all the lists and then filtering
+            category_order[i] = None
+            category_labels[i] = None
+            if category_colors is not None:
+                category_colors[i] = None
+            
+    # Do the filtering of things we noned out (again).
+    category_order = [x for x in category_order if x is not None]
+    category_labels = [x for x in category_labels if x is not None]
+    if category_colors is not None:
+        category_colors = [x for x in category_colors if x is not None]
                 
     # We have a dict that we add all our per-column properties to. TODO: needs
     # new-ish matplotlib
@@ -294,9 +374,9 @@ def main(args):
             # For each list of categories in a grouping, pulling from any option
             # that reveals grouping structure...
             
-            # Throw out the members that don't exist
+            # Throw out the members that don't exist or are hidden
             grouping_members = [m for m in grouping_members
-                if categories.has_key(m)]
+                if categories.has_key(m) and m not in options.hide_categories]
             
             # Work out the start category and length, and record it
             grouping_bounds.append((next_start, len(grouping_members)))
@@ -323,35 +403,32 @@ def main(args):
             for j in xrange(length):
                 # For each box we have to put in the grouping
     
-                # We need to set its properties
-                boxprops = dict(base_props)
+                # We can do the median separately
+                medianprops = dict(base_props)
                 
                 if options.colors is not None:
                     # We need to do individual item colors
-                    boxprops["color"] = category_colors[start + j]
-                    
-                    # Do the plot for this single box, at the correct place,
-                    # passing the color options if needed, as well as all the
-                    # other options.
-                    pyplot.boxplot([values[j]], positions=[positions[j]],
-#                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
-                                   widths=0.5, boxprops=boxprops,
-                                   
-                        meanprops=boxprops, medianprops=boxprops,
-                        flierprops=boxprops, whiskerprops=boxprops,
-                        capprops=boxprops)
+                    medianprops["color"] = category_colors[start + j]
                     
                 elif options.grouping_colors is not None:
                     # Set a color for this whole grouping
-                    boxprops["color"] = options.grouping_colors[i]
+                    medianprops["color"] = options.grouping_colors[i]
                     
-                    # Only color the box itself to match old behavior.
-                    pyplot.boxplot([values[j]], positions=[positions[j]],
-                        widths=0.5, whis=options.whiskers, boxprops=boxprops,
-                        meanprops=boxprops, medianprops=boxprops,
-                        flierprops=boxprops, whiskerprops=boxprops,
-                        capprops=boxprops)
+                # The rest of the box should look like the median
+                boxprops = dict(medianprops)
                     
+                if options.medians_only:
+                    # Delete the lines that aren't the median
+                    boxprops["linestyle"] = "none"
+                
+                # Do the plot for this single box, at the correct place,
+                # passing the color options if needed, as well as all the
+                # other options.
+                pyplot.boxplot([values[j]], positions=[positions[j]],
+                    widths=0.5, whis=options.whiskers, boxprops=boxprops,
+                    meanprops=boxprops, medianprops=medianprops,
+                    flierprops=boxprops, whiskerprops=boxprops,
+                    capprops=boxprops)    
                 
                 
         # We need to fix up the x limits since boxplot messes them up.
@@ -359,58 +436,11 @@ def main(args):
                 
     else:
         # Do the plot for all the categories at once.
-        
         pyplot.boxplot([categories[category] for category in category_order],
             whis=options.whiskers, boxprops=boxprops, meanprops=boxprops,
             medianprops=boxprops, flierprops=boxprops, whiskerprops=boxprops,
             capprops=boxprops)
             
-            
-        
-    if options.hline is not None:
-        # Add in our horizontal line that the user asked for.
-        pyplot.axhline(y=options.hline, color='r', linestyle='--')
-        
-    if options.hline_median is not None:
-        # Add in our horizontal mean line
-        
-        # Compute the mean
-        category_median = numpy.median(categories[options.hline_median])
-        
-        # Find the color
-        line_color = 'r'
-        if category_colors is not None:
-            for i in xrange(len(category_colors)):
-                if category_order[i] == options.hline_median:
-                    line_color = category_colors[i]
-                    break
-        
-        pyplot.axhline(y=category_median, color=line_color, linestyle='--')
-        
-        # We want to mark the best thing with its percent deviation
-        best_category = None
-        best_deviation = None
-        
-        for i, category in enumerate(category_order):
-            # Apply a +/- median difference percentage to the label
-            
-            other_median = numpy.median(categories[category])
-            
-            portion = other_median / category_median
-            
-            percent = (portion - 1) * 100
-            
-            if best_deviation is None or (percent * options.best_sense > 
-                best_deviation * options.best_sense):
-                # We found the best thing
-                best_category = i
-                best_deviation = percent
-        
-        if best_category is not None:
-            # Apply a +/-% label to the best thing
-            category_labels[best_category] += "\n({:+.2f}%)".format(
-                best_deviation)
-        
     # StackOverflow provides us with font sizing
     # http://stackoverflow.com/questions/3899980/how-to-change-the-font-size-on-a-matplotlib-plot
     matplotlib.rcParams.update({"font.size": options.font_size})
@@ -450,6 +480,24 @@ def main(args):
         # Set up tickmarks to have only 2 per axis, at the ends
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
+            
+    if options.hline_ticks:
+        # Set up tickmarks to a tick at any hlines, and some others
+        
+        y_min, y_max = pyplot.ylim()
+        
+        # Do the ends, the middle, and the hline
+        pyplot.gca().yaxis.set_major_locator(
+            matplotlib.ticker.FixedLocator(hline_positions + [y_min, y_max, 
+            ((y_min + y_max) / 2.0)]))
+            
+    if options.sparse_axes:
+        # Don't draw top or right axes
+        pyplot.gca().spines["right"].set_visible(False)
+        pyplot.gca().spines["top"].set_visible(False)
+        # Or their tick marks
+        pyplot.gca().yaxis.set_ticks_position("left")
+        pyplot.gca().xaxis.set_ticks_position("bottom")
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
