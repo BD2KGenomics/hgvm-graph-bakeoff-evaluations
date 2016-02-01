@@ -35,11 +35,14 @@ def parse_ref(toks):
     """ return reference """
     return toks[3]
 
+# alleles code disabled for now
 def parse_alleles(toks):
     """ return the alleles (first sample /last column) todo: more general?"""
-    if toks[-2] == "GT": 
+    print toks
+    if toks[-2].split(":")[0] == "GT": 
         gtcol = len(toks) - 1
-        gts = "|".join(toks[gtcol].replace(".", "0").split("/")).split("|")
+        gttok = toks[gtcol].split(":")[0]
+        gts = "|".join(gttok.replace(".", "0").split("/")).split("|")
         vals = [parse_ref(toks)] + parse_alts(toks)
         alleles = [vals[int(x)] for x in gts]
         # want unique allele values for comparison
@@ -60,7 +63,7 @@ def parse_alleles(toks):
 
 def make_vcf_dict(vcf_path, options):
     """ load up all variants by their coordinates
-    map (chrom, pos) -> [(ref, alts, alleles), (ref, alts, alleles) etc.]
+    map (chrom, pos) -> [(ref, alt), (ref, alts) etc.]
     """
     vcf_dict = defaultdict(set)
     with open(vcf_path) as f:
@@ -73,17 +76,10 @@ def make_vcf_dict(vcf_path, options):
                 toks = line.split()
                 chrom = toks[0] if options.c is False else None
                 pos = int(toks[1])
-                # break multiallelic
                 ref = parse_ref(toks)
                 alts = parse_alts(toks)
-                alleles = parse_alleles(toks)
-                assert len(alts) + 1 == len(alleles)
                 for i in range(len(alts)):
-                    # todo: dont keep old list interface for alts
-                    # todo: alleles broken 
-                    vcf_dict[(chrom, pos)].add((ref, tuple(alts[i]), tuple(alleles[i])))
-                # old logic (no break)
-                #vcf_dict[(chrom, pos)].append((parse_ref(toks), parse_alts(toks), parse_alleles(toks)))
+                    vcf_dict[(chrom, pos)].add((ref, alts[i]))
     return vcf_dict
 
 def alt_cat(ref, alt):
@@ -100,20 +96,8 @@ def cat_name(c):
 def find_alt(chrom, pos, ref, alt, vcf_dict):
     """ find an alt in a dict """
     for val in vcf_dict[(chrom, pos)]:
-        ref2, alts2, alleles2 = val
-        if ref2 == ref:
-            for alt2 in alts2:
-                if alt2 == alt:
-                    return True
-    return False
-
-def find_allele(chrom, pos, ref, allele, vcf_dict):
-    """ find an allele in a dict """
-    for val in vcf_dict[(chrom, pos)]:
-        ref2, alts2, alleles2 = val
-        for allele2 in alleles2:
-            if allele2 == allele:
-                return True
+        if val[0] == ref and val[1] == alt:
+            return True
     return False
 
 def compare_vcf_dicts(vcf_dict1, vcf_dict2):
@@ -124,18 +108,12 @@ def compare_vcf_dicts(vcf_dict1, vcf_dict2):
     total_alleles = [0, 0, 0, 0]
     found_alleles = [0, 0, 0, 0]
     
-    for key1, val1s in vcf_dict1.items():
+    for key1, val1 in vcf_dict1.items():
         chrom1, pos1 = key1
-        for val1 in val1s:
-            ref1, alts1, alleles1 = val1
-            for alt1 in alts1:
-                total_alts[alt_cat(ref1, alt1)] += 1
-                if find_alt(chrom1, pos1, ref1, alt1, vcf_dict2):
-                    found_alts[alt_cat(ref1, alt1)] += 1
-            for allele1 in alleles1:
-                total_alleles[alt_cat(ref1, allele1)] += 1
-                if find_allele(chrom1, pos1, ref1, allele1, vcf_dict2):
-                    found_alleles[alt_cat(ref1, allele1)] += 1
+        for ref1, alt1 in val1:
+            total_alts[alt_cat(ref1, alt1)] += 1
+            if find_alt(chrom1, pos1, ref1, alt1, vcf_dict2):
+                found_alts[alt_cat(ref1, alt1)] += 1
 
     total_alts += [sum(total_alts)]
     found_alts += [sum(found_alts)]
