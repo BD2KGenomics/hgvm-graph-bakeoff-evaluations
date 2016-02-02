@@ -23,7 +23,43 @@ from evaluateVariantCalls import defaultdict_set
 from computeVariantsDistances import vcf_dist_header
 
 
+def smooth_table(linetoks, threshold = 0.001):
+    """ precisions dont seem to always be roc-like.  remove outliers to smooth
+    into curves until I figure out what's going on
+    """
 
+    # compute biggest "dip" in entire table.  remove it. then repeat.
+    # (n^2 is slower than necessary, but good enough for our tables)
+    spike_idx = -1
+    spike_val = 0
+    for i in range(1, len(linetoks)):
+        if i == 0:
+            continue
+        # we expect precision to increase and recall to decrease as i increases
+        # spike measures deviation of this from i-1 to i and i to i+1
+        spike = 0.
+        # same graph as previous
+        if linetoks[i-1][0] == linetoks[i][0]:
+            # compute how much precision we *lose*
+            spike += max(0., float(linetoks[i-1][1]) - float(linetoks[i][1]))
+            # compute how much recall we *gain*
+            spike += max(0., float(linetoks[i][2]) - float(linetoks[i-1][2]))
+
+        # same graph as next
+        if i < len(linetoks) - 1 and linetoks[i][0] == linetoks[i+1][0]:
+            # compute how much precision we *lose*
+            spike += max(0., float(linetoks[i][1]) - float(linetoks[i+1][1]))
+            # compute how much recall we *gain*
+            spike += max(0., float(linetoks[i+1][2]) - float(linetoks[i][2]))
+
+        if spike > spike_val:
+            spike_val, spike_idx = spike, i
+
+    if spike_val > threshold:
+        return smooth_table(linetoks[0:spike_idx] + linetoks[spike_idx+1:])
+    else:
+        return ["\t".join(x) + "\n" for x in linetoks]
+    
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -65,6 +101,19 @@ def main(args):
             os.system("{} {}".format(c, os.path.join(options.out_dir, "comp_tables",
                                                      os.path.basename(tsv))))
         first = False
+
+    # let's sort the output to make it easier to remove dead points
+    for tsv in glob.glob(os.path.join(options.out_dir, "comp_tables", "*.tsv")):
+        with open(tsv) as f:
+            lines = [line for line in f]
+            lines = [lines[0]] + sorted(lines[1:])
+            # precisions can be bumpy (need to change to sensitivy?)
+            # use simple smoother in the meantime
+            lines = smooth_table([x.split() for x in lines])
+        with open(tsv, "w") as f:
+            for line in lines:
+                f.write(line)
+
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
