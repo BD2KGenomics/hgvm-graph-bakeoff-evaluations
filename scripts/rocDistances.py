@@ -65,6 +65,15 @@ def main(args):
             os.system("{} {}".format(c, os.path.join(options.out_dir, "comp_tables",
                                                      os.path.basename(tsv))))
         first = False
+
+    # let's sort the output to make it easier to remove dead points
+    for tsv in glob.glob(os.path.join(options.out_dir, "comp_tables", "*.tsv")):
+        with open(tsv) as f:
+            lines = [line for line in f]
+        lines = [lines[0]] + sorted(lines[1:], key = lambda x : (x.split()[0], float(x.split()[1]), 1 - float(x.split()[2])))
+        with open(tsv, "w") as f:
+            for line in lines:
+                f.write(line)
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
