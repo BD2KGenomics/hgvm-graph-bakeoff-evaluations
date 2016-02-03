@@ -48,6 +48,7 @@ PLOT_PARAMS = [
     "shifted1kg",
     "gatk3",
     "platypus",
+    "g1kvcf",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -71,6 +72,7 @@ PLOT_PARAMS = [
     "Control",
     "GATK3",
     "Platypus",
+    "\"1000 Genomes\"",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -94,6 +96,7 @@ PLOT_PARAMS = [
     "\"#FF0000\"",
     "\"#25BBD4\"",
     "\"#9E7C72\"",
+    "\"#cab2d6\"",    
     "--font_size 20 --dpi 90"]
 
 

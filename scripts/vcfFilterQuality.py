@@ -17,14 +17,25 @@ def parse_args(args):
     parser.add_argument("min_qual", type=float,
                         help="Mininum quality value to keep")
     parser.add_argument("--pct", action="store_true",
-                        help="Interpret min_qual as a precentile.  So min_qual == 0.7 will return the top 30% scores")  
+                        help="Interpret min_qual as a precentile.  So min_qual == 0.7 will return the top 30% scores")
+    parser.add_argument("--info", type=str, default=None,
+                        help="Use given info field")
+                        
     
     args = args[1:]
     options = parser.parse_args(args)
     return options
 
 def get_qual_from_line(line, options):
-    return float(line.split()[5])
+    if options.info is None:
+        return float(line.split()[5])
+    else:
+        info = line.split()[7]
+        toks = info.split(";")
+        for tok in toks:
+            if tok[:len(options.info) + 1] == "{}=".format(options.info):
+                return float(tok[len(options.info) + 1:])
+        assert False
 
 def compute_cutoff(options):
     if options.pct is False:

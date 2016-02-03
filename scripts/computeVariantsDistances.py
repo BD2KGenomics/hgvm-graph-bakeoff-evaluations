@@ -83,6 +83,8 @@ def parse_args(args):
                         help="generate happy rocs for gatk3 and platypus")
     parser.add_argument("--qpct", type=float, default=None,
                         help="apply quality percentile filter for gatk and platypus")
+    parser.add_argument("--baseline", type=str, default="platvcf",
+                        help="baseline to use (platvcf or g1kvcf) for vcf comparisons")
                             
     args = args[1:]
 
@@ -164,6 +166,10 @@ def preprocessed_vcf_path(graph, options):
     """ get the path of the sorted vcf (normalized and/or clipped)
     """
     region, sample, method = options.tags[graph]
+    # little hack because preprocessing different depending if graph is
+    # baseline or not (note it should never be both!)
+    if method == options.baseline:
+        method = "{}_basline".format(method)
     return os.path.join(options.comp_dir, "preprocessed_vcfs", region,
                         sample + "_" + method + ".vcf")
 
@@ -358,7 +364,7 @@ def happy_dist_fn(graph1, graph2, options):
     indels = None
     total = None
 
-    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus"]:
+    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus", "g1kvcf"]:
         # read happy roc output.
         # todo : indels and total:  problem= rocs have differen numbers of lines wwhich doesnt fit interface as is
         snp_roc_path = jpath.replace("summary.csv", "roc.snp.all.tsv")
@@ -604,9 +610,13 @@ def preprocess_vcf(job, graph, options):
 
     run("scripts/vcfsort {} > {}".format(input_vcf, output_vcf), fail_hard=True)
 
-    if options.qpct is not None and options.tags[graph][2] in ["gatk3", "platypus"]:
-        run("scripts/vcfFilterQuality.py {} {} --pct > {}".format(output_vcf, options.qpct,
-                                                                  output_vcf + ".qpct"))
+    if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus"] or
+                                     options.tags[graph][2] == "g1kvcf" and options.baseline != "g1kvcf"):
+        # g1kvcf has no quality info.  proxy with read depth to at least get a curve
+        filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
+        run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
+                                                                     filter_opts,
+                                                                     output_vcf + ".qpct"))
         run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
     
     if options.clip is True:
@@ -643,7 +653,7 @@ def compute_vcf_comparison(job, graph1, graph2, options):
 
     # we expect graph1 to be a sample graph
     region1, sample1, method1  = options.tags[graph1]
-    assert method1 != "None" and "g1kvcf" not in method1 and "platvcf" not in method1
+    assert method1 != "None" and "platvcf" not in method1
 
     # we expect graph2 to be a baseline graph
     region2, sample2, method2 = options.tags[graph2]
@@ -665,12 +675,12 @@ def compute_vcf_comparison(job, graph1, graph2, options):
         robust_makedirs(os.path.dirname(out_path))
 
         if options.comp_type == "sompy":
-            run("export HGREF={} ; som.py {} {} --output {} 2> {}".format(options.chrom_fa_path, truth_vcf_path,
+            run("export HGREF={} ; som.py {} {} --output {} -P 2> {}".format(options.chrom_fa_path, truth_vcf_path,
                                                                           query_vcf_path, out_path.replace(".stats.csv", ""), out_path + ".stderr"))
         elif options.comp_type == "happy":
             roc = ""
             # make roc curves for gatk and platypus (hardcoding name check as hack for now)
-            if method1 in ["gatk3", "platypus"] and options.roc is True:
+            if method1 in ["gatk3", "platypus", "g1kvcf"] and options.roc is True:
                 roc = "-P -V --roc Q_GQ --roc-filter LowGQX"
             # since we use just numbers for chrom names in the vcf, use options.happy_fa_path as a hack to make happy happy.
             run("export HGREF={} ; hap.py {} {} -o {} --threads {} {} 2> {}".format(options.happy_fa_path, truth_vcf_path,
@@ -792,9 +802,9 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             sys.stderr.write("WARNING, input VCF not found: {}\n".format(
                 test_path(sample_path, method)))
         # we dont expect to have baselines for every sample
-        if os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):
+        if options.baseline == "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):
             baseline_graphs[region][sample].add(g1kvcf_path)
-        if os.path.isfile(test_path(platvcf_path, "platvcf")):
+        if options.baseline == "platvcf" and os.path.isfile(test_path(platvcf_path, "platvcf")):
             baseline_graphs[region][sample].add(platvcf_path)
 
         # add external vcfs as sample graphs, rely on tags to tell them apart
@@ -807,6 +817,8 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             if os.path.isfile(platypus_path):
                 sample_graphs[region][sample].add(platypus_path)
                 tags[platypus_path] = (region, sample, "platypus")
+            if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
+                sample_graphs[region][sample].add(g1kvcf_path)
 
         tags[sample_path] = (region, sample, method)
         tags[g1kvcf_path] = (region, sample, "g1kvcf")
@@ -858,7 +870,9 @@ def main(args):
         for sample in options.sample_graphs[region].keys():
             for graph1 in options.sample_graphs[region][sample]:
                 for graph2 in options.baseline_graphs[region][sample]:
-                    options.pair_comps.append((graph1, graph2))
+                    # skip g1kvcf vs g1kvcf comparison
+                    if options.tags[graph1] != options.tags[graph2]:
+                        options.pair_comps.append((graph1, graph2))
 
                 # optional smaple vs sample
                 if options.sample:
