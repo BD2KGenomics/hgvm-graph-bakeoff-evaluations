@@ -58,7 +58,7 @@ PLOT_PARAMS=(
     VGLR
     "1KG Haplo 30"
     "1KG Haplo 50"
-    Control
+    Scrambled
     --colors
     "#fb9a99"
     "#fb9a99"
@@ -226,8 +226,14 @@ do
             if [ "${REGION^^}" == "MHC" ]
             then
                 SUBSTRATE_LIMIT="--max 0.10"
+            elif [ "${REGION^^}" == "CENX" ]
+            then
+                SUBSTRATE_LIMIT=""
             else
                 SUBSTRATE_LIMIT="--max 0.02"
+                
+                # For supplement
+                SUBSTRATE_LIMIT="--max 0.10"
             fi
         else
             # Set limits by region
@@ -241,6 +247,7 @@ do
                 SUBSTRATE_LIMIT="--max 2 --min 0"
             fi
         fi
+        
         
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
