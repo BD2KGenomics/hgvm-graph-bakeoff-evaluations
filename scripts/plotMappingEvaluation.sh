@@ -172,7 +172,7 @@ do
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "${PORTION} perfectly mapped" --save "${PERFECT_PLOT}" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nperfectly mapped")" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -194,7 +194,7 @@ do
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
