@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="pdf"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -58,7 +58,7 @@ PLOT_PARAMS=(
     VGLR
     "1KG Haplo 30"
     "1KG Haplo 50"
-    Control
+    Scrambled
     --colors
     "#fb9a99"
     "#fb9a99"
@@ -172,7 +172,7 @@ do
             
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
-            --x_label "Graph" --y_label "${PORTION} perfectly mapped" --save "${PERFECT_PLOT}" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nperfectly mapped")" --save "${PERFECT_PLOT}" \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -194,7 +194,7 @@ do
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
             --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "${PORTION} uniquely mapped" --save "${SINGLE_MAPPING_PLOT}" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -226,8 +226,14 @@ do
             if [ "${REGION^^}" == "MHC" ]
             then
                 SUBSTRATE_LIMIT="--max 0.10"
+            elif [ "${REGION^^}" == "CENX" ]
+            then
+                SUBSTRATE_LIMIT=""
             else
                 SUBSTRATE_LIMIT="--max 0.02"
+                
+                # For supplement
+                SUBSTRATE_LIMIT="--max 0.10"
             fi
         else
             # Set limits by region
@@ -241,6 +247,7 @@ do
                 SUBSTRATE_LIMIT="--max 2 --min 0"
             fi
         fi
+        
         
         ./scripts/boxplot.py "${SUBSTRATE_FILE}" \
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \

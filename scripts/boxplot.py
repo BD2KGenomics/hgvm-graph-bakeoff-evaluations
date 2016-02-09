@@ -128,7 +128,7 @@ def parse_args(args):
     parser.add_argument("--grouping_colors", nargs="+", default=None,
         help="Matplotlib colors for all the groupings")
         
-    parser.add_argument("--hide_categories", nargs="+", default=None,
+    parser.add_argument("--hide_categories", nargs="+", default=[],
         help="hide the categories on this list (except as hlines)")
     
     # If we have colors and names for groupings, we will use a legend.
@@ -297,7 +297,8 @@ def main(args):
         pyplot.axhline(y=options.hline, color='r', linestyle='--')
         hline_positions.append(options.hline)
         
-    if options.hline_median is not None:
+    if (options.hline_median is not None and
+        categories.has_key(options.hline_median)):
         # Add in our horizontal mean line
         
         # Compute the mean
