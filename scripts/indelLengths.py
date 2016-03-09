@@ -47,6 +47,8 @@ def parse_args(args):
         help="file of lengths to write")
     parser.add_argument("--indels_only", action="store_true",
         help="ignore variants with no length change")
+    parser.add_argument("--report_variants", action="store_true",
+        help="report the variants themselves too")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -98,6 +100,9 @@ def main(args):
         if not options.indels_only or length_difference > 0:
             # Emit the length difference
             writer.line(length_difference)
+            
+            if options.report_variants:
+                writer.list_line(parts[0:2])
     
     
     
