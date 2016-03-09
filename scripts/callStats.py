@@ -30,6 +30,9 @@ def parse_args(args):
                         help="Average samples into mean value")
     parser.add_argument("--tag", type=str, default = "",
                         help="add tag to all output files")
+    parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
+                        help="fasta file with entire chromosome info for all regions")
+    
                             
     args = args[1:]
         
@@ -86,7 +89,7 @@ def count_vcf_snps(vcf, options):
     """
     if not os.path.exists(vcf):
         return -1
-    cmd = "scripts/vcfCountSnps.sh {}".format(vcf)
+    cmd = "scripts/vcfCountSnps.sh {} {}".format(vcf, options.chrom_fa_path)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
                          stderr=sys.stderr, bufsize=-1)
     output, _ = p.communicate()
@@ -94,14 +97,75 @@ def count_vcf_snps(vcf, options):
     num_paths = int(output.strip())
     return num_paths
 
+def normalize_vcf(vcf, options):
+    """ run normalizeation pipeline
+    """
+    cmd = "vcfsort {} | vt decompose - | vt decompose_blocksub -a - | vt normalize -r {} - | uniq".format(vcf, options.chrom_fa_path)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, bufsize=-1)
+    output, _ = p.communicate()
+    assert p.wait() == 0
+    return output
+
+def count_aug_snps(sample_vcf, sample_txt, options):
+    """ how many snps in the vcf are in the augmented graph """
+    if not os.path.isfile(sample_txt) or not os.path.isfile(sample_vcf):
+        return -1
+    augs = set()
+    with open(sample_txt) as f:
+        for line in f:
+            if line[0] != "#":
+                toks = line.split()
+                node = int(toks[0])
+                pos = int(toks[1]) - 1
+                if toks[4] == "SNP":
+                    augs.add((node, pos))
+    aug_count = 0
+    f = normalize_vcf(sample_vcf, options).split("\n")
+    found_header = False
+    for line in f:
+        if len(line) == 0:
+            continue
+        if line[0] == "#":
+            found_header = True
+        elif found_header is True:
+            toks = line.split()
+            ref = toks[3]
+            alts = toks[4].split(",")
+            # assume normalized
+            assert len(alts) == 1
+            # check if snp
+            if not (len(ref) == 1 and len(alts[0]) == 1 and alts[0] != ref):
+                continue
+            vid = toks[2]
+            if "." in vid:
+                pos = int(vid.split(".")[-1])
+            else:
+                pos = 0
+            vid = vid.split(".")[0]
+            if "_" in vid:
+                first_node, last_node = vid.split("_")[0], vid.split("_")[0][-1]
+            else:
+                first_node = vid
+                last_node = vid
+            first_node, last_node = int(first_node), int(last_node)
+            is_aug = False
+            for node in range(first_node, last_node+1):
+                if (node, pos) in augs:
+                    is_aug = True
+            if is_aug is True:
+                aug_count += 1
+    return aug_count
+
 def vg_detailed_call_counts(gam, options):
-    """ return tuple (non-calls, ref/ref, ref/alt1, alt1/alt1, alt1/alt2)
+    """ return tuple (vcf-snp, aug-snp, ref-snp, non-calls, ref/ref, ref/alt1, alt1/alt1, alt1/alt2)
     """
     original_graph = graph_path(gam, options)    
     sample_graph = sample_vg_path(gam, options)
     sample_txt = sample_txt_path(gam, options)
+    sample_vcf = sample_txt.replace(".txt", ".vcf")
 
-    non_calls = vg_length(original_graph, options) - vg_length(sample_graph, options)
+    non_calls = 0
     ref_calls = 0
     alt_calls = 0
     ref_ref = 0
@@ -127,8 +191,19 @@ def vg_detailed_call_counts(gam, options):
                 assert vals[0] != toks[2] and vals[1] != toks[2]
                 alt1_alt2 += 1
             line = f.readline()
-            
-    return (non_calls,
+
+    # check normalized output of glenn2vcf (number ofalts)
+    sample_vcf_snps = count_vcf_snps(sample_vcf, options)
+
+    # total alt_calls
+    alt_snps = count_aug_snps(sample_vcf, sample_txt, options)
+    
+    # todo: use more verybose calls.txt for a lot of this
+    non_calls = vg_length(original_graph, options) - vg_length(sample_graph, options) + ref_alt + alt1_alt1 + 2 * alt1_alt2
+    
+    
+    return (sample_vcf_snps, alt_snps, sample_vcf_snps - alt_snps,
+            non_calls,
             ref_ref * 2 + ref_alt,
             (alt1_alt1 + alt1_alt2) * 2 + ref_alt,
             ref_ref, ref_alt, alt1_alt1, alt1_alt2)
@@ -236,9 +311,9 @@ def detailed_call_count_table(options):
     obselete
     """
     # tsv header
-    detailed_table = "#graph\tnon-calls\tref-calls\talt-calls\tref-ref\tref-alt1\talt1-alt1\talt1-alt2\n"
+    detailed_table = "#graph\ttot-snps\taug-snps\tref-snps\tnon-calls\tref-calls\talt-calls\tref-ref\tref-alt1\talt1-alt1\talt1-alt2\n"
 
-    sums = defaultdict(lambda : (0,0,0,0,0,0,0))
+    sums = defaultdict(lambda : (0,0,0,0,0,0,0,0,0,0))
     counts = defaultdict(lambda : 0)
 
     for gam in options.in_gams:
@@ -260,7 +335,11 @@ def detailed_call_count_table(options):
                       sums[name][3] + result[3],
                       sums[name][4] + result[4],
                       sums[name][5] + result[5],
-                      sums[name][6] + result[6])
+                      sums[name][6] + result[6],
+                      sums[name][7] + result[7],
+                      sums[name][8] + result[8],
+                      sums[name][9] + result[9])
+
 
         counts[name] = counts[name] + 1
 
@@ -273,7 +352,11 @@ def detailed_call_count_table(options):
             float(sums[name][3]) / float(counts[name]),
             float(sums[name][4]) / float(counts[name]),
             float(sums[name][5]) / float(counts[name]),
-            float(sums[name][6]) / float(counts[name]))
+            float(sums[name][6]) / float(counts[name]),
+            float(sums[name][7]) / float(counts[name]),
+            float(sums[name][8]) / float(counts[name]),
+            float(sums[name][9]) / float(counts[name]))
+
 
     with open(detailed_call_coutns_tsv_path(options), "w") as ofile:
         ofile.write(detailed_table)
@@ -336,15 +419,16 @@ def main(args):
     snp_count_table(options)
     graph_size_table(options)
 
+    # make some better stats (to eventuall replace above)
+    options.in_gams = orig_gams
+    detailed_call_count_table(options)
+
     # make some boxplots with adams super script
     boxPlot(count_tsv_path(options), count_tsv_path(options).replace(".tsv", ".pdf"),
             0, 2, "SNP\\ Count")
     boxPlot(size_tsv_path(options), size_tsv_path(options).replace(".tsv", ".pdf"),
             0, 1, "Sample\\ Graph\\ Size")
 
-    # make some better stats (to eventuall replace above)
-    options.in_gams = orig_gams
-    detailed_call_count_table(options)
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
