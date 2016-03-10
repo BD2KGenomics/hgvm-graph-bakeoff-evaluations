@@ -49,6 +49,8 @@ def parse_args(args):
         help="ignore variants with no length change")
     parser.add_argument("--report_variants", action="store_true",
         help="report the variants themselves too")
+    parser.add_argument("--distinguish", action="store_true",
+        help="report deletion lengths as negative")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -97,7 +99,22 @@ def main(args):
         # shortest length from the longest length.
         length_difference = allele_lengths[-1] - allele_lengths[0]
         
-        if not options.indels_only or length_difference > 0:
+        if options.distinguish:
+            # We care if it's an insertion or a deletion
+            
+            if len(ref_allele) == allele_lengths[0]:
+                # It's an insertion. Ref is shortest
+                pass
+            elif len(ref_allele) == allele_lengths[-1]:
+                # It's a deletion. Ref is longest.
+                
+                # Report as negative
+                length_difference = -length_difference
+            else:
+                # It's a combination insertion/deletion. Skip it.
+                continue
+        
+        if not options.indels_only or length_difference != 0:
             # Emit the length difference
             writer.line(length_difference)
             

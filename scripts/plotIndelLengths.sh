@@ -132,7 +132,7 @@ do
             # Don't use the normalized ones because they are duplicating and weirdly left-shifting deletions.
     
             # Get all the indel lengths
-            scripts/indelLengths.py --in_file ${SAMPLE_FILE} --indels_only > "${OUTPUT_DIR}/temp.tsv"
+            scripts/indelLengths.py --in_file ${SAMPLE_FILE} --indels_only --distinguish > "${OUTPUT_DIR}/temp.tsv"
     
             # Get all the indel lengths, tack on the graph name, and save them to the file
             cat "${OUTPUT_DIR}/temp.tsv" | awk "{print \"${GRAPH}\t\", \$1}" >> "${INDEL_LENGTH_TSV}"
@@ -170,7 +170,7 @@ do
         --title "$(printf "Indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${HISTOGRAM_PLOT_FILE}" \
         --line --no_n --sparse_ticks \
-        --bins 20 --no_zero_ends \
+        --bins 20 --no_zero_ends --fake_zero --log_counts \
         --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
         "${PLOT_PARAMS[@]}"
         

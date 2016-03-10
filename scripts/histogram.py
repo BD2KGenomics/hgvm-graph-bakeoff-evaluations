@@ -116,6 +116,8 @@ def parse_args(args):
         help="take the base-10 logarithm of values before plotting histogram")
     parser.add_argument("--log_counts", "--logCounts", action="store_true",
         help="take the logarithm of counts before plotting histogram")
+    parser.add_argument("--fake_zero", action="store_true",
+        help="pretend that log(0) = 0 for plotting with logged counts")
     parser.add_argument("--stats", action="store_true",
         help="print data stats")
     parser.add_argument("--save",
@@ -390,6 +392,12 @@ def main(args):
             if options.cumulative:
                 # Calculate cumulative weights for each data point
                 bin_values = numpy.cumsum(bin_values)
+                
+            if options.log_counts:
+                # Replace all the 0s with 1s so the log comes out 0
+                for i in xrange(len(bin_values)):
+                    if bin_values[i] == 0:
+                        bin_values[i] = 1
             
             if options.line:
                 # Do the plot as a line.
