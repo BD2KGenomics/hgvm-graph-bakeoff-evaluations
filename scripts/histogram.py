@@ -75,7 +75,7 @@ def parse_args(args):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     
     # Now add all the options to it
-    parser.add_argument("data", type=argparse.FileType('r'), nargs="+",
+    parser.add_argument("data", nargs="+",
         help="the file to read")
     parser.add_argument("--redPortion", type=float, action="append", default=[],
         help="portion of each bin to color red")
@@ -101,6 +101,15 @@ def parse_args(args):
         help="note portion above and below a value")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
+    parser.add_argument("--categories", nargs="+", default=None,
+        help="categories to plot, in order")
+    parser.add_argument("--category_labels", "--labels", nargs="+",
+        default=[],
+        help="labels for all categories or data files, in order")
+    parser.add_argument("--colors", nargs="+", default=[],
+        help="use the specified Matplotlib colors per category or file")
+    parser.add_argument("--styles", nargs="+", default=[],
+        help="use the specified line styles per category or file")
     parser.add_argument("--cumulative", action="store_true",
         help="plot cumulatively")
     parser.add_argument("--log", action="store_true",
@@ -125,10 +134,13 @@ def parse_args(args):
         help="normalize to total weight of 1")
     parser.add_argument("--line", action="store_true",
         help="draw a line instead of a barchart")
+    parser.add_argument("--no_zero_ends", dest="zero_ends", default=True,
+        action="store_false",
+        help="don't force line ends to zero")
+    parser.add_argument("--legend_overlay", default=None,
+        help="display the legend overlayed on the graph at this location")
     parser.add_argument("--points", action="store_true",
         help="draw points instead of a barchart")
-    parser.add_argument("--labels", nargs="*", default=[],
-        help="labels for each data file histogram")
     parser.add_argument("--width", type=float, default=8,
         help="plot width in inches")
     parser.add_argument("--height", type=float, default=6,
@@ -156,6 +168,31 @@ def filter2(criterion, key_list, other_list):
             out2.append(other_val)
             
     return out1, out2
+    
+def filter_n(*args):
+    """
+    Filter any number of lists of corresponding items based on some function of
+    the first list.
+    
+    """
+    
+    filter_function = args[0]
+    to_filter = args[1:]
+    
+    to_return = [list() for _ in to_filter]
+    
+    for i in xrange(len(to_filter[0])):
+        # For each run of entries
+        if filter_function(to_filter[0][i]):
+            # If the key passes the filter
+            for j in xrange(len(to_filter)):
+                # Keep the whole row
+                if i < len(to_filter[j]):
+                    to_return[j].append(to_filter[j][i])
+            
+            
+    # return all the lists as a tuple, which unpacks as multiple return values
+    return tuple(to_return)
 
 def main(args):
     """
@@ -177,52 +214,54 @@ def main(args):
     # Make the figure with the appropriate size and DPI.
     pyplot.figure(figsize=(options.width, options.height), dpi=options.dpi)
     
-    # This will hold a list of lists of data, weight pairs
-    all_data = []
+    # This will hold a dict of lists of data, weight pairs, by category or file
+    # name
+    all_data = collections.defaultdict(list)
     
-    for data_file in options.data:
-        # This holds all the data values
-        data = []
+    for data_filename in options.data:
         
-        # This holds a weight for each to allow for pre-counted values
-        weights = []
-        
-        for line_number, line in enumerate(data_file):
+        for line_number, line in enumerate(open(data_filename)):
             # Split each line
             parts = line.split()
             
             if len(parts) == 1:
                 # This is one instance of a value
+                
+                all_data[data_filename].append((float(parts[0]), 1))
+                
                 data.append(float(parts[0]))
                 weights.append(1)
+                categories.append(data_filename)
             elif len(parts) == 2:
-                # This is multiple instances of a value
-                data.append(float(parts[0]))
-                weights.append(float(parts[1]))
+                if len(options.data) > 1:
+                    # This is multiple instances of a value
+                    all_data[data_filename].append((float(parts[0]),
+                        float(parts[1])))
+                else:
+                    # This is category, instance data
+                    all_data[parts[0]].append((float(parts[1]), 1))
+            elif len(parts) == 3:
+                # This is category, instance, weight data
+                all_data[parts[0]].append((float(parts[1]), float(parts[2])))
             else:
-                raise Exception("Wrong number of fields on line {}".format(
-                    line_number + 1))
+                raise Exception("Wrong number of fields on {} line {}".format(
+                    data_filename, line_number + 1))
         
-        # TODO: Make this streaming instead of loading.
+    for category in all_data.iterkeys():
+        # Strip NaNs and Infs and weight-0 entriues
+        all_data[category] = [(value, weight) for (value, weight)
+            in all_data[category] if 
+            value < float("+inf") and value > float("-inf") and weight > 0]
         
-        # Strip NaNs and Infs
-        data, weights = filter2(lambda x: x < float("+inf") and 
-            x > float("-inf"), data, weights)
-            
-        # Strip out data that has weight 0
-        weights, data = filter2(lambda x: x > 0, weights, data)
-        
-        # Save the lists
-        all_data.append((data, weights))
         
     
     # Calculate our own bins, over all the data. First we need the largest and
     # smallest observed values. The fors in the comprehension have to be in
     # normal for loop order and not the other order.
-    bin_min = options.x_min if options.x_min is not None else min((item
-        for pair in all_data for item in pair[0]))
-    bin_max = options.x_max if options.x_max is not None else max((item
-        for pair in all_data for item in pair[0]))
+    bin_min = options.x_min if options.x_min is not None else min((pair[0]
+        for pair_list in all_data.itervalues() for pair in pair_list))
+    bin_max = options.x_max if options.x_max is not None else max((pair[0]
+        for pair_list in all_data.itervalues() for pair in pair_list))
     
     if options.log:
         # Do our bins in log space, so they look evenly spaced on the plot.
@@ -241,9 +280,36 @@ def main(args):
         bins = [math.pow(10, x) for x in bins]
         bin_centers = [math.pow(10, x) for x in bin_centers]
     
-    for (data, weights), label, line_style in itertools.izip(all_data,
-        itertools.chain(options.labels, itertools.repeat(None)), 
-        itertools.cycle(['-', '--', ':', '-.'])):
+    if options.categories is not None:
+        # Order data by category order
+        ordered_data = [(category, all_data[category]) for category in
+            options.categories]
+    elif len(options.data) > 1:
+        # Order data by file order
+        ordered_data = [(filename, all_data[filename]) for filename in
+            options.data]
+    else:
+        # Order arbitrarily
+        ordered_data = list(all_data.iteritems())        
+    
+    for (category, data_and_weights), label, color, line_style, marker in \
+        itertools.izip(ordered_data,
+        itertools.chain(options.category_labels, itertools.repeat(None)),
+        itertools.chain(options.colors, itertools.cycle(
+        ['b', 'g', 'r', 'c', 'm', 'y', 'k'])),
+        itertools.chain(options.styles, itertools.cycle(
+        ['-', '--', ':', '-.'])),
+        itertools.cycle(
+        ['o', 'v', '^', '<', '>', 's', '+', 'x', 'D', '|', '_'])):
+        # For every category and its display properties...
+        
+        if len(data_and_weights) == 0:
+            # Skip categories with no data
+            continue
+
+        # Split out the data and the weights for this category/file
+        data = [pair[0] for pair in data_and_weights]
+        weights = [pair[1] for pair in data_and_weights] 
         
         # For each set of data and weights that we want to plot, and the label
         # it needs (or None)...
@@ -326,13 +392,22 @@ def main(args):
                 bin_values = numpy.cumsum(bin_values)
             
             if options.line:
-                # Do the plot as a line. Make sure we start and end at 0.    
-                pyplot.plot([bins[0]] + list(bin_centers) + [bins[-1]],
-                    [0] + list(bin_values) + [0], label=label,
-                    linestyle=line_style)
+                # Do the plot as a line.
+                if options.zero_ends:
+                    # Make sure we start and end at 0.    
+                    pyplot.plot([bins[0]] + list(bin_centers) + [bins[-1]],
+                        [0] + list(bin_values) + [0], label=label,
+                        linestyle=line_style, color=color, marker=marker)
+                else:
+                    # Let the ends dangle at the bin centers
+                    pyplot.plot(list(bin_centers), list(bin_values),
+                        label=label, linestyle=line_style, color=color,
+                        marker=marker)
+                        
             if options.points:
                 # Do the plot as points.   
-                pyplot.scatter(bin_centers, bin_values, label=label)
+                pyplot.scatter(bin_centers, bin_values, label=label,
+                    color=color, marker=marker)
             
             if options.log_counts:
                 # Log the Y axis
@@ -346,11 +421,6 @@ def main(args):
                 weights=weights, alpha=0.5 if len(options.data) > 1 else 1.0,
                 label=label)
             
-        
-            
-    if len(options.labels) > 0:
-        pyplot.legend()
-        
     if len(options.redPortion) > 0:
         # Plot a red histogram over that one, modified by redPortion.
         
@@ -445,6 +515,26 @@ def main(args):
     
     # Make everything fit
     pyplot.tight_layout()
+    
+    if len(options.category_labels) > 0:
+        # We need a legend
+        
+        if options.legend_overlay is None:
+            # We want the default legend, off to the right of the plot.
+        
+            # First shrink the plot to make room for it.
+            # TODO: automatically actually work out how big it will be.
+            bounds = pyplot.gca().get_position()
+            pyplot.gca().set_position([bounds.x0, bounds.y0,
+                bounds.width * 0.5, bounds.height])
+                
+            # Make the legend
+            pyplot.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
+            
+        else:
+            # We want the legend on top of the plot at the user-specified
+            # location, and we want the plot to be full width.
+            pyplot.legend(loc=options.legend_overlay)
     
     if options.save is not None:
         # Save the figure to a file

@@ -85,7 +85,7 @@ PLOT_PARAMS=(
     "#00FF00"
     "#0000FF"
     "#FF0000"
-    --font_size 20 --dpi 90
+    --dpi 90
 )
 
 
@@ -109,6 +109,7 @@ do
     
     # Where do we put the plots?
     LENGTH_PLOT_FILE="${OUTPUT_DIR}/plot_indel_lengths_${REGION}.${PLOT_FILETYPE}"
+    HISTOGRAM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_histogram_${REGION}.${PLOT_FILETYPE}"
     MEAN_PLOT_FILE="${OUTPUT_DIR}/plot_indel_means_${REGION}.${PLOT_FILETYPE}"
     SUM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_sums_${REGION}.${PLOT_FILETYPE}"
     
@@ -161,21 +162,30 @@ do
         --title "$(printf "Indel lengths in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Indel length (bp)" --save "${LENGTH_PLOT_FILE}" \
         --x_sideways --hline_median refonly \
-        --range --log_y --min 0.1 --no_n \
+        --range --log_y --min 0.1 --no_n --font_size 20 \
+        "${PLOT_PARAMS[@]}"
+        
+    # Do a length histogram
+    ./scripts/histogram.py "${INDEL_LENGTH_TSV}" \
+        --title "$(printf "Indel lengths in ${HR_REGION}")" \
+        --x_label "Length (bp)" --y_label "Indel count" --save "${HISTOGRAM_PLOT_FILE}" \
+        --line --no_n --sparse_ticks \
+        --bins 20 --no_zero_ends \
+        --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INDEL_MEAN_TSV}" \
         --title "$(printf "Indel length means in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Mean indel length (bp)" --save "${MEAN_PLOT_FILE}" \
         --x_sideways \
-        --sparse_ticks --log_y \
+        --sparse_ticks --log_y --font_size 20 \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INDEL_SUM_TSV}" \
         --title "$(printf "Indel length sums in ${HR_REGION}")" \
         --x_label "Graph" --y_label "Total indel length (bp)" --save "${SUM_PLOT_FILE}" \
         --x_sideways \
-        --sparse_ticks --log_y \
+        --sparse_ticks --log_y --font_size 20 \
         "${PLOT_PARAMS[@]}"
         
     
