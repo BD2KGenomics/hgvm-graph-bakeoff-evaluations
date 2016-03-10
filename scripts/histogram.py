@@ -398,7 +398,7 @@ def main(args):
                 for i in xrange(len(bin_values)):
                     if bin_values[i] == 0:
                         bin_values[i] = 1
-            
+                        
             if options.line:
                 # Do the plot as a line.
                 if options.zero_ends:
