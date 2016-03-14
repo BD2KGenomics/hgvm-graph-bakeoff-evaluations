@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -105,6 +105,7 @@ do
     # Where do we put the plots?
     LENGTH_PLOT_FILE="${OUTPUT_DIR}/plot_indel_lengths_${REGION}.${PLOT_FILETYPE}"
     HISTOGRAM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_histogram_${REGION}.${PLOT_FILETYPE}"
+    LONG_HISTOGRAM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_histogram_long_${REGION}.${PLOT_FILETYPE}"
     REF_HISTOGRAM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_histogram_ref_${REGION}.${PLOT_FILETYPE}"
     NONREF_HISTOGRAM_PLOT_FILE="${OUTPUT_DIR}/plot_indel_histogram_nonref_${REGION}.${PLOT_FILETYPE}"
     
@@ -120,7 +121,7 @@ do
     do
         # For every graph we ran on this region
     
-        for SAMPLE_FILE in `ls ${INPUT_DIR}/${REGION}/${GRAPH}/*_sample.vcf`
+        for SAMPLE_FILE in `ls ${INPUT_DIR}/${REGION}/${GRAPH}/*_sample_preprocessed.vcf`
         do
     
             # For all the un-normalized sample call VCFs for the graph
@@ -165,12 +166,25 @@ do
         
     # Do a length histogram
     ./scripts/histogram.py "${INDEL_LENGTH_TSV}" \
-        --title "$(printf "Indel lengths in ${HR_REGION}")" \
+        --title "$(printf "All indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
-        --bins 30 --no_zero_ends --fake_zero --log_counts --x_min -150 --x_max 150 \
+        --bins 30 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -150 --x_max 150 --y_min 0.9 \
         --legend_overlay "upper right" \
         --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
+        --width 6 --height 2 \
+        "${PLOT_PARAMS[@]}"
+    
+    # And one that's over a wider range
+    ./scripts/histogram.py "${INDEL_LENGTH_TSV}" \
+        --title "$(printf "Indel lengths in ${HR_REGION}")" \
+        --x_label "Length (bp)" --y_label "Indel count" --save "${LONG_HISTOGRAM_PLOT_FILE}" \
+        --line --no_n \
+        --bins 50 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -500 --x_max 500 --y_min 0.9 \
+        --legend_overlay "upper right" \
+        --ticks -500 -150 0 150 500 \
+        --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
+        --width 6 --height 2 \
         "${PLOT_PARAMS[@]}"
         
     # And histograms for ref only and nonref only
@@ -178,18 +192,20 @@ do
         --title "$(printf "Known indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${REF_HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
-        --bins 30 --no_zero_ends --fake_zero --log_counts --x_min -150 --x_max 150 \
+        --bins 30 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -150 --x_max 150 --y_min 0.9 \
         --legend_overlay "upper right" \
         --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
+        --width 6 --height 2 \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/histogram.py "${NONREF_INDEL_LENGTH_TSV}" \
         --title "$(printf "Novel indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${NONREF_HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
-        --bins 30 --no_zero_ends --fake_zero --log_counts --x_min -150 --x_max 150 \
+        --bins 30 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -150 --x_max 150 --y_min 0.9 \
         --legend_overlay "upper right" \
         --style "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" "-" \
+        --width 6 --height 2 \
         "${PLOT_PARAMS[@]}"
         
 done

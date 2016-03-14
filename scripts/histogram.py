@@ -93,9 +93,9 @@ def parse_args(args):
         help="minimum value allowed")
     parser.add_argument("--x_max", "--max", type=float, default=None,
         help="maximum value allowed")
-    parser.add_argument("--y_min", type=int, default=None,
+    parser.add_argument("--y_min", type=float, default=None,
         help="minimum count on plot")
-    parser.add_argument("--y_max", type=int, default=None,
+    parser.add_argument("--y_max", type=float, default=None,
         help="maximum count on plot")
     parser.add_argument("--cutoff", type=float, default=None,
         help="note portion above and below a value")
@@ -117,7 +117,9 @@ def parse_args(args):
     parser.add_argument("--log_counts", "--logCounts", action="store_true",
         help="take the logarithm of counts before plotting histogram")
     parser.add_argument("--fake_zero", action="store_true",
-        help="pretend that log(0) = 0 for plotting with logged counts")
+        help="split lines where points would be 0")
+    parser.add_argument("--split_at_zero", action="store_true",
+        help="split lines between positive and negative")
     parser.add_argument("--stats", action="store_true",
         help="print data stats")
     parser.add_argument("--save",
@@ -126,6 +128,8 @@ def parse_args(args):
         help="save the figure with the specified DPI, if applicable")
     parser.add_argument("--sparse_ticks", action="store_true",
         help="use sparse tick marks")
+    parser.add_argument("--ticks", nargs="+", default=None,
+        help="use particular X tick locations")
     parser.add_argument("--label", action="store_true",
         help="label bins with counts")
     parser.add_argument("--label_size", type=float,
@@ -393,33 +397,95 @@ def main(args):
                 # Calculate cumulative weights for each data point
                 bin_values = numpy.cumsum(bin_values)
                 
-            if options.log_counts:
-                # Replace all the 0s with 1s so the log comes out 0
-                for i in xrange(len(bin_values)):
-                    if bin_values[i] == 0:
-                        bin_values[i] = 1
+            if options.zero_ends:
+                # Pin things to 0 on the end
+                all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
+                all_bin_values = [0] + list(bin_values) + [0]
+            else:
+                all_bin_centers = bin_centers
+                all_bin_values = bin_values
+                
+                
+            # Now we make a bunch of deries for each line, potentially. This
+            # holds pairs of (centers, values) lists.
+            series = []
+            
+            if options.fake_zero or options.split_at_zero:
+                # We need to split into multiple series, potentially.
+                # This holds the series we are working on.
+                this_series = ([], [])
+                
+                # What was the last bin we saw?
+                last_bin = 0
+                
+                for center, value in itertools.izip(all_bin_centers,
+                    all_bin_values):
+                    # For every point on the line, see if we need to break here
+                    # because it's zero.
+                    
+                    # This logic gets complicated so we do some flags.
+                    # Do we keep this point?
+                    includeSample = True
+                    # Do we split the line?
+                    breakSeries = False
+                    
+                    if options.fake_zero and value == 0:
+                        # We don't want this sample, and we need to break the
+                        # series
+                        includeSample = False
+                        breakSeries = True
                         
-            if options.line:
-                # Do the plot as a line.
-                if options.zero_ends:
-                    # Make sure we start and end at 0.    
-                    pyplot.plot([bins[0]] + list(bin_centers) + [bins[-1]],
-                        [0] + list(bin_values) + [0], label=label,
+                    if options.split_at_zero and last_bin < 0 and center > 0:
+                        # We crossed the y axis, or we went down to the x axis.
+                        # We can maybe keep the sample, and we need to break the
+                        # series
+                        breakSeries = True
+                        
+                    if breakSeries and len(this_series[0]) > 0:
+                        # Finish the series and start another
+                        series.append(this_series)
+                        this_series = ([], [])
+                        
+                    if includeSample:
+                        # Stick this point in the series
+                        this_series[0].append(center)
+                        this_series[1].append(value)
+                        
+                    last_bin = center
+                        
+                if len(this_series[0]) > 0:
+                    # Finish the last series
+                    series.append(this_series)
+                
+            else:
+                # Just do one series
+                series.append((all_bin_centers, all_bin_values))
+                
+            # We should only label the first line or points call
+            labeled = False    
+            for series_centers, series_values in series: 
+                # Plot every series        
+                if options.line:
+                    # Do the plots as lines
+                    pyplot.plot(series_centers, series_values,
+                        label=label if not labeled else None,
                         linestyle=line_style, color=color, marker=marker)
-                else:
-                    # Let the ends dangle at the bin centers
-                    pyplot.plot(list(bin_centers), list(bin_values),
-                        label=label, linestyle=line_style, color=color,
-                        marker=marker)
-                        
-            if options.points:
-                # Do the plot as points.   
-                pyplot.scatter(bin_centers, bin_values, label=label,
-                    color=color, marker=marker)
+                    labeled = True
+                            
+                if options.points:
+                    # Do the plot as points.   
+                    pyplot.scatter(series_centers, series_values,
+                        label=label if not labeled else None,
+                        color=color, marker=marker)
+                    labeled = True
             
             if options.log_counts:
                 # Log the Y axis
                 pyplot.yscale('log')
+                
+            if options.split_at_zero:
+                # Put a big vertical line.
+                pyplot.axvline(linewidth=2, color="k")
         
         else:
             # Do the plot. Do cumulative, or logarithmic Y axis, optionally.
@@ -428,6 +494,7 @@ def main(args):
                 cumulative=options.cumulative, log=options.log_counts,
                 weights=weights, alpha=0.5 if len(options.data) > 1 else 1.0,
                 label=label)
+                
             
     if len(options.redPortion) > 0:
         # Plot a red histogram over that one, modified by redPortion.
@@ -512,6 +579,12 @@ def main(args):
             matplotlib.ticker.FixedLocator(pyplot.xlim()))
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
+            
+    if options.ticks is not None:
+        # Use these particular X ticks instead
+         pyplot.gca().xaxis.set_major_locator(
+            matplotlib.ticker.FixedLocator(
+            [float(pos) for pos in options.ticks]))
             
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
