@@ -189,7 +189,7 @@ do
         
     # And histograms for ref only and nonref only
     ./scripts/histogram.py "${REF_INDEL_LENGTH_TSV}" \
-        --title "$(printf "Known indel lengths in ${HR_REGION}")" \
+        --title "$(printf "Reference indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${REF_HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
         --bins 30 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -150 --x_max 150 --y_min 0.9 \
@@ -199,7 +199,7 @@ do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/histogram.py "${NONREF_INDEL_LENGTH_TSV}" \
-        --title "$(printf "Novel indel lengths in ${HR_REGION}")" \
+        --title "$(printf "Nonreference indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${NONREF_HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
         --bins 30 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -150 --x_max 150 --y_min 0.9 \
