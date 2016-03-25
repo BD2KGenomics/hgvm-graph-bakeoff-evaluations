@@ -177,7 +177,7 @@ do
     
     # And one that's over a wider range
     ./scripts/histogram.py "${INDEL_LENGTH_TSV}" \
-        --title "$(printf "Indel lengths in ${HR_REGION}")" \
+        --title "$(printf "All indel lengths in ${HR_REGION}")" \
         --x_label "Length (bp)" --y_label "Indel count" --save "${LONG_HISTOGRAM_PLOT_FILE}" \
         --line --no_n \
         --bins 50 --no_zero_ends --fake_zero --split_at_zero --log_counts --x_min -500 --x_max 500 --y_min 0.9 \

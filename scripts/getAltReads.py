@@ -255,6 +255,49 @@ def ftp_connect(url, retries=float("inf")):
             RealTimeLogger.get().warning(
                 "Retry after FTP setup IO error: {}".format(e))
             
+class FakeFTP:
+    """
+    I wrote this to download from FTP originally, but now I also want to support
+    plain file paths. This fakes an FTP connection on a normal directory.
+    """
+    
+    def __init__(self, root):
+        """
+        Make a new FakeFTP on the given root.
+        """
+        
+        # Where is the root of our fake FTP server
+        self.root = root
+        
+        # We need to be able to change directories
+        self.relative_path = ""
+        
+        RealTimeLogger.get().info("FTP root: {}".format(self.root))
+        
+    def nlst(self):
+        """
+        Return a list of all the files in the current directory.
+        """
+        RealTimeLogger.get().info("FTP root: {} cwd: {}".format(self.root,
+            self.relative_path))
+        
+        # Can't use os.path.join here because relative_path needs to be relative
+        # even if it starts with a slash.
+        dir_path = self.root + self.relative_path
+        
+        
+        if os.path.isdir(dir_path):
+            # Only directories have anything in them
+            return os.listdir(dir_path)
+        else:
+            return []
+        
+    def cwd(self, path):
+        """
+        Change to the given directory relative to the root.
+        """
+        self.relative_path = path
+
 
 def explore_path(ftp, path, pattern):
     """
@@ -487,12 +530,29 @@ def downloadAllReads(job, options):
             region_chromosomes[region_name], region_starts[region_name], 
             region_stops[region_name]))
             
+            
+    # Are we using a real FTP URL, or a file URL?
 
-    ftp, root_path = ftp_connect(options.sample_ftp_root)
+    if urlparse.urlparse(options.sample_ftp_root).scheme == "ftp":
+        # It's really FTP
+        ftp, root_path = ftp_connect(options.sample_ftp_root)
+    else:
+        # Assume it's a bare file path
+        ftp = FakeFTP(options.sample_ftp_root)
+        root_path = ""
+        
     
-    # Calculate the FTP base URL (without directory). We need it later for
-    # turning found index files into URLs.
-    base_url = options.sample_ftp_root[:-len(root_path)]
+    if len(root_path) > 0:
+        # Calculate the FTP base URL (without directory). We need it later for
+        # turning found index files into URLs.
+        base_url = options.sample_ftp_root[:-len(root_path)]
+    else:
+        # If root_path is empty, we should do nothing, because there's no way to
+        # say [:-0].
+        base_url = options.sample_ftp_root
+    
+    RealTimeLogger.get().info("Sample root: {} Base URL: {}".format(
+        options.sample_ftp_root, base_url))
     
     # Dump the good data files for samples
     good_samples = open("{}/good.txt".format(options.out_dir), "w")
@@ -766,9 +826,10 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     # Make up a prefix for sort. It gets .bam appended
     sort_prefix = "{}/sort".format(job.fileStore.getLocalTempDir())
     
-    # Do the sort into the temp file
-    subprocess.check_call(["samtools", "sort", "-n", concat_filename,
-        sort_prefix])
+    # Do the sort into the temp file. We used to use the old syntax, but it
+    # looks like that's been removed, so fake it with the new syntax.
+    subprocess.check_call(["samtools", "sort", "-n", concat_filename, "-o",
+        sort_prefix + ".bam", "-T", sort_prefix + ".tmp"])
     
     # Convert to SAM (which is wasteful but hopefully will actually get all the
     # pieces).
