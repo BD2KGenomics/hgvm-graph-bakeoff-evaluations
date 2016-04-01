@@ -362,7 +362,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Indexing {}".format(graph_filename))
         subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
             str(options.kmer_size), "-e", str(options.edge_max),
-            "-t", str(job.cores), graph_filename])
+            "-t", str(job.cores), graph_filename, "-d",
+            graph_filename + ".index"])
             
         # Define a file to keep the compressed index in, so we can send it to
         # the output store.
@@ -593,7 +594,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
             "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
-            str(options.kmer_size), graph_file]
+            str(options.kmer_size), "-d", graph_file + ".index", graph_file]
         
         RealTimeLogger.get().info(
             "Running VG for {} against {} {}: {}".format(sample, graph_name,
