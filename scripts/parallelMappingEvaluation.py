@@ -68,6 +68,10 @@ def parse_args(args):
         help="don't re-use existing indexed graphs")
     parser.add_argument("--too_old", default=None, type=str,
         help="recompute stats files older than this date")
+    parser.add_argument("--index_mode", choices=["rocksdb", "gcsa-kmer",
+        "gcsa-mem"], default="gcsa-mem",
+        help="type of vg index to use for mapping")
+    
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -267,7 +271,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         return
     
     # Where will the indexed graph go in the output
-    index_key = "indexes/{}/{}.tar.gz".format(region, graph_name)
+    index_key = "indexes/{}-{}-{}/{}/{}.tar.gz".format(options.index_mode,
+        options.kmer_size, options.edge_max, region, graph_name)
     
     if (not options.reindex) and out_store.exists(index_key):
         # See if we have an index already available in the output store from a
@@ -349,21 +354,90 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     raise RuntimeError("Pipeline step returned {}".format(
                         task.returncode))
                      
-        # TODO: we may not be able to read others' writes to the filesystem
-        # immediately, because the OS keeps them in nebulously specified
-        # possibly-process-specific buffers even after a file is closed and the
-        # process id dead. This is a probably useless magic charm against that
-        # causing problems, while I look for a way to wait on the sync of a dead
-        # process's buffers that may or may not exist.
+        # TODO: We sometimes don't see the files written immediately, for some
+        # reason. Maybe because we opened them? Anyway, this is a hack to wait
+        # for them to be on disk and readable.
         time.sleep(1)
+        
+        
         
         # Now run the indexer.
         # TODO: support both indexing modes
         RealTimeLogger.get().info("Indexing {}".format(graph_filename))
-        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
-            str(options.kmer_size), "-e", str(options.edge_max),
-            "-t", str(job.cores), graph_filename, "-d",
-            graph_filename + ".index"])
+        
+        if options.index_mode == "rocksdb":
+            # Make the RocksDB index
+            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
+                str(options.kmer_size), "-e", str(options.edge_max),
+                "-t", str(job.cores), graph_filename, "-d",
+                graph_filename + ".index"])
+                
+        elif (options.index_mode == "gcsa-kmer" or
+            options.index_mode == "gcsa-mem"):
+            # We want a GCSA2/xg index. We have to prune the graph ourselves.
+            # See <https://github.com/vgteam/vg/issues/286>.
+            
+            # Where will we save the pruned graph kmers?
+            kmers_filename = "{}/index.graph".format(
+                job.fileStore.getLocalTempDir())
+                
+            with open(kmers_filename, "w") as kmers_file:
+            
+                tasks = []
+                
+                RealTimeLogger.get().info("Pruning {} to {}".format(
+                    graph_filename, kmers_filename))
+                
+                # Prune out complex regions
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
+                    "-e", str(options.edge_max), graph_filename],
+                    stdout=subprocess.PIPE))
+                    
+                # Throw out short disconnected chunks
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-S", "-l", str(options.kmer_size * 2),
+                    "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                    stdout=subprocess.PIPE))
+                    
+                # Make the GCSA2 kmers file
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                    "kmers", "-g", "-B", "-k", str(options.kmer_size),
+                    "-H", "1000000000", "-T", "1000000001",
+                    "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                    stdout=kmers_file))
+                    
+                # Did we make it through all the tasks OK?
+                for task in tasks:
+                    if task.wait() != 0:
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
+                         
+            # Wait to make sure no weird file-not-being-full bugs happen
+            # TODO: how do I wait on child process output?
+            time.sleep(1)
+            
+            # Where do we put the GCSA2 index?
+            gcsa_filename = graph_filename + ".gcsa"
+            
+            RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
+                    kmers_filename, gcsa_filename))
+            
+            # Make the gcsa2 index
+            subprocess.check_call(["vg", "index", "-i", kmers_filename,
+                "-g", gcsa_filename])
+                
+            # Where do we put the XG index?
+            xg_filename = graph_filename + ".xg"
+            
+            RealTimeLogger.get().info("XG-indexing {} to {}".format(
+                    graph_filename, xg_filename))
+                    
+            subprocess.check_call(["vg", "index", "-x", xg_filename,
+                graph_filename])
+        
+        else:
+            raise RuntimeError("Invalid indexing mode: " + options.index_mode)
             
         # Define a file to keep the compressed index in, so we can send it to
         # the output store.
@@ -593,8 +667,21 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-n3", "-M2", "-t", str(job.cores), "-k",
-            str(options.kmer_size), "-d", graph_file + ".index", graph_file]
+            "-i", "-M2", "-t", str(job.cores), graph_file]
+            
+        if options.index_mode == "rocksdb":
+            vg_parts += ["-d", graph_file + ".index", "-n3", "-k",
+                str(options.kmer_size)]
+        elif options.index_mode == "gcsa-kmer":
+            # Use the new default context size in this case
+            vg_parts += ["-x", graph_file + ".xg", "-g", graph_file + ".gcsa",
+                "-n5", "-k", str(options.kmer_size)]
+        elif options.index_mode == "gcsa-mem":
+            # Don't pass the kmer size, so MEM matching is used
+            vg_parts += ["-x", graph_file + ".xg", "-g", graph_file + ".gcsa",
+                "-n5"]
+        else:
+            raise RuntimeError("invalid indexing mode: " + options.index_mode)
         
         RealTimeLogger.get().info(
             "Running VG for {} against {} {}: {}".format(sample, graph_name,
