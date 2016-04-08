@@ -424,8 +424,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     kmers_filename, gcsa_filename))
             
             # Make the gcsa2 index
-            subprocess.check_call(["vg", "index", "-i", kmers_filename,
-                "-g", gcsa_filename])
+            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
+                kmers_filename, "-g", gcsa_filename])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
@@ -433,8 +433,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             RealTimeLogger.get().info("XG-indexing {} to {}".format(
                     graph_filename, xg_filename))
                     
-            subprocess.check_call(["vg", "index", "-x", xg_filename,
-                graph_filename])
+            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-x",
+                xg_filename, graph_filename])
         
         else:
             raise RuntimeError("Invalid indexing mode: " + options.index_mode)
