@@ -423,9 +423,10 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
                     kmers_filename, gcsa_filename))
             
-            # Make the gcsa2 index
+            # Make the gcsa2 index. Make sure to use 3 doubling steps to work
+            # around <https://github.com/vgteam/vg/issues/301>
             subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
-                kmers_filename, "-g", gcsa_filename])
+                kmers_filename, "-g", gcsa_filename, "-X", "3"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
