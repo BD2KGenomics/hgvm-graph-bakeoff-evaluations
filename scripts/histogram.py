@@ -464,20 +464,21 @@ def main(args):
             # We should only label the first line or points call
             labeled = False    
             for series_centers, series_values in series: 
-                # Plot every series        
-                if options.line:
-                    # Do the plots as lines
+                # Plot every series
+                
+                if options.line and options.points:
+                    # Do the plots as lines with points
                     pyplot.plot(series_centers, series_values,
-                        label=label if not labeled else None,
-                        linestyle=line_style, color=color, marker=marker)
-                    labeled = True
-                            
-                if options.points:
+                        label=label, linestyle=line_style, color=color,
+                        marker=marker)
+                elif options.line:
+                    # Do the plots as lines only
+                    pyplot.plot(series_centers, series_values,
+                        label=label, linestyle=line_style, color=color)
+                elif options.points:
                     # Do the plot as points.   
                     pyplot.scatter(series_centers, series_values,
-                        label=label if not labeled else None,
-                        color=color, marker=marker)
-                    labeled = True
+                        label=label, color=color, marker=marker)
             
             if options.log_counts:
                 # Log the Y axis
