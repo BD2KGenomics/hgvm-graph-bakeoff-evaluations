@@ -238,10 +238,6 @@ def main(args):
                 # This is one instance of a value
                 
                 all_data[data_filename].append((float(parts[0]), 1))
-                
-                data.append(float(parts[0]))
-                weights.append(1)
-                categories.append(data_filename)
             elif len(parts) == 2:
                 if len(options.data) > 1:
                     # This is multiple instances of a value
