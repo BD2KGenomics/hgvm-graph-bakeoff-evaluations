@@ -127,7 +127,11 @@ def parse_args(args):
     parser.add_argument("--dpi", type=int, default=300,
         help="save the figure with the specified DPI, if applicable")
     parser.add_argument("--sparse_ticks", action="store_true",
-        help="use sparse tick marks")
+        help="use sparse tick marks on both axes")
+    parser.add_argument("--sparse_x", action="store_true",
+        help="use sparse tick marks on X axis")
+    parser.add_argument("--sparse_y", action="store_true",
+        help="use sparse tick marks on Y axis")
     parser.add_argument("--ticks", nargs="+", default=None,
         help="use particular X tick locations")
     parser.add_argument("--label", action="store_true",
@@ -573,10 +577,12 @@ def main(args):
         # Set only the upper y limit
         pyplot.ylim((pyplot.ylim()[0], options.y_max))
         
-    if options.sparse_ticks:
-        # Set up tickmarks to have only 2 per axis, at the ends
+    if options.sparse_ticks or options.sparse_x:
+        # Set up X tickmarks to have only 2 per axis, at the ends
         pyplot.gca().xaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.xlim()))
+    if options.sparse_ticks or options.sparse_y:
+        # Same for the Y axis
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
             
