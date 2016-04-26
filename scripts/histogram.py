@@ -322,9 +322,9 @@ def main(args):
             
         # Apply the limits
         if options.x_min is not None:
-            data, weights = filter2(lambda x: x > options.x_min, data, weights)
+            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
         if options.x_max is not None:
-            data, weights = filter2(lambda x: x < options.x_max, data, weights)
+            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
             
         # Let's condense down by summing all weights for values
         total_weight = collections.defaultdict(lambda: 0)
