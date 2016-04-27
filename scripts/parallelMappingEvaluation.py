@@ -412,6 +412,55 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     if task.wait() != 0:
                         raise RuntimeError("Pipeline step returned {}".format(
                             task.returncode))
+                            
+                # Then append in the kmers from just the primary path. Since we
+                # don't knoiw what it's called, we retain "ref" and all the
+                # "19", "6", etc paths from 1KG.
+                
+                RealTimeLogger.get().info(
+                    "Adding primary path kmers from {} to {}".format(
+                    graph_filename, kmers_filename))
+                
+                # See
+                # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
+                
+                tasks = []
+                
+                # Generate all the paths names we might have for primary paths.
+                # It should be "ref" but some graphs don't listen
+                ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
+                    [str(x) for x in xrange(1, 23)])
+                    
+                ref_options = []
+                for name in ref_names:
+                    # Put each in a -r option to retain the path
+                    ref_options.append("-r")
+                    ref_options.append(name)
+
+                # Retain only the specified paths (only one should really exist)
+                tasks.append(subprocess.Popen(
+                    ["{}vg".format(bin_prefix), "mod"] + ref_options + 
+                    ["-t", str(job.cores), graph_filename], 
+                    stdout=subprocess.PIPE))
+                    
+                # TODO: if we merged the primary path back on itself, it's
+                # possible for it to braid with itself. Right now we just ignore
+                # this and let those graphs take a super long time to index.
+                    
+                # Make the GCSA2 kmers for just the primary path. Repetition is
+                # OK.
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                    "kmers", "-g", "-B", "-k", str(options.kmer_size),
+                    "-H", "1000000000", "-T", "1000000001",
+                    "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                    stdout=kmers_file))
+                    
+                # Wait for this second pipeline. We don't parallelize with the
+                # first one so we don't need to use an extra cat step.
+                for task in tasks:
+                    if task.wait() != 0:
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
                          
             # Wait to make sure no weird file-not-being-full bugs happen
             # TODO: how do I wait on child process output?
