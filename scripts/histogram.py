@@ -153,6 +153,8 @@ def parse_args(args):
         help="don't force line ends to zero")
     parser.add_argument("--legend_overlay", default=None,
         help="display the legend overlayed on the graph at this location")
+    parser.add_argument("--no_legend", action="store_true",
+        help="don't display a legend when one would otherwise be dispalyed")
     parser.add_argument("--points", action="store_true",
         help="draw points instead of a barchart")
     parser.add_argument("--width", type=float, default=8,
@@ -402,9 +404,14 @@ def main(args):
                 bin_values = numpy.cumsum(bin_values)
                 
             if options.zero_ends:
-                # Pin things to 0 on the end
-                all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
-                all_bin_values = [0] + list(bin_values) + [0]
+                if options.cumulative:
+                    # Pin things to 0 on the low end and max on the high
+                    all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
+                    all_bin_values = [0] + list(bin_values) + [sum(weights)]
+                else:
+                    # Pin things to 0 on the end
+                    all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
+                    all_bin_values = [0] + list(bin_values) + [0]
             else:
                 all_bin_centers = bin_centers
                 all_bin_values = bin_values
@@ -614,7 +621,7 @@ def main(args):
     # Make everything fit
     pyplot.tight_layout()
     
-    if len(options.category_labels) > 0:
+    if len(options.category_labels) > 0 and not options.no_legend:
         # We need a legend
         
         if options.legend_overlay is None:
