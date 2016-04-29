@@ -134,6 +134,10 @@ def parse_args(args):
         help="use sparse tick marks on Y axis")
     parser.add_argument("--ticks", nargs="+", default=None,
         help="use particular X tick locations")
+    parser.add_argument("--scientific_x", action="store_true",
+        help="use scientific notation on the X axis")
+    parser.add_argument("--scientific_y", action="store_true",
+        help="use scientific notation on the Y axis")
     parser.add_argument("--label", action="store_true",
         help="label bins with counts")
     parser.add_argument("--label_size", type=float,
@@ -592,7 +596,17 @@ def main(args):
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
     pyplot.gca().tick_params(axis="x", pad=0.5 * options.font_size)
-
+    
+    # Make our own scientific notation formatter since set_scientific is not
+    # working
+    sci_formatter = matplotlib.ticker.FormatStrFormatter("%1.2e")
+    if options.scientific_x:
+        # Force scientific notation on X axis
+        pyplot.gca().xaxis.set_major_formatter(sci_formatter)
+    if options.scientific_y:
+        # Force scientific notation on Y axis
+        pyplot.gca().yaxis.set_major_formatter(sci_formatter)
+        
     if options.label:
         # Label all the normal bars
         draw_labels(bin_counts, bar_patches, size=options.label_size)
