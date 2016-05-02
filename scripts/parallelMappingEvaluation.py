@@ -439,7 +439,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
 
                 # Retain only the specified paths (only one should really exist)
                 tasks.append(subprocess.Popen(
-                    ["{}vg".format(bin_prefix), "mod"] + ref_options + 
+                    ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
                     ["-t", str(job.cores), graph_filename], 
                     stdout=subprocess.PIPE))
                     
