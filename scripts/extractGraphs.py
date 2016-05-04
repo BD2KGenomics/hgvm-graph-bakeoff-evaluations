@@ -21,6 +21,8 @@ def parse_args(args):
                         help="output directory. ex: high_coverage_graphs")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="overwrite existing files")
+    parser.add_argument("--keep_index", action="store_true",
+                        help="keep the .index for each graph")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -61,11 +63,15 @@ def main(args):
         if options.overwrite or not os.path.isfile("{}/{}.vg".format(out_dir, dest)):
             # extract into output dir
             os.system("tar zxf {} -C {}".format(in_file, out_dir))
-            # expect graph.vg and graph.vg.index
             # rename graph.vg
             os.system("mv {}/graph.vg {}/{}.vg".format(out_dir, out_dir, dest))
-            # delete graph.vg.index 
-            os.system("rm -rf {}/graph.vg.index".format(out_dir))
+            if options.keep_index:
+                # rename graph.vg.index
+                for suf in [".xg", ".gcsa", ".gcsa.lp"]:
+                    os.system("mv {}/graph.vg.{} {}/{}.vg.{}".format(out_dir, suf, out_dir, dest, suf))
+            else:
+                # delete graph.vg.index
+                os.system("rm -rf {}/graph.vg.*".format(out_dir))
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

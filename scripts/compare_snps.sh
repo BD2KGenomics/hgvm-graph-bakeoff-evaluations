@@ -15,14 +15,14 @@ VARIANTS=$3
 OUT_DIR=$4
 TOIL_DIR=cps_toil_dir
 TOIL_OPTS="--maxCores 48 --vg_cores 4"
-INDEX_OPTS="--kmer 20 --edge_max 7 --timeout 10000"
+INDEX_OPTS="--kmer 27 --edge_max 5 --timeout 5000"
 #COMPS=( "vcf" "kmer" "corg" )
-COMPS=( "happy" )
+COMPS=( "kmer" "corg" )
 #COMP_OPTS="--orig --orig_and_sample"
-COMP_OPTS="--clip --normalize --ignore Conflict --ignore Silver"
+COMP_OPTS="--clip --normalize --ignore Conflict --ignore Silver --orig --sample --orig_and_sample"
 #COMP_OPTS="--clip  --ignore Conflict --ignore Silver"
 REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-REGIONS=( "brca2" "mhc" )
+REGIONS=( "brca1" "brca2" )
 
 # vglr lrc_kir is a bad graph.  we can censor it as input in the wildcard arguments below
 # to make it disappear from the analysis
@@ -45,16 +45,17 @@ do
 	 for j in "${COMPS[@]}"
 	 do
 		  # compute distances
-		  rm -rf ${TOIL_DIR} ; scripts/computeVariantsDistances.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/NA12878.gam ${VARIANTS} ${GRAPHS} ${j} ${OUT_DIR} ${COMP_OPTS}  ${TOIL_OPTS} ${INDEX_OPTS} 
+		  rm -rf ${TOIL_DIR} ; scripts/computeVariantsDistances.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/NA12878.gam ${VARIANTS} ${GRAPHS} ${j} ${OUT_DIR} ${COMP_OPTS}  ${TOIL_OPTS} ${INDEX_OPTS}
 	 done
 
-	 # plots
-	 scripts/plotVariantsDistances.py ${OUT_DIR} &
 	 # tables
-	 #mkdir ${OUT_DIR}/call_stats
+	 mkdir ${OUT_DIR}/call_stats
 	 #scripts/callStats.py ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/call_stats --out_dir ${VARIANTS}  --tag $i  --graph_dir ${GRAPHS} --avg_sample
-	 #mkdir ${OUT_DIR}/trio_stats
+	 mkdir ${OUT_DIR}/trio_stats
 	 #rm -rf ${TOIL_DIR} ; scripts/trioStats.py ./${TOIL_DIR} ${ALIGNMENTS}/${i}/*/*.gam ${OUT_DIR}/trio_stats --out_dir ${VARIANTS} --tag $i ${TOIL_OPTS}
 done
+
+# plots
+#scripts/plotVariantsDistances.py ${OUT_DIR} &
 
 wait
