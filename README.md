@@ -18,6 +18,9 @@ Submodules and/or Docker may be the way to go here?
 *  [bcftools](https://github.com/samtools/bcftools)
 *  [htslib](https://github.com/samtools/htslib)
 *  [corg](https://github.com/adamnovak/corg)
+*  [hap.py and som.py](https://github.com/Illumina/hap.py)
+*  [vcfeval](http://realtimegenomics.com/products/rtg-tools)
+
 *  Python modules detailed in `requirements.txt`. Installable with `pip install -r requirements.txt` in a virtualenv.
 
 
@@ -108,13 +111,14 @@ scripts/parallelMappingEvaluation.py ./tree graph_servers.tsv ./high_coverage_re
 
 It might be wise to parallelize this step across a cluster; Microsoft Azure Storage is supported for the input and output directories, using a syntax similar to that used for Toil job stores (`azure:<account>:<container>/<prefix>`).
 
-### Expected Alignment Location
+	  
+#### Calling Variants
+
+### Preparing Input Data
 
 The mapping steps above will result make a directory, `./high_coverage_alignments`.  It will contain a mapping for every region for every sample for every tool: `./high_coverage_reads/alignments/<region>/<tool>/sample.gam`  It will also contain tarballs of graphs and indexes used: `./high_coverage_reads/indexes/`.  We begin by extracting these into a new directory
 
-     scripts/extractGraphs.py ./high_coverage_alignments/indexes/*/*.tar.gz ./high_coverage_graphs
-	  
-### Calling Variants
+     scripts/extractGraphs.py ./high_coverage_alignments/indexes/*/*/*.tar.gz ./high_coverage_graphs
 
 The variant calling scripts require the original FASTA inputs.  Uncompress them as follows:
 
@@ -124,21 +128,22 @@ Fasta and vcf data is also required to make some baseline sample graphs for the 
 
 	  tar xzf data/g1kvcf.tar.gz -C data
 	  tar xzf data/platinum.tar.gz -C data
+	  tar xzf data/gatk3.tar.gz -C data
+	  tar xzf data/platypus.tar.gz -C data
+	  tar xzf data/filters.tar.gz -C data
 	  scripts/downloadChromFa.py
+	  scripts/downloadChromFa.py --leaveChr --out_fa data/g1kvcf/chrom2.fa
 
-To run both the vg and samtools variant calling pipeline on all samples, use the following script
+### Generate Precision-Recall Plot using Platinum Genomes NA12878 VCF
 
-     ./scripts/call_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants
+Run the following script to generate the precision-recall plots.  It is important to edit the script to specify the toil parameters, scope and comparison types before hand. 
 
-This will create a structure in `./high_coverage_variants` similar to that in `alignments` (organized by tool and region) with calling output for all samples. **Note**: The number of threads used is hardcoded in this script and should be modified accordingly (see `--maxCores and --vgCores` options in OPTS variable). 
+     ./scripts/call_pr.sh high_coverage_graphs/ high_coverage_alignments/alignments/ call_comparison
 
-### Analysing Called Variants
+The output will be in `call_comparison/pr_plots`
 
-To generate basic statistics of the calls, as well as do pairwise kmer comparisons of all output graphs, run
+### Generate Variant Call Statistics
 
-     ./scripts/compare_snps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants ./variants_analysis
-	  ./scripts/draw_heatmaps.sh ./high_coverage_graphs ./high_coverage_alignments/alignments ./high_coverage_variants ./variants_analysis
-
-The output of this script is organized by region.  In each region directory, will be a variety of heatmaps comparing various output gaphs with each other, as well as some tables in `.tsv` format with some basic counting and size statistics. 
+TODO
 
 
