@@ -380,6 +380,10 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # Where will we save the pruned graph kmers?
             kmers_filename = "{}/index.graph".format(
                 job.fileStore.getLocalTempDir())
+            
+            # And the primary path kmers?
+            path_kmers_filename = "{}/index_path.graph".format(
+                job.fileStore.getLocalTempDir())
                 
             with open(kmers_filename, "w") as kmers_file:
             
@@ -413,13 +417,19 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                         raise RuntimeError("Pipeline step returned {}".format(
                             task.returncode))
                             
+                # Wait to make sure no weird file-not-being-full bugs happen
+                # TODO: how do I wait on child process output?
+                time.sleep(1)
+                            
+            with open(path_kmers_filename, "w") as path_kmers_file:
+                            
                 # Then append in the kmers from just the primary path. Since we
                 # don't knoiw what it's called, we retain "ref" and all the
                 # "19", "6", etc paths from 1KG.
                 
                 RealTimeLogger.get().info(
                     "Adding primary path kmers from {} to {}".format(
-                    graph_filename, kmers_filename))
+                    graph_filename, path_kmers_filename))
                 
                 # See
                 # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
@@ -453,7 +463,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     "kmers", "-g", "-B", "-k", str(options.kmer_size),
                     "-H", "1000000000", "-T", "1000000001",
                     "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                    stdout=kmers_file))
+                    stdout=path_kmers_file))
                     
                 # Wait for this second pipeline. We don't parallelize with the
                 # first one so we don't need to use an extra cat step.
@@ -462,6 +472,10 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                         raise RuntimeError("Pipeline step returned {}".format(
                             task.returncode))
                          
+                # Wait to make sure no weird file-not-being-full bugs happen
+                # TODO: how do I wait on child process output?
+                time.sleep(1)
+                
             # Wait to make sure no weird file-not-being-full bugs happen
             # TODO: how do I wait on child process output?
             time.sleep(1)
@@ -469,13 +483,14 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # Where do we put the GCSA2 index?
             gcsa_filename = graph_filename + ".gcsa"
             
-            RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
-                    kmers_filename, gcsa_filename))
+            RealTimeLogger.get().info("GCSA-indexing {} and {} to {}".format(
+                    kmers_filename, path_kmers_filename, gcsa_filename))
             
             # Make the gcsa2 index. Make sure to use 3 doubling steps to work
             # around <https://github.com/vgteam/vg/issues/301>
             subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
-                kmers_filename, "-g", gcsa_filename, "-X", "3"])
+                kmers_filename, "-i", path_kmers_filename, "-g", gcsa_filename,
+                "-X", "3"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
@@ -717,7 +732,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-M2", "-a", "-u", "4", "-t", str(job.cores), graph_file]
+            "-i", "-M2", "-a", "-u", "0", "-U", "-t", str(job.cores), graph_file]
             
         if options.index_mode == "rocksdb":
             vg_parts += ["-d", graph_file + ".index", "-n3", "-k",
