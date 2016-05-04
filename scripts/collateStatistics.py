@@ -328,27 +328,18 @@ def collate_region(job, options, region):
                 # For each sample and all the stats for that sample
                 for stat_name in stats_by_name.keys():
                 
-                    # Get the reference value
-                    ref_value = stats_cache["refonly"][sample][stat_name]
-                    
-                    if ref_value != 0:
+                    if stats_cache["refonly"].has_key(sample):
+                
+                        # Get the reference value
+                        ref_value = stats_cache["refonly"][sample][stat_name]
                         
-                        # Normalize
-                        stats_by_name[stat_name] /= ref_value
-                    else:
-                        stats_by_name[stat_name] = None
-                    
-                    if (graph == "snp1kg" and
-                        stat_name == "portion_mapped_at_all" and 
-                        region == "mhc" and 
-                        stats_by_name[stat_name] < 0.99):
+                        if ref_value != 0:
+                            
+                            # Normalize
+                            stats_by_name[stat_name] /= ref_value
+                        else:
+                            stats_by_name[stat_name] = None
                         
-                        # This is one of those weird samples
-                        RealTimeLogger.get().warning(
-                            "Sample {} is weird!".format(sample))
-                        
-                    
-                    
         # Register this as a condition
         stats_by_mode["normalized"] = normed_stats_cache
     

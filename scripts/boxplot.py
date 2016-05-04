@@ -105,7 +105,7 @@ def parse_args(args):
     parser.add_argument("--clip", action="store_true",
         help="discard values below min or above max")
     parser.add_argument("--range", action="store_const", const="range",
-        default=None, dest="whiskers",
+        default=1.5, dest="whiskers",
         help="use whiskers to denote range instead of outer quartile + 1.5 IQR")
     parser.add_argument("--medians_only", action="store_true",
         help="only draw the medians of the boxes")
@@ -437,6 +437,9 @@ def main(args):
                 
     else:
         # Do the plot for all the categories at once.
+        
+        boxprops = base_props
+        
         pyplot.boxplot([categories[category] for category in category_order],
             whis=options.whiskers, boxprops=boxprops, meanprops=boxprops,
             medianprops=boxprops, flierprops=boxprops, whiskerprops=boxprops,

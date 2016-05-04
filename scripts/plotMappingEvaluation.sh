@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}

@@ -75,7 +75,7 @@ def parse_args(args):
         formatter_class=argparse.RawDescriptionHelpFormatter)
     
     # Now add all the options to it
-    parser.add_argument("data", type=argparse.FileType('r'), nargs="+",
+    parser.add_argument("data", nargs="+",
         help="the file to read")
     parser.add_argument("--redPortion", type=float, action="append", default=[],
         help="portion of each bin to color red")
@@ -93,20 +93,33 @@ def parse_args(args):
         help="minimum value allowed")
     parser.add_argument("--x_max", "--max", type=float, default=None,
         help="maximum value allowed")
-    parser.add_argument("--y_min", type=int, default=None,
+    parser.add_argument("--y_min", type=float, default=None,
         help="minimum count on plot")
-    parser.add_argument("--y_max", type=int, default=None,
+    parser.add_argument("--y_max", type=float, default=None,
         help="maximum count on plot")
     parser.add_argument("--cutoff", type=float, default=None,
         help="note portion above and below a value")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
+    parser.add_argument("--categories", nargs="+", default=None,
+        help="categories to plot, in order")
+    parser.add_argument("--category_labels", "--labels", nargs="+",
+        default=[],
+        help="labels for all categories or data files, in order")
+    parser.add_argument("--colors", nargs="+", default=[],
+        help="use the specified Matplotlib colors per category or file")
+    parser.add_argument("--styles", nargs="+", default=[],
+        help="use the specified line styles per category or file")
     parser.add_argument("--cumulative", action="store_true",
         help="plot cumulatively")
     parser.add_argument("--log", action="store_true",
         help="take the base-10 logarithm of values before plotting histogram")
     parser.add_argument("--log_counts", "--logCounts", action="store_true",
         help="take the logarithm of counts before plotting histogram")
+    parser.add_argument("--fake_zero", action="store_true",
+        help="split lines where points would be 0")
+    parser.add_argument("--split_at_zero", action="store_true",
+        help="split lines between positive and negative")
     parser.add_argument("--stats", action="store_true",
         help="print data stats")
     parser.add_argument("--save",
@@ -114,7 +127,17 @@ def parse_args(args):
     parser.add_argument("--dpi", type=int, default=300,
         help="save the figure with the specified DPI, if applicable")
     parser.add_argument("--sparse_ticks", action="store_true",
-        help="use sparse tick marks")
+        help="use sparse tick marks on both axes")
+    parser.add_argument("--sparse_x", action="store_true",
+        help="use sparse tick marks on X axis")
+    parser.add_argument("--sparse_y", action="store_true",
+        help="use sparse tick marks on Y axis")
+    parser.add_argument("--ticks", nargs="+", default=None,
+        help="use particular X tick locations")
+    parser.add_argument("--scientific_x", action="store_true",
+        help="use scientific notation on the X axis")
+    parser.add_argument("--scientific_y", action="store_true",
+        help="use scientific notation on the Y axis")
     parser.add_argument("--label", action="store_true",
         help="label bins with counts")
     parser.add_argument("--label_size", type=float,
@@ -125,10 +148,15 @@ def parse_args(args):
         help="normalize to total weight of 1")
     parser.add_argument("--line", action="store_true",
         help="draw a line instead of a barchart")
+    parser.add_argument("--no_zero_ends", dest="zero_ends", default=True,
+        action="store_false",
+        help="don't force line ends to zero")
+    parser.add_argument("--legend_overlay", default=None,
+        help="display the legend overlayed on the graph at this location")
+    parser.add_argument("--no_legend", action="store_true",
+        help="don't display a legend when one would otherwise be dispalyed")
     parser.add_argument("--points", action="store_true",
         help="draw points instead of a barchart")
-    parser.add_argument("--labels", nargs="*", default=[],
-        help="labels for each data file histogram")
     parser.add_argument("--width", type=float, default=8,
         help="plot width in inches")
     parser.add_argument("--height", type=float, default=6,
@@ -156,6 +184,31 @@ def filter2(criterion, key_list, other_list):
             out2.append(other_val)
             
     return out1, out2
+    
+def filter_n(*args):
+    """
+    Filter any number of lists of corresponding items based on some function of
+    the first list.
+    
+    """
+    
+    filter_function = args[0]
+    to_filter = args[1:]
+    
+    to_return = [list() for _ in to_filter]
+    
+    for i in xrange(len(to_filter[0])):
+        # For each run of entries
+        if filter_function(to_filter[0][i]):
+            # If the key passes the filter
+            for j in xrange(len(to_filter)):
+                # Keep the whole row
+                if i < len(to_filter[j]):
+                    to_return[j].append(to_filter[j][i])
+            
+            
+    # return all the lists as a tuple, which unpacks as multiple return values
+    return tuple(to_return)
 
 def main(args):
     """
@@ -177,52 +230,50 @@ def main(args):
     # Make the figure with the appropriate size and DPI.
     pyplot.figure(figsize=(options.width, options.height), dpi=options.dpi)
     
-    # This will hold a list of lists of data, weight pairs
-    all_data = []
+    # This will hold a dict of lists of data, weight pairs, by category or file
+    # name
+    all_data = collections.defaultdict(list)
     
-    for data_file in options.data:
-        # This holds all the data values
-        data = []
+    for data_filename in options.data:
         
-        # This holds a weight for each to allow for pre-counted values
-        weights = []
-        
-        for line_number, line in enumerate(data_file):
+        for line_number, line in enumerate(open(data_filename)):
             # Split each line
             parts = line.split()
             
             if len(parts) == 1:
                 # This is one instance of a value
-                data.append(float(parts[0]))
-                weights.append(1)
+                
+                all_data[data_filename].append((float(parts[0]), 1))
             elif len(parts) == 2:
-                # This is multiple instances of a value
-                data.append(float(parts[0]))
-                weights.append(float(parts[1]))
+                if len(options.data) > 1:
+                    # This is multiple instances of a value
+                    all_data[data_filename].append((float(parts[0]),
+                        float(parts[1])))
+                else:
+                    # This is category, instance data
+                    all_data[parts[0]].append((float(parts[1]), 1))
+            elif len(parts) == 3:
+                # This is category, instance, weight data
+                all_data[parts[0]].append((float(parts[1]), float(parts[2])))
             else:
-                raise Exception("Wrong number of fields on line {}".format(
-                    line_number + 1))
+                raise Exception("Wrong number of fields on {} line {}".format(
+                    data_filename, line_number + 1))
         
-        # TODO: Make this streaming instead of loading.
+    for category in all_data.iterkeys():
+        # Strip NaNs and Infs and weight-0 entriues
+        all_data[category] = [(value, weight) for (value, weight)
+            in all_data[category] if 
+            value < float("+inf") and value > float("-inf") and weight > 0]
         
-        # Strip NaNs and Infs
-        data, weights = filter2(lambda x: x < float("+inf") and 
-            x > float("-inf"), data, weights)
-            
-        # Strip out data that has weight 0
-        weights, data = filter2(lambda x: x > 0, weights, data)
-        
-        # Save the lists
-        all_data.append((data, weights))
         
     
     # Calculate our own bins, over all the data. First we need the largest and
     # smallest observed values. The fors in the comprehension have to be in
     # normal for loop order and not the other order.
-    bin_min = options.x_min if options.x_min is not None else min((item
-        for pair in all_data for item in pair[0]))
-    bin_max = options.x_max if options.x_max is not None else max((item
-        for pair in all_data for item in pair[0]))
+    bin_min = options.x_min if options.x_min is not None else min((pair[0]
+        for pair_list in all_data.itervalues() for pair in pair_list))
+    bin_max = options.x_max if options.x_max is not None else max((pair[0]
+        for pair_list in all_data.itervalues() for pair in pair_list))
     
     if options.log:
         # Do our bins in log space, so they look evenly spaced on the plot.
@@ -241,18 +292,45 @@ def main(args):
         bins = [math.pow(10, x) for x in bins]
         bin_centers = [math.pow(10, x) for x in bin_centers]
     
-    for (data, weights), label, line_style in itertools.izip(all_data,
-        itertools.chain(options.labels, itertools.repeat(None)), 
-        itertools.cycle(['-', '--', ':', '-.'])):
+    if options.categories is not None:
+        # Order data by category order
+        ordered_data = [(category, all_data[category]) for category in
+            options.categories]
+    elif len(options.data) > 1:
+        # Order data by file order
+        ordered_data = [(filename, all_data[filename]) for filename in
+            options.data]
+    else:
+        # Order arbitrarily
+        ordered_data = list(all_data.iteritems())        
+    
+    for (category, data_and_weights), label, color, line_style, marker in \
+        itertools.izip(ordered_data,
+        itertools.chain(options.category_labels, itertools.repeat(None)),
+        itertools.chain(options.colors, itertools.cycle(
+        ['b', 'g', 'r', 'c', 'm', 'y', 'k'])),
+        itertools.chain(options.styles, itertools.cycle(
+        ['-', '--', ':', '-.'])),
+        itertools.cycle(
+        ['o', 'v', '^', '<', '>', 's', '+', 'x', 'D', '|', '_'])):
+        # For every category and its display properties...
+        
+        if len(data_and_weights) == 0:
+            # Skip categories with no data
+            continue
+
+        # Split out the data and the weights for this category/file
+        data = [pair[0] for pair in data_and_weights]
+        weights = [pair[1] for pair in data_and_weights] 
         
         # For each set of data and weights that we want to plot, and the label
         # it needs (or None)...
             
         # Apply the limits
         if options.x_min is not None:
-            data, weights = filter2(lambda x: x > options.x_min, data, weights)
+            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
         if options.x_max is not None:
-            data, weights = filter2(lambda x: x < options.x_max, data, weights)
+            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
             
         # Let's condense down by summing all weights for values
         total_weight = collections.defaultdict(lambda: 0)
@@ -324,19 +402,102 @@ def main(args):
             if options.cumulative:
                 # Calculate cumulative weights for each data point
                 bin_values = numpy.cumsum(bin_values)
+                
+            if options.zero_ends:
+                if options.cumulative:
+                    # Pin things to 0 on the low end and max on the high
+                    all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
+                    all_bin_values = [0] + list(bin_values) + [sum(weights)]
+                else:
+                    # Pin things to 0 on the end
+                    all_bin_centers = [bins[0]] + list(bin_centers) + [bins[-1]]
+                    all_bin_values = [0] + list(bin_values) + [0]
+            else:
+                all_bin_centers = bin_centers
+                all_bin_values = bin_values
+                
+                
+            # Now we make a bunch of deries for each line, potentially. This
+            # holds pairs of (centers, values) lists.
+            series = []
             
-            if options.line:
-                # Do the plot as a line. Make sure we start and end at 0.    
-                pyplot.plot([bins[0]] + list(bin_centers) + [bins[-1]],
-                    [0] + list(bin_values) + [0], label=label,
-                    linestyle=line_style)
-            if options.points:
-                # Do the plot as points.   
-                pyplot.scatter(bin_centers, bin_values, label=label)
+            if options.fake_zero or options.split_at_zero:
+                # We need to split into multiple series, potentially.
+                # This holds the series we are working on.
+                this_series = ([], [])
+                
+                # What was the last bin we saw?
+                last_bin = 0
+                
+                for center, value in itertools.izip(all_bin_centers,
+                    all_bin_values):
+                    # For every point on the line, see if we need to break here
+                    # because it's zero.
+                    
+                    # This logic gets complicated so we do some flags.
+                    # Do we keep this point?
+                    includeSample = True
+                    # Do we split the line?
+                    breakSeries = False
+                    
+                    if options.fake_zero and value == 0:
+                        # We don't want this sample, and we need to break the
+                        # series
+                        includeSample = False
+                        breakSeries = True
+                        
+                    if options.split_at_zero and last_bin < 0 and center > 0:
+                        # We crossed the y axis, or we went down to the x axis.
+                        # We can maybe keep the sample, and we need to break the
+                        # series
+                        breakSeries = True
+                        
+                    if breakSeries and len(this_series[0]) > 0:
+                        # Finish the series and start another
+                        series.append(this_series)
+                        this_series = ([], [])
+                        
+                    if includeSample:
+                        # Stick this point in the series
+                        this_series[0].append(center)
+                        this_series[1].append(value)
+                        
+                    last_bin = center
+                        
+                if len(this_series[0]) > 0:
+                    # Finish the last series
+                    series.append(this_series)
+                
+            else:
+                # Just do one series
+                series.append((all_bin_centers, all_bin_values))
+                
+            # We should only label the first line or points call
+            labeled = False    
+            for series_centers, series_values in series: 
+                # Plot every series
+                
+                if options.line and options.points:
+                    # Do the plots as lines with points
+                    pyplot.plot(series_centers, series_values,
+                        label=label, linestyle=line_style, color=color,
+                        marker=marker)
+                elif options.line:
+                    # Do the plots as lines only
+                    pyplot.plot(series_centers, series_values,
+                        label=label, linestyle=line_style, color=color)
+                elif options.points:
+                    # Do the plot as points.   
+                    pyplot.scatter(series_centers, series_values,
+                        label=label, color=color, marker=marker)
             
             if options.log_counts:
                 # Log the Y axis
                 pyplot.yscale('log')
+                
+            if options.split_at_zero:
+                # Put a big vertical line.
+                pyplot.axvline(linewidth=2, color="k")
         
         else:
             # Do the plot. Do cumulative, or logarithmic Y axis, optionally.
@@ -345,12 +506,8 @@ def main(args):
                 cumulative=options.cumulative, log=options.log_counts,
                 weights=weights, alpha=0.5 if len(options.data) > 1 else 1.0,
                 label=label)
+                
             
-        
-            
-    if len(options.labels) > 0:
-        pyplot.legend()
-        
     if len(options.redPortion) > 0:
         # Plot a red histogram over that one, modified by redPortion.
         
@@ -428,23 +585,61 @@ def main(args):
         # Set only the upper y limit
         pyplot.ylim((pyplot.ylim()[0], options.y_max))
         
-    if options.sparse_ticks:
-        # Set up tickmarks to have only 2 per axis, at the ends
+    if options.sparse_ticks or options.sparse_x:
+        # Set up X tickmarks to have only 2 per axis, at the ends
         pyplot.gca().xaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.xlim()))
+    if options.sparse_ticks or options.sparse_y:
+        # Same for the Y axis
         pyplot.gca().yaxis.set_major_locator(
             matplotlib.ticker.FixedLocator(pyplot.ylim()))
+            
+    if options.ticks is not None:
+        # Use these particular X ticks instead
+         pyplot.gca().xaxis.set_major_locator(
+            matplotlib.ticker.FixedLocator(
+            [float(pos) for pos in options.ticks]))
             
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
     pyplot.gca().tick_params(axis="x", pad=0.5 * options.font_size)
-
+    
+    # Make our own scientific notation formatter since set_scientific is not
+    # working
+    sci_formatter = matplotlib.ticker.FormatStrFormatter("%1.2e")
+    if options.scientific_x:
+        # Force scientific notation on X axis
+        pyplot.gca().xaxis.set_major_formatter(sci_formatter)
+    if options.scientific_y:
+        # Force scientific notation on Y axis
+        pyplot.gca().yaxis.set_major_formatter(sci_formatter)
+        
     if options.label:
         # Label all the normal bars
         draw_labels(bin_counts, bar_patches, size=options.label_size)
     
     # Make everything fit
     pyplot.tight_layout()
+    
+    if len(options.category_labels) > 0 and not options.no_legend:
+        # We need a legend
+        
+        if options.legend_overlay is None:
+            # We want the default legend, off to the right of the plot.
+        
+            # First shrink the plot to make room for it.
+            # TODO: automatically actually work out how big it will be.
+            bounds = pyplot.gca().get_position()
+            pyplot.gca().set_position([bounds.x0, bounds.y0,
+                bounds.width * 0.5, bounds.height])
+                
+            # Make the legend
+            pyplot.legend(loc="center left", bbox_to_anchor=(1.05, 0.5))
+            
+        else:
+            # We want the legend on top of the plot at the user-specified
+            # location, and we want the plot to be full width.
+            pyplot.legend(loc=options.legend_overlay)
     
     if options.save is not None:
         # Save the figure to a file
