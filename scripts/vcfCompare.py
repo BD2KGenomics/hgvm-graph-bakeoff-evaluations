@@ -35,31 +35,6 @@ def parse_ref(toks):
     """ return reference """
     return toks[3]
 
-# alleles code disabled for now
-def parse_alleles(toks):
-    """ return the alleles (first sample /last column) todo: more general?"""
-    print toks
-    if toks[-2].split(":")[0] == "GT": 
-        gtcol = len(toks) - 1
-        gttok = toks[gtcol].split(":")[0]
-        gts = "|".join(gttok.replace(".", "0").split("/")).split("|")
-        vals = [parse_ref(toks)] + parse_alts(toks)
-        alleles = [vals[int(x)] for x in gts]
-        # want unique allele values for comparison
-        # as a homozygous call will get counted twice...
-        done = set()
-        for i in range(len(alleles)):
-            count = 0
-            done.add(i)
-            for j in range(len(alleles)):
-                if j not in done and alleles[j] == alleles[i]:
-                    done.add(j)
-                    count += 1
-                    alleles[j] += "{}".format(count)
-            if count > 0:
-                alleles[i] += "0"
-        return alleles
-    return []
 
 def make_vcf_dict(vcf_path, options):
     """ load up all variants by their coordinates
@@ -83,15 +58,15 @@ def make_vcf_dict(vcf_path, options):
     return vcf_dict
 
 def alt_cat(ref, alt):
-    """ 0 ref, 1 snp, 2 multibase snp, 3 indel """
+    """ 0 ref, 1 snp, 2 multibase snp, 3 insert 4 delete """
     if ref == alt:
         return 0
     elif len(ref) == len(alt):
         return 1 if len(ref) == 1 else 2
-    return 3
+    return 3 if len(ref) < len(alt) else 4
 
 def cat_name(c):
-    return ["REF", "SNP", "MULTIBASE_SNP", "INDEL", "TOTAL"][c]
+    return ["REF", "SNP", "MULTIBASE_SNP", "INSERT", "DELETE", "TOTAL"][c]
 
 def find_alt(chrom, pos, ref, alt, vcf_dict):
     """ find an alt in a dict """
@@ -102,11 +77,11 @@ def find_alt(chrom, pos, ref, alt, vcf_dict):
 
 def compare_vcf_dicts(vcf_dict1, vcf_dict2):
     """ check dict1 against dict2 """
-    # see alt_cat() for what 4 values mean
-    total_alts = [0, 0, 0, 0]
-    found_alts = [0, 0, 0, 0]
-    total_alleles = [0, 0, 0, 0]
-    found_alleles = [0, 0, 0, 0]
+    # see alt_cat() for what 5 values mean
+    total_alts = [0, 0, 0, 0, 0]
+    found_alts = [0, 0, 0, 0, 0]
+    total_alleles = [0, 0, 0, 0, 0]
+    found_alleles = [0, 0, 0, 0, 0]
     
     for key1, val1 in vcf_dict1.items():
         chrom1, pos1 = key1
@@ -134,21 +109,33 @@ def json_acc(vcf1, vcf2, options):
     json_data["Path2"] = options.vcf2
     json_data["Alts"] = dict()
     json_data["Alleles"] = dict()
-    for c in range(len(found_alts1)):
+    for c in range(len(found_alts1) + 1):
+        label = cat_name(c) if c < len(found_alts1) else "INDEL"
         if c > 0:
-            tp = found_alts1[c]
-            fp = total_alts1[c] - tp
-            fn = total_alts2[c] - tp
+            if label == "INDEL":
+                tp = found_alts1[3] + found_alts1[4]
+                fp = total_alts1[3] + total_alts1[4] - tp
+                fn = total_alts2[3] + total_alts2[4] - tp
+            else:
+                tp = found_alts1[c]
+                fp = total_alts1[c] - tp
+                fn = total_alts2[c] - tp
             prec = 0. if tp + fp == 0 else float(tp) / float(tp + fp)
             rec = 0. if tp + fn  == 0 else float(tp) / float(tp + fn)
-            json_data["Alts"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
-        
-        tp = found_alleles1[c]
-        fp = total_alleles1[c] - tp
-        fn = total_alleles2[c] - tp
+            json_data["Alts"][label] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
+
+        if label == "INDEL":
+                tp = found_alleles1[3] + found_alleles1[4]
+                fp = total_alleles1[3] + total_alleles1[4] - tp
+                fn = total_alleles2[3] + total_alleles2[4] - tp
+        else:
+            tp = found_alleles1[c]
+            fp = total_alleles1[c] - tp
+            fn = total_alleles2[c] - tp
         prec = 0. if tp + fp == 0 else float(tp) / float(tp + fp)
         rec = 0. if tp + fn  == 0 else float(tp) / float(tp + fn)
-        json_data["Alleles"][cat_name(c)] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
+        json_data["Alleles"][label] = {"TP" : tp, "FP" : fp, "FN" : fn, "Precision" : prec, "Recall" : rec}
+
 
     return json.dumps(json_data)
 

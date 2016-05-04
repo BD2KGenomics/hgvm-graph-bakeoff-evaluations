@@ -17,9 +17,8 @@ from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
 from callVariants import alignment_sample_tag, alignment_region_tag, alignment_graph_tag, run
 from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path
-from callStats import vg_length
 from evaluateVariantCalls import defaultdict_set
-from computeVariantsDistances import vcf_dist_header
+from computeVariantsDistances import vcf_dist_header, read_tsv, write_tsv
 
 # Set up the plot parameters
 # Include both versions of the 1kg SNPs graph name
@@ -49,6 +48,7 @@ PLOT_PARAMS = [
     "gatk3",
     "platypus",
     "g1kvcf",
+    "freebayes",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -69,10 +69,11 @@ PLOT_PARAMS = [
     "VGLR",
     "\"1KG Haplo 30\"",
     "\"1KG Haplo 50\"",
-    "Control",
+    "Scrambled",
     "GATK3",
     "Platypus",
     "\"1000 Genomes\"",
+    "FreeBayes",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -96,18 +97,39 @@ PLOT_PARAMS = [
     "\"#FF0000\"",
     "\"#25BBD4\"",
     "\"#9E7C72\"",
-    "\"#cab2d6\"",    
+    "\"#cab2d6\"",
+    "\"#FF00FF\"",    
     "--font_size 20 --dpi 90"]
 
+def name_map():
+    """ make a dictionary from the list above """
+    i = PLOT_PARAMS.index("--categories")
+    j = PLOT_PARAMS.index("--category_labels ")
 
+    names = dict()
+    for k in range(i + 1, j):
+        if PLOT_PARAMS[k][0:2] == "--":
+            break
+        names[PLOT_PARAMS[i + k]] = PLOT_PARAMS[j + k].replace("\"", "")
 
+    # hack in sample-<name> and base-<name> maps
+    keys = [k for k in names.keys()]
+    for key in keys:
+        names["base-{}".format(key)] = "Base {}".format(names[key])
+        names["sample-{}".format(key)] = "Sample {}".format(names[key])
+        
+    return names
+
+    
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
         formatter_class=argparse.RawDescriptionHelpFormatter)
     
     # General options
     parser.add_argument("comp_dir", type=str,
-                        help="directory of comparison output written by computeVariantsDistances.py")    
+                        help="directory of comparison output written by computeVariantsDistances.py")
+    parser.add_argument("--skip", type=str, default=None,
+                        help="comma separated list of skip words to pass to plotHeatMap.py")
                             
     args = args[1:]
 
@@ -138,7 +160,8 @@ def plot_kmer_comp(tsv_path, options):
     run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
     acc_png = out_base_path + "_acc.png"
     run("scripts/scatter.py {} --save {} --title \"{} KMER Set Accuracy\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 --lines {}".format(acc_tsv, acc_png, region, params))
-    
+
+
 def plot_vcf_comp(tsv_path, options):
     """ take the big vcf compare table and make precision_recall plots for all the categories"""
     out_dir = os.path.join(options.comp_dir, "comp_plots")
@@ -167,7 +190,7 @@ def plot_vcf_comp(tsv_path, options):
         acc_tsv = out_base_path + "_" + label + ".tsv"
         print "Make {} tsv with cols {} {}".format(label, rec_idx, prec_idx)
         # +1 to convert to awk 1-base coordinates. +1 again since header doesnt include row_label col
-        awkcmd = '''if (NR!=1) print $1 "\t" 1-${} "\t" ${}'''.format(prec_idx + 2, rec_idx + 2)
+        awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2)
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
         acc_png = out_base_path + "_" + label + ".png"
@@ -177,22 +200,51 @@ def plot_vcf_comp(tsv_path, options):
         else:
             title += " {} Accuracy".format(comp_cat)
         title += " for {}".format(region)
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
         # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.002 --max_x 0.202 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.798 --max_x 1.002 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
         print cmd
         os.system(cmd)
         # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.004 --max_x 0.204 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.796 --max_x 1.004 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
         print cmd
         os.system(cmd)        
         # top 40
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"1-Precision\" --y_label \"Recall\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.004 --max_x 0.404 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
         print cmd
         os.system(cmd)
-        
+
+def plot_heatmap(tsv, options):
+    """ make a heatmap """
+    out_dir = os.path.join(options.comp_dir, "heatmaps")
+    robust_makedirs(out_dir)
+    mat, col_names, row_names, row_label = read_tsv(tsv)
+    names = name_map()
+
+    for i in range(len(col_names)):
+        if col_names[i] in names:
+            col_names[i] = names[col_names[i]]
+    for i in range(len(row_names)):
+        if row_names[i] in names:
+            row_names[i] = names[row_names[i]]
+
+    if "_rename" in tsv:
+        return
+    fix_tsv = tsv.replace(".tsv", "_rename.tsv")
+    write_tsv(fix_tsv, mat, col_names, row_names, row_label)
+
+    out_hm = os.path.join(out_dir, os.path.basename(tsv).replace(".tsv", ".pdf"))
+    ph_opts = "--skip {}".format(options.skip) if options.skip is not None else ""
+    cmd = "scripts/plotHeatmap.py {} {} {}".format(fix_tsv, out_hm, ph_opts)
+    print cmd
+    os.system(cmd)
+
+    cmd = "scripts/plotHeatmap.py {} {} {} --log_scale".format(fix_tsv, out_hm.replace(".pdf", "_log.pdf"), ph_opts)
+    print cmd
+    os.system(cmd)
+    
     
 def main(args):
     
@@ -200,9 +252,12 @@ def main(args):
 
     # look through tsvs in comp_tables
     for tsv in glob.glob(os.path.join(options.comp_dir, "comp_tables", "*.tsv")):
-        if "kmer" in tsv.split("-"):
+        if "hm" in os.path.basename(tsv).split("-"):
+            plot_heatmap(tsv, options)
+        elif "kmer" in os.path.basename(tsv).split("-"):
             plot_kmer_comp(tsv, options)
-        elif "vcf" in tsv.split("-") or "sompy" in tsv.split("-") or "happy" in tsv.split("-"):
+        elif "vcf" in os.path.basename(tsv).split("-") or "sompy" in tsv.split("-") \
+             or "happy" in tsv.split("-") or "vcfeval" in tsv.split("-"):
             plot_vcf_comp(tsv, options)
                                 
 

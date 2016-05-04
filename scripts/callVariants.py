@@ -77,10 +77,10 @@ def parse_args(args):
                         help="timeout in seconds for long jobs (vg surject in this case)")
     parser.add_argument("--skipBaseline", action="store_true",
                         help="dont make vg sample graphs from g1k and platinum vcfs")
-    parser.add_argument("--augmented", action="store_true",
-                        help="write augmented vg graphs in addition to sample graphs")
-    parser.add_argument("--bubble", action="store_true", default=False,
-                        help="pass --bubble option to glenn2vcf for more agressive vcf convsersion")
+    parser.add_argument("--sample", action="store_true",
+                        help="write sample vg graphs in addition to augmented graphs")
+    parser.add_argument("--depth", type=int, default=10,
+                        help="pass -d option to glenn2vcf")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -175,7 +175,7 @@ def sample_txt_path(alignment_path, options, tag=""):
     """ get vg call output name from input gam
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
-    name += "{}_sample.txt".format(tag)
+    name += "{}_call.tsv".format(tag)
     return os.path.join(out_dir(alignment_path, options), name)
 
 def augmented_vg_path(alignment_path, options, tag=""):
@@ -241,6 +241,7 @@ def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
                             stdout=stdout, stderr=stderr)
     
     def timeout_fail(proc, cmd):
+        os.kill(proc.pid, signal.SIGKILL)
         proc.kill()
         # we often check to see if some output file exists before running
         # if we timeout, make sure the file exists so rerunning wont timeout again
@@ -340,33 +341,34 @@ def compute_vg_variants(job, input_gam, options):
     out_sample_txt_path = sample_txt_path(input_gam, options)    
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
     do_pu = options.overwrite or not os.path.isfile(out_pileup_path)
-    do_call = do_pu or not os.path.isfile(out_sample_vg_path)
-    do_aug = options.augmented and (do_pu or not os.path.isfile(out_augmented_vg_path))
+    do_call = do_pu or not os.path.isfile(out_augmented_vg_path)
+    do_sample = options.sample and (do_pu or not os.path.isfile(out_sample_vg_path))
+    do_vcf = do_call or not os.path.isfile(out_sample_vg_path.replace(".vg", ".vcf"))
 
     if do_pu:
         RealTimeLogger.get().info("Computing Variants for {} {}".format(
             input_graph_path,
             input_gam))
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter {} {} {} | vg pileup {} - {} -t {} > {}".format(input_graph_path,
-                                                                       input_gam,
-                                                                       options.filter_opts,
-                                                                       input_graph_path,
-                                                                       options.pileup_opts,
-                                                                       options.vg_cores,
-                                                                       out_pileup_path),
+        run("vg filter {} {} | vg pileup {} - {} -t {} > {}".format(input_gam,
+                                                                    options.filter_opts,
+                                                                    input_graph_path,
+                                                                    options.pileup_opts,
+                                                                    options.vg_cores,
+                                                                    out_pileup_path),
             fail_hard = True)
 
     if do_call:
         robust_makedirs(os.path.dirname(out_sample_vg_path))
-        run("vg call {} {} {} -c {} -t {} | vg ids -c - | vg ids -s -  > {}".format(input_graph_path,
-                                                                                    out_pileup_path,
-                                                                                    options.call_opts,
-                                                                                    out_sample_txt_path,
-                                                                                    options.vg_cores,
-                                                                                    out_sample_vg_path),
+        run("vg call {} {} {} -l -c {} -t {} > {}".format(input_graph_path,
+                                                          out_pileup_path,
+                                                          options.call_opts,
+                                                          out_sample_txt_path,
+                                                          options.vg_cores,
+                                                          out_augmented_vg_path),
             fail_hard = True)
 
+    if do_vcf:
         region = alignment_region_tag(input_gam, options)
         g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")            
         with open(g1kbed_path) as f:
@@ -386,25 +388,24 @@ def compute_vg_variants(job, input_gam, options):
                 
         if ref is not None:
             tasks = []
-            bub = "--bubble" if options.bubble is True else ""
-            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(input_graph_path,
-                                                                               out_sample_txt_path,
-                                                                               offset,
-                                                                               ref,
-                                                                               contig,
-                                                                               alignment_sample_tag(input_gam, options),
-                                                                               bub,
-                                                                               out_sample_txt_path.replace(".txt", ".vcf"),
-                                                                               out_sample_txt_path.replace(".txt", ".stderr")),
+            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} -d {} > {} 2> {}".format(out_augmented_vg_path,
+                                                                                  out_sample_txt_path,
+                                                                                  offset,
+                                                                                  ref,
+                                                                                  contig,
+                                                                                  alignment_sample_tag(input_gam, options),
+                                                                                  options.depth,
+                                                                                  out_sample_vg_path.replace(".vg", ".vcf"),
+                                                                                  out_sample_vg_path.replace(".vg", ".vcf.stderr")),
                 fail_hard = True)
 
-    if do_aug:
+    if do_sample:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
-        run("vg call {} {} {} -t {} -l | vg ids -c - | vg ids -s - > {}".format(input_graph_path,
-                                                                                out_pileup_path,
-                                                                                options.call_opts,
-                                                                                options.vg_cores,
-                                                                                out_augmented_vg_path),
+        run("vg call {} {} {} -t {} | vg ids -cs - > {}".format(input_graph_path,
+                                                                out_pileup_path,
+                                                                options.call_opts,
+                                                                options.vg_cores,
+                                                                out_sample_vg_path),
             fail_hard = True)
 
 def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):

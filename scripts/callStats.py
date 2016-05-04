@@ -1,367 +1,235 @@
 #!/usr/bin/env python2.7
 """
-Get some basic statistics from the vg call output
+Get some basic statistics from the vg call output (via rocDistances.py)
 """
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
-import doctest, re, json, collections, time, timeit, string
+import doctest, re, json, collections, time, timeit, string, tempfile
 from collections import defaultdict
 from operator import sub
 from toillib import robust_makedirs
 from callVariants import sample_vg_path, sample_txt_path, augmented_vg_path, alignment_region_tag, alignment_graph_tag
 from callVariants import graph_path, index_path, augmented_vg_path, linear_vg_path, linear_vcf_path, sample_vg_path
-from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag
+from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag, run
+from plotVariantsDistances import name_map
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
         formatter_class=argparse.RawDescriptionHelpFormatter)
         
     # General options
-    parser.add_argument("in_gams", nargs="+",
-                        help="input alignment files. (must have been run through callVariants.py!)")
-    parser.add_argument("output_path", type=str,
-                        help="directory to write output to.  not to be confused with --out_dir"
-                        "which is the output directory used for callVariants.py")
-    parser.add_argument("--out_dir", type=str, default="variants",
-                        help="output directory (used for callVariants.py)")
-    parser.add_argument("--graph_dir", type=str, default="graphs",
-                        help="name of input graphs directory")
-    parser.add_argument("--avg_samples", action="store_true", default=False,
-                        help="Average samples into mean value")
-    parser.add_argument("--tag", type=str, default = "",
-                        help="add tag to all output files")
-    parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
-                        help="fasta file with entire chromosome info for all regions")
-    
+    parser.add_argument("roc_dir", type=str,
+                        help="links directory _comp.best output by rocDistances.py")
+    parser.add_argument("--sample", type=str, default="NA12878",
+                        help="sample name")
                             
     args = args[1:]
         
     return parser.parse_args(args)
 
-def compare_out_path(options):
-    """ get root output dir for comparison output
-    """
-    return options.output_path
 
-def tsv_out_path(options, name):
-    """ path for output tsv"""
-    tag = "_{}".format(options.tag) if len(options.tag) > 0 else ""
-    return os.path.join(compare_out_path(options),
-                        "{}{}.tsv".format(name, tag))
-        
-def count_tsv_path(options):
-    return tsv_out_path(options, "call_count")
+def sompy_stats(sample_vcf, truth_vcf, filter_xref, options):
+    """ run sompy (copied from computeVariantsDistances, mostly) """
 
-def size_tsv_path(options):
-    return tsv_out_path(options, "call_size")
+    out_base = tempfile.mkdtemp(prefix = "callStats_", dir = ".")
 
-def detailed_call_coutns_tsv_path(options):
-    return tsv_out_path(options, "call_details")
-               
-def count_vg_paths(vg, options):
-    """ assuming output of vg call here, where one path written per snp 
-    """
-    if not os.path.exists(vg):
-        return -1
-    cmd = "vg view -j {} | jq .path | jq length".format(vg)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                         stderr=sys.stderr, bufsize=-1)
-    output, _ = p.communicate()
-    assert p.wait() == 0
-    num_paths = int(output.strip())
-    return num_paths
+    if filter_xref is True:
+        filter_vcf = os.path.join(out_base, "filter.vcf")
+        os.system("grep -v XREF {} > {}".format(sample_vcf, filter_vcf))
+        sample_vcf = filter_vcf
 
-def vg_length(vg, options):
-    """ get sequence length out of vg stats
-    """
-    if not os.path.exists(vg):
-        return -1
-    cmd = "vg stats -l {}".format(vg)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                         stderr=sys.stderr, bufsize=-1)
-    output, _ = p.communicate()
-    assert p.wait() == 0
-    length = int(output.split()[1])
-    return length    
+    run("som.py {} {} -P -o {} > /dev/null".format(truth_vcf, sample_vcf, os.path.join(out_base, "sp_out")), fail_hard=True)
 
-def count_vcf_snps(vcf, options):
-    """ get number of snps from bcftools
-    """
-    if not os.path.exists(vcf):
-        return -1
-    cmd = "scripts/vcfCountSnps.sh {} {}".format(vcf, options.chrom_fa_path)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                         stderr=sys.stderr, bufsize=-1)
-    output, _ = p.communicate()
-    assert p.wait() == 0
-    num_paths = int(output.strip())
-    return num_paths
 
-def normalize_vcf(vcf, options):
-    """ run normalizeation pipeline
-    """
-    cmd = "vcfsort {} | vt decompose - | vt decompose_blocksub -a - | vt normalize -r {} - | uniq".format(vcf, options.chrom_fa_path)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, bufsize=-1)
-    output, _ = p.communicate()
-    assert p.wait() == 0
-    return output
-
-def count_aug_snps(sample_vcf, sample_txt, options):
-    """ how many snps in the vcf are in the augmented graph """
-    if not os.path.isfile(sample_txt) or not os.path.isfile(sample_vcf):
-        return -1
-    augs = set()
-    with open(sample_txt) as f:
-        for line in f:
-            if line[0] != "#":
-                toks = line.split()
-                node = int(toks[0])
-                pos = int(toks[1]) - 1
-                if toks[4] == "SNP":
-                    augs.add((node, pos))
-    aug_count = 0
-    f = normalize_vcf(sample_vcf, options).split("\n")
-    found_header = False
-    for line in f:
-        if len(line) == 0:
-            continue
-        if line[0] == "#":
-            found_header = True
-        elif found_header is True:
-            toks = line.split()
-            ref = toks[3]
-            alts = toks[4].split(",")
-            # assume normalized
-            assert len(alts) == 1
-            # check if snp
-            if not (len(ref) == 1 and len(alts[0]) == 1 and alts[0] != ref):
+    indels, snps = None, None
+    with open(os.path.join(out_base, "sp_out.stats.csv")) as sp_result:
+        for line in sp_result:
+            toks = line.split(",")
+            if len(toks) < 2:
                 continue
-            vid = toks[2]
-            if "." in vid:
-                pos = int(vid.split(".")[-1])
-            else:
-                pos = 0
-            vid = vid.split(".")[0]
-            if "_" in vid:
-                first_node, last_node = vid.split("_")[0], vid.split("_")[0][-1]
-            else:
-                first_node = vid
-                last_node = vid
-            first_node, last_node = int(first_node), int(last_node)
-            is_aug = False
-            for node in range(first_node, last_node+1):
-                if (node, pos) in augs:
-                    is_aug = True
-            if is_aug is True:
-                aug_count += 1
-    return aug_count
+            if toks[1] == "type":
+                header = toks
+                tp_idx = toks.index("tp")
+                fp_idx = toks.index("fp")
+            elif toks[1] == "indels":
+                indels = toks
+            elif toks[1] == "SNVs":
+                snps = toks
+            elif toks[1] == "records":
+                total = toks
 
-def vg_detailed_call_counts(gam, options):
-    """ return tuple (vcf-snp, aug-snp, ref-snp, non-calls, ref/ref, ref/alt1, alt1/alt1, alt1/alt2)
-    """
-    original_graph = graph_path(gam, options)    
-    sample_graph = sample_vg_path(gam, options)
-    sample_txt = sample_txt_path(gam, options)
-    sample_vcf = sample_txt.replace(".txt", ".vcf")
+    os.system("rm -rf {}".format(out_base))
 
-    non_calls = 0
-    ref_calls = 0
-    alt_calls = 0
-    ref_ref = 0
-    ref_alt = 0
-    alt1_alt1 = 0
-    alt1_alt2 = 0
-    with open(sample_txt) as f:
-        line = f.readline()
-        while line:
-            toks = line.split()
-            vals = toks[3].split(",")
-            assert len(vals) == 2
-            if vals == ['-', '-']:
-                pass # non-call computed above from vg files
-            elif vals == ['-', '.'] or vals == ['.','-'] or vals == ['.','.']:
-                ref_ref += 1 # vg call doesn't distinguish .- and .. in general atm
-            elif vals[0] == '.' or vals[1] == '.':
-                ref_alt += 1
-            elif vals[0] == vals[1] or vals[0] == '-' or vals[1] == '-':
-                alt1_alt1 += 1 # vg call doesn't distinguish A- and AA atm
-            else:
-                assert vals[0] != vals[1]
-                assert vals[0] != toks[2] and vals[1] != toks[2]
-                alt1_alt2 += 1
-            line = f.readline()
+    # indels optional
+    if indels is None:
+        indels = [0] * 100
+    if snps is None:
+        snps = [0] * 100
 
-    # check normalized output of glenn2vcf (number ofalts)
-    sample_vcf_snps = count_vcf_snps(sample_vcf, options)
-
-    # total alt_calls
-    alt_snps = count_aug_snps(sample_vcf, sample_txt, options)
+    ret = dict()
+    ret["SNP-TP"] = int(snps[tp_idx])
+    ret["SNP-FP"] = int(snps[fp_idx])
+    ret["INDEL-TP"] = int(indels[tp_idx])
+    ret["INDEL-FP"] = int(indels[fp_idx])
+    ret["TOTAL-TP"] = int(total[tp_idx])
+    ret["TOTAL-FP"] = int(total[fp_idx])
     
-    # todo: use more verybose calls.txt for a lot of this
-    non_calls = vg_length(original_graph, options) - vg_length(sample_graph, options) + ref_alt + alt1_alt1 + 2 * alt1_alt2
+    return ret
+
+def trio_stats(sample_vcf, filter_xref, ignore_genotype, options):
+    """ compute trio statistics """
+    # we are hardcoding trio information here
+    assert options.sample is "NA12878"
+    child = sample_vcf.replace("NA12878", "NA12879")
+    p1 = sample_vcf
+    p2 = sample_vcf.replace("NA12878", "NA12877")
+
+    out_base = tempfile.mkdtemp(prefix = "callStats_", dir = ".")
+
+    if filter_xref is True:
+        sys.stderr.write("Filtering {}\n".format(sample_vcf))
+        filter_vcf = os.path.join(out_base, "child_filter.vcf")
+        if os.path.isfile(child):
+            os.system("grep -v XREF {} > {}".format(child, filter_vcf))
+        child = filter_vcf
+        filter1_vcf = os.path.join(out_base, "p1_filter.vcf")
+        if os.path.isfile(p1):
+            os.system("grep -v XREF {} > {}".format(p1, filter1_vcf))
+        p1 = filter1_vcf
+        filter2_vcf = os.path.join(out_base, "p2_filter.vcf")
+        if os.path.isfile(p2):
+            os.system("grep -v XREF {} > {}".format(p2, filter2_vcf))
+        p2 = filter2_vcf
+
+    trio_res = os.path.join(out_base, "ts.txt")
+
+    try:
+        ig = "-g" if ignore_genotype else ""
+        sys.stderr.write("\nscripts/trioConcordance.py {} {} {} {} > {}\n".format(child, p1, p2, ig, trio_res))
+        run("scripts/trioConcordance.py {} {} {} {} > {}".format(child, p1, p2, ig, trio_res))
     
+        with open(trio_res) as f:
+            toks = f.readline().split()
+            res = toks[0:3]
+            sys.stderr.write(" === {}\n".format(str(res)))
+
+        ts = dict()
+        ts["GOOD"] = int(res[0])
+        ts["BAD"] = int(res[1])
+        ts["RATIO"] = float(res[2])
+    except:
+        sys.stderr.write("trio concordance failed for {} {} {}".format(child, p1, p2))
+        ts = dict()
+        ts["GOOD"] = -1
+        ts["BAD"] = -1
+        ts["RATIO"] = -1.0
+
+     os.system("rm -rf {}".format(out_base))
+
     
-    return (sample_vcf_snps, alt_snps, sample_vcf_snps - alt_snps,
-            non_calls,
-            ref_ref * 2 + ref_alt,
-            (alt1_alt1 + alt1_alt2) * 2 + ref_alt,
-            ref_ref, ref_alt, alt1_alt1, alt1_alt2)
+    return ts
+    
 
-def snp_count_table(options):
-    """ make a table of snp counts.  there are serious problems with this now:
-    1) don't have snp count for baseline (as it's not gam or vcf)
-    2) snps counted differenty for gam/vcf (multiple alternates at same site
-    counted in former but not latter)
-    """
-    # tsv header
-    count_table = "#graph\tlinear_snp_count\tsample_snp_count\taugmented_snp_count\n"
+def vcf_stats(sample_vcf, truth_vcf, options):
+    """ compute breakdown of snps indels reference non reference false positives true positives
+    """    
+    # compare everything
+    tot_stats = sompy_stats(sample_vcf, truth_vcf, False, options)
 
-    sums = defaultdict(lambda : (0,0,0))
-    counts = defaultdict(lambda : 0)
+    # compare without xref in sample
+    aug_stats = sompy_stats(sample_vcf, truth_vcf, True, options)
 
-    for gam in options.in_gams:
-        linear_vcf = linear_vcf_path(gam, options) + ".gz"
-        vg_sample = sample_vg_path(gam, options)        
-        vg_augmented = augmented_vg_path(gam, options)
-        vcf_snps = count_vcf_snps(linear_vcf, options)
-        # ugly hack to get g1kvcf / platvcf sample from vcf
-        if vg_sample.split("/")[-2] == "g1kvcf" or vg_sample.split("/")[-2] == "platvcf":
-            sample_snps = count_vcf_snps(vg_sample.replace(".vg", ".vcf.gz"), options)
-        else:
-            sample_snps = count_vg_paths(vg_sample, options)
-        augmented_snps = count_vg_paths(vg_augmented, options)
+    # do trio stats
+    tot_trio_stats = trio_stats(sample_vcf, False, False, options)
+    aug_trio_stats = trio_stats(sample_vcf, True, False, options)
+    
+    tot_trio_ng_stats = trio_stats(sample_vcf, False, True, options)
+    aug_trio_ng_stats = trio_stats(sample_vcf, True, True, options)
 
-        if options.avg_samples:
-            # reduce to reference graph
-            name_fn = lambda x : graph_path(x, options)
-        else:
-            # keep split apart by sample / graph corresponding to gam
-            name_fn = lambda x : alignment_graph_tag(x, options)  \
-                   + "_" + alignment_sample_tag(x, options)
+    return tot_stats, aug_stats, tot_trio_stats, aug_trio_stats, tot_trio_ng_stats, aug_trio_ng_stats
+
+def stats_row_header(options):
+    """ header """
+    return "\t".join(["Region", "Graph"] +
+                     ["SNPS", "SNPS-TP", "SNPS-FP", "SNPS-FPR", "REF-SNPS", "REF-SNPS-TP", "REF-SNPS-FP", "REF-SNPS-FPR", "AUG-SNPS", "AUG-SNPS-TP", "AUG-SNPS-FP", "AUG-SNPS-FPR", "AUG-SNPS-FPR-DELTA"] +
+                     ["INDELS", "INDELS-TP", "INDELS-FP", "INDELS-FPR", "REF-INDELS", "REF-INDELS-TP", "REF-INDELS-FP", "REF-INDELS-FPR", "AUG-INDELS", "AUG-INDELS-TP", "AUG-INDELS-FP", "AUG-INDELS-FPR", "AUG-INDELS-FPR-DELTA"] +
+                     ["TOTAL", "TOTAL-TP", "TOTAL-FP", "TOTAL-FPR", "REF-TOTAL", "REF-TOTAL-TP", "REF-TOTAL-FP", "REF-TOTAL-FPR", "AUG-TOTAL", "AUG-TOTAL-TP", "AUG-TOTAL-FP", "AUG-TOTAL-FPR", "AUG-TOTAL-FPR-DELTA"] +
+                     ["TRIO-CONCORDANCE-GT", "REF-TRIO-CONCORDANCE-GT", "AUG-TRIO-CONCORDANCE-GT", "TRIO-CONCORDANT", "TRIO-DISCORDANT", "TRIO-CONCORDANCE", "REF-TRIO-CONCORDANT", "REF-TRIO-DISCORDANT", "REF-TRIO-CONCORDANCE", "AUG-TRIO-CONCORDANT", "AUG-TRIO-DISCORANT", "AUG-TRIO-CONCORDANCE" ])
+
+def stats_row(region, graph, query_vcf, truth_vcf, options):
+    """ make a stats line """
+    tot, aug, tot_trio, aug_trio, tot_trio_ng, aug_trio_ng = vcf_stats(query_vcf, truth_vcf, options)
+
+    def make_row(s):
+        count = tot["{}-FP".format(s)] + tot["{}-TP".format(s)]
+        tp = tot["{}-TP".format(s)]
+        fp = tot["{}-FP".format(s)]
+        aug_count = aug["{}-FP".format(s)] + aug["{}-TP".format(s)]
+        aug_fp = aug["{}-FP".format(s)]
+        aug_tp = aug["{}-TP".format(s)]
+        fpr = float(fp) / count if count > 0 else 0
+        aug_fpr = float(aug_fp) / aug_count if aug_count > 0 else 0
+        ref_count = count - aug_count
+        ref_fp = fp - aug_fp
+        ref_tp = tp - aug_tp
+        ref_fpr = float(ref_fp) / ref_count if ref_count > 0 else 0
+        fpr_delta = aug_fpr - ref_fpr
+
+        return [count, tp, fp, fpr, ref_count, ref_tp, ref_fp, ref_fpr, aug_count, aug_tp, aug_fp, aug_fpr, fpr_delta]
+
+    row = [region, graph]
+    row += make_row("SNP")
+    row += make_row("INDEL")
+    row += make_row("TOTAL")
+
+    # total trio accuracy
+    trio = tot_trio["RATIO"]
+    trio_ng = tot_trio_ng["RATIO"]
+    # augmented trio accuracy
+    trio_aug = aug_trio["RATIO"]
+    trio_aug_ng = aug_trio_ng["RATIO"]
+    trio_aug_tp_ng = aug_trio_ng["GOOD"]
+    trio_aug_fp_ng = aug_trio_ng["BAD"]
+    # reference trio accuracy (need to compute from difference)
+    trio_ref_tp = tot_trio["GOOD"] - aug_trio["GOOD"]
+    trio_ref_count = tot_trio["GOOD"] + tot_trio["BAD"]
+    trio_ref = float(trio_ref_tp) / trio_ref_count if trio_ref_count > 0 else 0
+    # and again for ng option
+    trio_ref_tp_ng = tot_trio_ng["GOOD"] - aug_trio_ng["GOOD"]
+    trio_ref_fp_ng = tot_trio_ng["BAD"] - aug_trio_ng["BAD"]
+    trio_ref_count_ng = tot_trio_ng["GOOD"] + tot_trio_ng["BAD"]
+    trio_ref_ng = float(trio_ref_tp_ng) / trio_ref_count_ng if trio_ref_count_ng > 0 else 0
+
+    row += [trio, trio_ref, trio_aug]
+    row += [tot_trio_ng["GOOD"], tot_trio_ng["BAD"], trio_ng]
+    row += [trio_ref_tp_ng, trio_ref_fp_ng, trio_ref_ng]
+    row += [trio_aug_tp_ng, trio_aug_fp_ng, trio_aug_ng] 
+    
+    return "\t".join([str(x) for x in row])
+                     
+def best_stats(options):
+    """ get the vcf stats from the "best" call dir as previously created by rocDistances.py"""
+    # get mapping from file names to names we want to show
+    names = name_map()
+    sys.stdout.write(stats_row_header(options) + "\n")
+    for region_path in glob.glob(os.path.join(options.roc_dir, "*")):
+        region = os.path.basename(region_path)
+        for graph_path in glob.glob(os.path.join(region_path, "*")):
+            graph = os.path.basename(graph_path)
+            if graph in names:
+                graph = names[graph]
+            else:
+                sys.stderr.write("Unable to find name for {}".format(graph))
+            truth_vcf = os.path.join(graph_path, "{}_platvcf_basline.vcf".format(options.sample))
+            query_vcf = os.path.join(graph_path, "{}_sample_preprocessed.vcf".format(options.sample))
+            if os.path.exists(truth_vcf) and os.path.exists(query_vcf):
+                row = stats_row(region, graph, query_vcf, truth_vcf, options)
+                sys.stdout.write(row + "\n")
+            else:
+                sys.stderr.write("Cannot find VCF input for {} {}\n".format(region, graph))
             
-        name = name_fn(gam)
+    
         
-        sums[name] = (sums[name][0] + vcf_snps,
-                      sums[name][1] + sample_snps,
-                      sums[name][2] + augmented_snps)
-        counts[name] = counts[name] + 1
-
-    for name in sorted(list(set(map(name_fn, options.in_gams)))):
-        avg_vcf = float(sums[name][0]) / float(counts[name])
-        avg_sam = float(sums[name][1]) / float(counts[name])
-        avg_aug = float(sums[name][2]) / float(counts[name])
-        count_table +="{}\t{}\t{}\t{}\n".format(
-            name,
-            avg_vcf,
-            avg_sam,
-            avg_aug)
-
-    with open(count_tsv_path(options), "w") as ofile:
-        ofile.write(count_table)
-
-def graph_size_table(options):
-    """ make a table of sequence lengths for the vg call outputs
-    """
-    # tsv header
-    length_table = "#graph\tsample_snp_length\taugmented_snp_length\toriginal_length\n"
-
-    sums = defaultdict(lambda : (0,0,0))
-    counts = defaultdict(lambda : 0)
-
-    for gam in options.in_gams:
-        linear_vcf = linear_vcf_path(gam, options) + ".gz"
-        vg_sample = sample_vg_path(gam, options)
-        vg_augmented = augmented_vg_path(gam, options)
-        sample_snps = vg_length(vg_sample, options)
-        augmented_snps = vg_length(vg_augmented, options)
-        vg_original = graph_path(gam, options)
-        original_snps = vg_length(vg_original, options)
-
-        if options.avg_samples:
-            # reduce to reference graph
-            name_fn = lambda x : graph_path(x, options)
-        else:
-            # keep split apart by sample / graph corresponding to gam
-            name_fn = lambda x : alignment_graph_tag(x, options)  \
-                   + "_" + alignment_sample_tag(x, options)
-            
-        name = name_fn(gam)
-
-        sums[name] = (sums[name][0] + sample_snps,
-                      sums[name][1] + augmented_snps,
-                      sums[name][2] + original_snps)
-        counts[name] = counts[name] + 1
-
-    for name in list(set(map(name_fn, options.in_gams))):
-        avg_sam = float(sums[name][0]) / float(counts[name])
-        avg_aug = float(sums[name][1]) / float(counts[name])
-        avg_ori = float(sums[name][2]) / float(counts[name])
-        length_table +="{}\t{}\t{}\t{}\n".format(
-            name,
-            avg_sam,
-            avg_aug,
-            avg_ori)
-
-    with open(size_tsv_path(options), "w") as ofile:
-        ofile.write(length_table)
-
-def detailed_call_count_table(options):
-    """ make a table of the detailed call count. this makes count and size tables
-    obselete
-    """
-    # tsv header
-    detailed_table = "#graph\ttot-snps\taug-snps\tref-snps\tnon-calls\tref-calls\talt-calls\tref-ref\tref-alt1\talt1-alt1\talt1-alt2\n"
-
-    sums = defaultdict(lambda : (0,0,0,0,0,0,0,0,0,0))
-    counts = defaultdict(lambda : 0)
-
-    for gam in options.in_gams:
-        result = vg_detailed_call_counts(gam, options)
-
-        if options.avg_samples:
-            # reduce to reference graph
-            name_fn = lambda x : graph_path(x, options)
-        else:
-            # keep split apart by sample / graph corresponding to gam
-            name_fn = lambda x : alignment_graph_tag(x, options)  \
-                   + "_" + alignment_sample_tag(x, options)
-            
-        name = name_fn(gam)
-
-        sums[name] = (sums[name][0] + result[0],
-                      sums[name][1] + result[1],
-                      sums[name][2] + result[2],
-                      sums[name][3] + result[3],
-                      sums[name][4] + result[4],
-                      sums[name][5] + result[5],
-                      sums[name][6] + result[6],
-                      sums[name][7] + result[7],
-                      sums[name][8] + result[8],
-                      sums[name][9] + result[9])
-
-
-        counts[name] = counts[name] + 1
-
-    for name in list(set(map(name_fn, options.in_gams))):
-        detailed_table +="{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-            name,
-            float(sums[name][0]) / float(counts[name]),
-            float(sums[name][1]) / float(counts[name]),
-            float(sums[name][2]) / float(counts[name]),
-            float(sums[name][3]) / float(counts[name]),
-            float(sums[name][4]) / float(counts[name]),
-            float(sums[name][5]) / float(counts[name]),
-            float(sums[name][6]) / float(counts[name]),
-            float(sums[name][7]) / float(counts[name]),
-            float(sums[name][8]) / float(counts[name]),
-            float(sums[name][9]) / float(counts[name]))
-
-
-    with open(detailed_call_coutns_tsv_path(options), "w") as ofile:
-        ofile.write(detailed_table)
-        
-
 def boxPlot(inFile, outFile, x_column = 0, y_column = 1, title = None, x_label = None, y_label = None):
     """ make a box plot out of one of the tsv's generated above
     """
@@ -400,34 +268,7 @@ def main(args):
     
     options = parse_args(args)
 
-    robust_makedirs(options.output_path)
-
-    # hack in some fake alignments so that the g1kvcf sample graphs
-    # get added to the tables (same for platvcf)
-    added = []
-    orig_gams = options.in_gams
-    for gam in options.in_gams:
-        if os.path.dirname(gam).split("/")[-1] == "trivial":
-            added.append(gam.replace("trivial/" + os.path.basename(gam),
-                                     "g1kvcf/" + os.path.basename(gam)))
-            added.append(gam.replace("trivial/" + os.path.basename(gam),
-                                     "platvcf/" + os.path.basename(gam)))            
-    options.in_gams = options.in_gams + added
-        
-                        
-    # make some tables from the json comparison output
-    snp_count_table(options)
-    graph_size_table(options)
-
-    # make some better stats (to eventuall replace above)
-    options.in_gams = orig_gams
-    detailed_call_count_table(options)
-
-    # make some boxplots with adams super script
-    boxPlot(count_tsv_path(options), count_tsv_path(options).replace(".tsv", ".pdf"),
-            0, 2, "SNP\\ Count")
-    boxPlot(size_tsv_path(options), size_tsv_path(options).replace(".tsv", ".pdf"),
-            0, 1, "Sample\\ Graph\\ Size")
+    best_stats(options)
 
     
 if __name__ == "__main__" :

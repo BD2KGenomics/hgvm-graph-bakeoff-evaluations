@@ -21,6 +21,8 @@ def parse_args(args):
                         help="output directory. ex: high_coverage_graphs")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="overwrite existing files")
+    parser.add_argument("--keep_index", action="store_true",
+                        help="keep the .index for each graph")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -64,8 +66,12 @@ def main(args):
             # expect graph.vg and graph.vg.index
             # rename graph.vg
             os.system("mv {}/graph.vg {}/{}.vg".format(out_dir, out_dir, dest))
-            # delete graph.vg.index 
-            os.system("rm -rf {}/graph.vg.index".format(out_dir))
+            if options.keep_index:
+                # rename graph.vg.index
+                os.system("mv {}/graph.vg.index {}/{}.vg.index".format(out_dir, out_dir, dest))
+            else:
+                # delete graph.vg.index 
+                os.system("rm -rf {}/graph.vg.index".format(out_dir))
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

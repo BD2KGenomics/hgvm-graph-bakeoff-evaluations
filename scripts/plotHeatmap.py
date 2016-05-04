@@ -21,7 +21,7 @@ import scipy.spatial
 import scipy.cluster
 import matplotlib
 import math
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.backends.backend_pdf as pltBack
 import matplotlib.lines as lines
 import matplotlib.patches as patches
@@ -36,7 +36,7 @@ import matplotlib.cm as cm
 from matplotlib.colors import LogNorm, NoNorm, Normalize
 import scipy.cluster.hierarchy as sch
 
-from computeDistances import read_tsv
+from computeVariantsDistances import read_tsv
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -315,7 +315,7 @@ def remove_skips(mat, col_names, row_names, skips):
 
     for x in range(len(dead_cols)):
         for i in range(len(row_names)):
-            del mat[dead_cols[x] - x]
+            del mat[i][dead_cols[x] - x]
         del col_names[dead_rows[x] - x]
         
     return mat, col_names, row_names

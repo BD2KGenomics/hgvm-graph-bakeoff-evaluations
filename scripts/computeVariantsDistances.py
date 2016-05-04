@@ -20,7 +20,6 @@ from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
 from callVariants import alignment_sample_tag, alignment_region_tag, alignment_graph_tag, run
 from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path, sample_txt_path
-from callStats import vg_length
 from evaluateVariantCalls import defaultdict_set
 
 def parse_args(args):
@@ -38,7 +37,7 @@ def parse_args(args):
     parser.add_argument("graph_dir", type=str,
                         help="name of input graphs directory")
     parser.add_argument("comp_type", type=str,
-                        help="comparison type from {kmer,corg,vcf,sompy}")    
+                        help="comparison type from {kmer,corg,vcf,sompy,happy,vcfeval}")    
     parser.add_argument("comp_dir", type=str,
                         help="directory to write comparison output")    
     parser.add_argument("--kmer", type=int, default=27,
@@ -62,7 +61,10 @@ def parse_args(args):
                         " these to bein <gatk3_path>/<sample>/BRCA1.vcf etc.")
     parser.add_argument("--platypus_path", type=str, default="data/platypus",
                         help="path to search for platypus vcf. expects "
-                        " these to bein <platypus_path>/<sample>/BRCA1.vcf etc.")    
+                        " these to bein <platypus_path>/<sample>/BRCA1.vcf etc.")
+    parser.add_argument("--freebayes_path", type=str, default="data/freebayes",
+                        help="path to search for freebayes vcf. expects "
+                        " these to bein <freebayes_path>/<sample>/BRCA1.vcf etc.")
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands (and hap.py)")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
@@ -77,14 +79,16 @@ def parse_args(args):
                         help="keyword to ignore in vcf comparison")
     parser.add_argument("--normalize", action="store_true", default =False,
                         help="run vt normalization on all input vcfs")
-    parser.add_argument("--clip", action="store_true", default=False,
-                        help="clip vcf using platinum confidence regions")
+    parser.add_argument("--clip", type=str, default=None,
+                        help="clip vcf using specified bed file before call comparisons")
     parser.add_argument("--roc", action="store_true", default=False,
                         help="generate happy rocs for gatk3 and platypus")
     parser.add_argument("--qpct", type=float, default=None,
-                        help="apply quality percentile filter for gatk and platypus")
+                        help="apply quality percentile filter for gatk and platypus and freebayes")
     parser.add_argument("--baseline", type=str, default="platvcf",
                         help="baseline to use (platvcf or g1kvcf) for vcf comparisons")
+    parser.add_argument("--gt", action="store_true",
+                        help="take into account genotype information (sompy or vcfeval)")
                             
     args = args[1:]
 
@@ -126,7 +130,7 @@ def comp_path(graph1, graph2, options):
 
     s1tag = "_" + sample1 if sample1 is not None else ""
     s2tag = "_" + sample2 if sample2 is not None else ""
-    return os.path.join(options.comp_dir, "compare_data", region1,
+    return os.path.join(options.comp_dir, "kmer_compare_data", region1,
                         method1 + s1tag + "_vs_" + method2 + s2tag + ".json")
 
 def corg_path(graph1, graph2, options):
@@ -143,7 +147,7 @@ def corg_path(graph1, graph2, options):
 
     s1tag = "_" + sample1 if sample1 is not None else ""
     s2tag = "_" + sample2 if sample2 is not None else ""
-    return os.path.join(options.comp_dir, "corg_data", region1,
+    return os.path.join(options.comp_dir, "corg_compare_data", region1,
                         method1 + s1tag + "_vs_" + method2 + s2tag + ".txt")
 
 def input_vcf_path(graph, options, region = None, sample = None, method = None):
@@ -159,6 +163,8 @@ def input_vcf_path(graph, options, region = None, sample = None, method = None):
         return os.path.join(options.gatk3_path, sample, region.upper() + ".vcf")
     elif method == "platypus":
         return os.path.join(options.platypus_path, sample, region.upper() + ".vcf")
+    elif method == "freebayes":
+        return os.path.join(options.freebayes_path, sample, region.upper() + ".vcf")
     else:
         return graph.replace(".vg", ".vcf")    
  
@@ -175,8 +181,7 @@ def preprocessed_vcf_path(graph, options):
 
 def clip_bed_path(graph, options):
     """ get a bed to clip vcf by """
-    region, sample, method = options.tags[graph]
-    return os.path.join(options.platinum_path, sample + ".bed")
+    return options.clip
     
 def comp_path_vcf(graph1, graph2, options):
     """ get the path for json output of vcf compare
@@ -219,6 +224,20 @@ def comp_path_happy(graph1, graph2, options):
     s2tag = "_" + sample2 if sample2 is not None else ""
     return os.path.join(options.comp_dir, "happy_compare_data", region1,
                             method1 + s1tag + "_vs_" + method2 + s2tag + ".summary.csv")
+
+def comp_path_vcfeval(graph1, graph2, options):
+    """ get the path for json output of vcf compare
+    """
+    region1, sample1, method1 = options.tags[graph1]
+    region2, sample2, method2 = options.tags[graph2]
+    assert region1 == region2
+    if sample1 is not None and sample2 is not None:
+        assert sample1 == sample2
+
+    s1tag = "_" + sample1 if sample1 is not None else ""
+    s2tag = "_" + sample2 if sample2 is not None else ""
+    return os.path.join(options.comp_dir, "vcfeval_compare_data", region1,
+                            method1 + s1tag + "_vs_" + method2 + s2tag + ".vcfeval")
     
 def corg_graph_path(graph1, graph2, options):
     """ get the path for vg output of corg
@@ -231,6 +250,19 @@ def out_tsv_path(options, region, category, distance):
     """
     return os.path.join(options.comp_dir, "comp_tables",
                         category + "-" + distance + "-" + region + ".tsv")
+
+def vg_length(vg, options):
+    """ get sequence length out of vg stats
+    """
+    if not os.path.exists(vg):
+        return -1
+    cmd = "vg stats -l {}".format(vg)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=sys.stderr, bufsize=-1)
+    output, _ = p.communicate()
+    assert p.wait() == 0
+    length = int(output.split()[1])
+    return length    
 
 def raw_tsv_path(options, region, category, distance):
     """ get the output tsv path for "raw" tables (ie with nones for missing data)
@@ -327,6 +359,7 @@ def sompy_dist_fn(graph1, graph2, options):
     total = None
 
     # read sompy csv output.  be a little flexible in terms of row column order (but not names!)
+    RealTimeLogger.get().warning(jpath)
     with open(jpath) as f:
         for line in f:
             toks = line.split(",")
@@ -364,7 +397,7 @@ def happy_dist_fn(graph1, graph2, options):
     indels = None
     total = None
 
-    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus", "g1kvcf"]:
+    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus", "g1kvcf", "freebayes"]:
         # read happy roc output.
         # todo : indels and total:  problem= rocs have differen numbers of lines wwhich doesnt fit interface as is
         snp_roc_path = jpath.replace("summary.csv", "roc.snp.all.tsv")
@@ -388,13 +421,13 @@ def happy_dist_fn(graph1, graph2, options):
                 toks = line.strip().split(",")
                 if len(toks) < 2:
                     continue
-                if toks[1] == "TRUTH.TOTAL":
+                if "METRIC.Recall" in toks:
                     header = toks
                     rec_idx = toks.index("METRIC.Recall")
                     prec_idx = toks.index("METRIC.Precision")
-                elif toks[0] == "Locations.INDEL":
+                elif toks[0] == "INDEL":
                     indels = toks
-                elif toks[0] == "Locations.SNP":
+                elif toks[0] == "SNP":
                     snps = toks
                 elif toks[0] == "Locations":
                     total = toks
@@ -402,6 +435,9 @@ def happy_dist_fn(graph1, graph2, options):
         # indels optional
         if indels is None:
             indels = [0] * 100
+        # toal optioal
+        if total is None:
+            total = [0] * 100
         
         # shoehorn into vcfCompre style output (todo, revise this)
         return [[snps[prec_idx],
@@ -414,7 +450,34 @@ def happy_dist_fn(graph1, graph2, options):
                  total[rec_idx]]]
 
 
+def vcfeval_dist_fn(graph1, graph2, options):
+    out_dir = comp_path_vcfeval(graph1, graph2, options)
+    summary_path = os.path.join(out_dir, "summary.txt")
 
+    # read in the text summary, looks like this
+    #2016-04-25 08:59:09 Threshold  True-pos  False-pos  False-neg  Precision  Sensitivity  F-measure
+    #----------------------------------------------------------------------------
+    #     None       985       1398       1075     0.4133       0.4782     0.4434
+
+    with open(summary_path) as f:
+        header = f.readline().split()
+        prec_idx = header.index("Precision")
+        rec_idx = header.index("Sensitivity")
+        f.readline()
+        data = f.readline().split()
+        total_precision = data[prec_idx]
+        total_recall = data[rec_idx]
+
+    # shoehorn into vcfCompre style output (todo, revise this)
+    return [[0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            total_precision,
+            total_recall]]
+    
 def make_mat(options, row_graphs, column_graphs, dist_fns):
     """ make a distance matix """
     mat = []
@@ -425,35 +488,51 @@ def make_mat(options, row_graphs, column_graphs, dist_fns):
                 mat[-1].append(dist_fn(row, col))
     return mat
 
+def n_avg(row):
+    """ get average skipping Nones """
+    if not type(row) is list:
+        return row
+    a = [x for x in row if x is not None]
+    if len(a) == 0:
+        return None
+    else:
+        return float(sum(a)) / len(a)
+
 def make_tsvs(options):
     """ make some tsv files in the output dir
     """
+
+    if options.comp_type == "kmer":
+        dist_names = ["Jaccard-Dist", "Precision", "Recall"]
+        dist_fns = [jaccard_dist_fn, precision_dist_fn, recall_dist_fn]
+    elif options.comp_type == "corg":
+        dist_names = ["Corg-Dist"]
+        dist_fns = [corg_dist_fn]
+    elif options.comp_type == "vcf":
+        dist_names = vcf_dist_header(options)
+        dist_fns = [vcf_dist_fn]
+    elif options.comp_type == "sompy":
+        dist_names = vcf_dist_header(options)
+        dist_fns = [sompy_dist_fn]
+    elif options.comp_type == "happy":
+        dist_names = vcf_dist_header(options)
+        dist_fns = [happy_dist_fn]
+    elif options.comp_type == "vcfeval":
+        dist_names = vcf_dist_header(options)
+        dist_fns = [vcfeval_dist_fn]
+    else:
+        assert False
+        
     # break apart by region
     for region in options.sample_graphs.keys():
 
         # do the baseline tsvs.  this is one row per graph,
         # with one column per comparison type with truth
         for baseline in ["g1kvcf", "platvcf"]:
+            header = dist_names
             RealTimeLogger.get().info("Making {} baseline tsv for {}".format(baseline, region))
             mat = []
             row_labels = []
-            if options.comp_type == "kmer":
-                header = ["Jaccard-Dist", "Precision", "Recall"]
-                dist_fns = [jaccard_dist_fn, precision_dist_fn, recall_dist_fn]
-            elif options.comp_type == "corg":
-                header = ["Corg-Dist"]
-                dist_fns = [corg_dist_fn]
-            elif options.comp_type == "vcf":
-                header = vcf_dist_header(options)
-                dist_fns = [vcf_dist_fn]
-            elif options.comp_type == "sompy":
-                header = vcf_dist_header(options)
-                dist_fns = [sompy_dist_fn]
-            elif options.comp_type == "happy":
-                header = vcf_dist_header(options)
-                dist_fns = [happy_dist_fn]
-            else:
-                assert False
             for sample in options.sample_graphs[region].keys():
                 for truth in options.baseline_graphs[region][sample]:
                     if options.tags[truth][2] == baseline:
@@ -465,10 +544,12 @@ def make_tsvs(options):
                                 except Exception as e:
                                     RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph, truth, e))
                                     dist_res = [[None] * len(header)]
-                                # todo: correct logic for more than one d (or sanity check)
-                                for r in dist_res:
-                                    rows.append(r)
-                                    row_labels.append(options.tags[graph][2])
+                                for ri, r in enumerate(dist_res):
+                                    if d == dist_fns[0]:
+                                        rows.append(r)
+                                        row_labels.append(options.tags[graph][2])
+                                    else:
+                                        rows[ri] += r
                             for row in rows:
                                 mat.append(row)
                         break # shoud not be necessary
@@ -480,9 +561,126 @@ def make_tsvs(options):
             clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
             tsv_path = out_tsv_path(options, region, baseline, options.comp_type)
             write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
+
+        # sample vs sample heatmap
+        if options.sample:
+            for di, d in enumerate(dist_fns):
+                RealTimeLogger.get().info("Making {} sample tsv for {}".format(dist_names[di], region))
+                sample_vs_sample = defaultdict(lambda : defaultdict(list))
+                for sample in options.sample_graphs[region].keys():
+                    for graph1 in options.sample_graphs[region][sample]:
+                        for graph2 in options.sample_graphs[region][sample]:
+                            try:
+                                dist_res = d(graph1, graph2, options)
+                            except Exception as e:
+                                RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph1, graph2, e))
+                                dist_res = [[None] * len(header)]
+                                # only ever deal with 1 row here
+                            assert len(dist_res) == 1
+                            sample_vs_sample[options.tags[graph1][2]][options.tags[graph2][2]].append(dist_res[0][0])
+                #average over samples
+                for x in sample_vs_sample.keys():
+                    for y in sample_vs_sample.keys():
+                        sample_vs_sample[x][y] = n_avg(sample_vs_sample[x][y])
+                # make matrix
+                mat = []
+                header = sample_vs_sample.keys()
+                row_labels = sample_vs_sample.keys()
+                for x in row_labels:
+                    row = []
+                    for y in header:
+                        row.append(sample_vs_sample[x][y])
+                    mat.append(row)
+                # write the heatmap matrix (with None for missing data) to file 
+                tsv_path = raw_tsv_path(options, region, "hm-sample", dist_names[di])
+                write_tsv(tsv_path, mat, header, row_labels, "Graph")
+
+                # remove Nones and write tsv again
+                clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
+                tsv_path = out_tsv_path(options, region, "hm-sample", dist_names[di])
+                write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
+
+        # original vs original heatmap
+        if options.orig:
+            RealTimeLogger.get().info("Making {} orig tsv for {}".format(dist_names[di], region))
+            for di, d in enumerate(dist_fns):
+                orig_vs_orig = defaultdict(lambda : defaultdict(list))
+                for graph1 in options.orig_graphs[region]:
+                    for graph2 in options.orig_graphs[region]:
+                        try:
+                            dist_res = d(graph1, graph2, options)
+                        except Exception as e:
+                            RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph1, graph2, e))
+                            dist_res = [[None] * len(header)]
+                            # only ever deal with 1 row here
+                        assert len(dist_res) == 1
+                        orig_vs_orig[options.tags[graph1][2]][options.tags[graph2][2]] = dist_res[0][0]
+                # make matrix
+                mat = []
+                header = orig_vs_orig.keys()
+                row_labels = orig_vs_orig.keys()
+                for x in row_labels:
+                    row = []
+                    for y in header:
+                        row.append(orig_vs_orig[x][y])
+                    mat.append(row)
+                # write the heatmap matrix (with None for missing data) to file 
+                tsv_path = raw_tsv_path(options, region, "hm-orig", dist_names[di])
+                write_tsv(tsv_path, mat, header, row_labels, "Graph")
+
+                # remove Nones and write tsv again
+                clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
+                tsv_path = out_tsv_path(options, region, "hm-orig", dist_names[di])
+                write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
+
+        # sample vs original heatmap
+        if options.orig_and_sample:
+            for di, d in enumerate(dist_fns):
+                RealTimeLogger.get().info("Making {} sample tsv for {}".format(dist_names[di], region))
+                sample_vs_orig = defaultdict(lambda : defaultdict(list))
+                for sample in options.sample_graphs[region].keys():
+                    for graph1 in options.sample_graphs[region][sample].union(options.orig_graphs[region]):
+                        for graph2 in options.sample_graphs[region][sample].union(options.orig_graphs[region]):
+                            try:
+                                dist_res = d(graph1, graph2, options)
+                            except Exception as e:
+                                RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph1, graph2, e))
+                                dist_res = [[None] * len(header)]
+                                # only ever deal with 1 row here
+                            assert len(dist_res) == 1
+                            name_1 = options.tags[graph1][2]
+                            if graph1 in options.sample_graphs[region][sample]:
+                                name_1 = "sample-" + name_1
+                            else:
+                                name_1 = "base-" + name_1
+                            name_2 = options.tags[graph2][2]
+                            if graph2 in options.sample_graphs[region][sample]:
+                                name_2 = "sample-" + name_2
+                            else:
+                                name_2 = "base-" + name_2
+                            sample_vs_orig[name_1][name_2].append(dist_res[0][0])
+                #average over samples                            
+                for x in sample_vs_orig.keys():
+                    for y in sample_vs_orig.keys():
+                        sample_vs_orig[x][y] = n_avg(sample_vs_orig[x][y])
+                # make matrix
+                mat = []
+                header = sample_vs_orig.keys()
+                row_labels = sample_vs_orig.keys()
+                for x in row_labels:
+                    row = []
+                    for y in header:
+                        row.append(sample_vs_orig[x][y])
+                    mat.append(row)
+                # write the heatmap matrix (with None for missing data) to file 
+                tsv_path = raw_tsv_path(options, region, "hm-orig_and_sample", dist_names[di])
+                write_tsv(tsv_path, mat, header, row_labels, "Graph")
+
+                # remove Nones and write tsv again
+                clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
+                tsv_path = out_tsv_path(options, region, "hm-orig_and_sample", dist_names[di])
+                write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
                 
-        # do the all vs all tsvs.  with averaging over samples, for heatmaps
-        # todo
         
 def write_tsv(out_path, mat, col_names, row_names, row_label):
     """ write tsv distance matrx
@@ -490,7 +688,7 @@ def write_tsv(out_path, mat, col_names, row_names, row_label):
     if len(mat) == 0 or len(mat[0]) == 0:
         RealTimeLogger.get().warning("Unable to write {} because input matrix empty".format(out_path))
         return
-        
+    
     robust_makedirs(os.path.dirname(out_path))
     with open(out_path, "w") as f:
         # header
@@ -507,14 +705,14 @@ def read_tsv(in_path):
     with open(in_path) as f:
         # header
         line = f.readline()
-        toks = line.split()
+        toks = line[:-1].split("\t")
         row_label = toks[0]
         col_names = toks[1:]
         row_names = []
         # body
         mat = []
         for line in f:
-            toks = line.split()
+            toks = line[:-1].split("\t")
             row_names.append(toks[0])
             toks = map(lambda x : None if x == "None" else float(x), toks[1:])
             mat.append(toks)
@@ -529,6 +727,7 @@ def remove_nones(mat, col_names, row_names):
     while keep_going is True:
         if len(row_names) == 0:
             break
+        assert len(mat) == len(row_names) 
         row_counts = [0 for x in range(len(row_names))]
         col_counts = [0 for x in range(len(col_names))]
         # could be moved outside loop but that'd be too clever
@@ -585,9 +784,9 @@ def compute_corg_comparison(job, graph1, graph2, options):
         if os.path.isfile(out_path):
             os.remove(out_path)
         robust_makedirs(os.path.dirname(out_path))
-        run("corg {} {} -e {} -k {} -t {} > {} 2> {}".format(graph1, graph2, options.edge_max,
-                                                             options.kmer, options.vg_cores, corg_vg,
-                                                             out_path.replace(".txt", ".log")),
+        run("corg {} {} --kmers-only -e {} -k {} -t {} > {} 2> {}".format(graph1, graph2, options.edge_max,
+                                                                          options.kmer, options.vg_cores, corg_vg,
+                                                                          out_path.replace(".txt", ".log")),
             timeout_sec=options.timeout,
             timeout_dep=out_path)
         len1 = vg_length(graph1, options)
@@ -597,7 +796,7 @@ def compute_corg_comparison(job, graph1, graph2, options):
         if lenC == 0:
             corg_val = "error: corg graph not computed. see .log"
         else:
-            corg_val = abs((2. * lenC) / float(len1 + len2) -1.) 
+            corg_val = abs(1. - (2. * lenC) / float(len1 + len2)) 
 
         with open(out_path, "w") as f:
             f.write("{}\n".format(corg_val))
@@ -610,26 +809,16 @@ def preprocess_vcf(job, graph, options):
 
     run("scripts/vcfsort {} > {}".format(input_vcf, output_vcf), fail_hard=True)
 
-    if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus"] or
+    if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus", "freebayes"] or
                                      options.tags[graph][2] == "g1kvcf" and options.baseline != "g1kvcf"):
         # g1kvcf has no quality info.  proxy with read depth to at least get a curve
-        filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
+        #filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
+        filter_opts = ""
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
         run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
     
-    if options.clip is True:
-        clip_bed = clip_bed_path(graph, options)        
-        if not os.path.isfile(clip_bed):
-            RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
-        else:
-            run("bgzip {}".format(output_vcf), fail_hard=True)
-            run("tabix -f -p vcf {}".format(output_vcf + ".gz"), fail_hard=True)
-            run("bcftools view {} -R {} > {}".format(output_vcf + ".gz", clip_bed, output_vcf), fail_hard=True)
-            run("rm {}".format(output_vcf + ".gz*"))
-            run("scripts/vcfsort {} > {}".format(output_vcf, output_vcf + ".sort"), fail_hard=True)
-            run("cp {} {}".format(output_vcf + ".sort", output_vcf), fail_hard=True)
 
     # todo: see why gatk wont normalize
     if options.normalize is True and options.tags[graph][2] != "gatk3":
@@ -640,6 +829,22 @@ def preprocess_vcf(job, graph, options):
         if sts == 0:
             run("cp {} {}".format(output_vcf + ".vt", output_vcf))
 
+    if options.clip is not None:
+        clip_bed = clip_bed_path(graph, options)        
+        if not os.path.isfile(clip_bed):
+            RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
+        else:
+            run("bgzip {}".format(output_vcf), fail_hard=True)
+            run("tabix -f -p vcf {}".format(output_vcf + ".gz"), fail_hard=True)
+            run("bcftools view {} -R {} > {}".format(output_vcf + ".gz", clip_bed, output_vcf), fail_hard=True)
+            run("rm {}".format(output_vcf + ".gz*"))
+            run("scripts/vcfsort {} | uniq > {}".format(output_vcf, output_vcf + ".sort"), fail_hard=True)
+            run("cp {} {}".format(output_vcf + ".sort", output_vcf), fail_hard=True)
+
+    # need compressed index for vcfeval
+    run("bgzip {} -c > {}".format(output_vcf, output_vcf + ".gz"), fail_hard=True)
+    run("tabix -f -p vcf {}".format(output_vcf + ".gz"), fail_hard=True)
+
 
 def compute_vcf_comparison(job, graph1, graph2, options):
     """ run vcf compare between two graphs
@@ -648,6 +853,8 @@ def compute_vcf_comparison(job, graph1, graph2, options):
         out_path = comp_path_sompy(graph1, graph2, options)
     elif options.comp_type == "happy":
         out_path = comp_path_happy(graph1, graph2, options)
+    elif options.comp_type == "vcfeval":
+        out_path = comp_path_vcfeval(graph1, graph2, options)
     else:
         out_path = comp_path_vcf(graph1, graph2, options)
 
@@ -675,22 +882,35 @@ def compute_vcf_comparison(job, graph1, graph2, options):
         robust_makedirs(os.path.dirname(out_path))
 
         if options.comp_type == "sompy":
-            run("export HGREF={} ; som.py {} {} --output {} -P 2> {}".format(options.chrom_fa_path, truth_vcf_path,
-                                                                          query_vcf_path, out_path.replace(".stats.csv", ""), out_path + ".stderr"))
+            sp_opts = "-P"
+            run("export HGREF={} ; som.py {} {} --output {} {} 2> {}".format(options.chrom_fa_path, truth_vcf_path,
+                                                                             query_vcf_path, out_path.replace(".stats.csv", ""),
+                                                                             sp_opts, out_path + ".stderr"))
         elif options.comp_type == "happy":
-            roc = ""
+            hp_opts = ""
+            # cant figure out how to get vcfeval working in happy.  leave off for now
+            #hp_opts += "--engine vcfeval --engine-vcfeval-path rtg --engine-vcfeval-template {}".format(options.chrom_sdf_path)
+            
             # make roc curves for gatk and platypus (hardcoding name check as hack for now)
-            if method1 in ["gatk3", "platypus", "g1kvcf"] and options.roc is True:
-                roc = "-P -V --roc Q_GQ --roc-filter LowGQX"
+            if method1 in ["gatk3", "platypus", "g1kvcf", "freebayes"] and options.roc is True:
+                hp_opts += " -V --roc Q_GQ --roc-filter LowGQX"
             # since we use just numbers for chrom names in the vcf, use options.happy_fa_path as a hack to make happy happy.
             run("export HGREF={} ; hap.py {} {} -o {} --threads {} {} 2> {}".format(options.happy_fa_path, truth_vcf_path,
-                                                                                      query_vcf_path, out_path.replace(".summary.csv", ""),
-                                                                                      options.vg_cores, roc, out_path + ".stderr"))
+                                                                                    query_vcf_path, out_path.replace(".summary.csv", ""),
+                                                                                    options.vg_cores, hp_opts, out_path + ".stderr"))
         elif options.comp_type == "vcf":
             vc_opts = ""
             for ignore_keyword in options.ignore:
                 vc_opts += " -i {}".format(ignore_keyword)
             run("scripts/vcfCompare.py {} {} {} > {}".format(query_vcf_path, truth_vcf_path, vc_opts, out_path))
+            
+        elif options.comp_type == "vcfeval":
+            ve_opts = "" if options.gt else "--squash-ploidy"
+            # indexing and compression was done by preprocessing phase
+            run("rm -rf {}".format(out_path))
+            run("rtg vcfeval -b {}.gz -c {}.gz --all-records -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
+                                                                                         options.chrom_sdf_path, ve_opts,
+                                                                                         out_path))
         
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
@@ -708,16 +928,14 @@ def compute_kmer_comparisons(job, options):
 def compute_corg_comparisons(job, options):
     """ run corg compare on all corg-ablegraphs. 
     """
-    RealTimeLogger.get().info("Running corg on pairs of input graphs")
-    
-    RealTimeLogger.get().info("Running vg compare on {} pairs of input graphs".format(
+    RealTimeLogger.get().info("Running corg comparison {} pairs of input graphs".format(
         len(options.pair_comps)))
     for pair_comp in options.pair_comps:
         graph1, graph2 = pair_comp[0], pair_comp[1]
-        out_path = comp_path(graph1, graph2, options)
+        out_path = corg_path(graph1, graph2, options)
         if options.overwrite or not os.path.exists(out_path):
             job.addChildJobFn(compute_corg_comparison, graph1, graph2, options,
-                                          cores=min(options.vg_cores, 2))
+                              cores=options.vg_cores)
 
 def compute_vcf_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
@@ -751,7 +969,7 @@ def compute_kmer_indexes(job, options):
             if options.overwrite or not os.path.exists(index_path(graph, options)):
                 job.addChildJobFn(compute_kmer_index, graph, options, cores=options.vg_cores)
 
-    if options.comp_type in ["vcf", "sompy", "happy"]:
+    if options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
         RealTimeLogger.get().info("Preprocessing {} input vcfs".format(len(input_set)))
         for graph in input_set:
             if options.overwrite or not os.path.isfile(preprocessed_vcf_path(graph, options)):
@@ -762,7 +980,7 @@ def compute_kmer_indexes(job, options):
         job.addFollowOnJobFn(compute_kmer_comparisons, options, cores=1)
     elif options.comp_type == "corg":
         job.addFollowOnJobFn(compute_corg_comparisons, options, cores=1)
-    elif options.comp_type in ["vcf", "sompy", "happy"]:
+    elif options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
         job.addFollowOnJobFn(compute_vcf_comparisons, options, cores=1)
 
 def breakdown_gams(in_gams, orig, orig_and_sample, options):
@@ -792,7 +1010,7 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             tags[orig_path] = (region, None, method)
 
         def test_path(graph, method):
-            if options.comp_type in ["vcf", "sompy", "happy"]:
+            if options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
                 return input_vcf_path(graph, options, region, sample, method)
             return graph
 
@@ -808,7 +1026,7 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             baseline_graphs[region][sample].add(platvcf_path)
 
         # add external vcfs as sample graphs, rely on tags to tell them apart
-        if options.comp_type in ["vcf", "sompy", "happy"]:
+        if options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
             gatk3_path = input_vcf_path(None, options, region, sample, "gatk3")
             if os.path.isfile(gatk3_path):
                 sample_graphs[region][sample].add(gatk3_path)
@@ -817,6 +1035,10 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             if os.path.isfile(platypus_path):
                 sample_graphs[region][sample].add(platypus_path)
                 tags[platypus_path] = (region, sample, "platypus")
+            freebayes_path = input_vcf_path(None, options, region, sample, "freebayes")
+            if os.path.isfile(freebayes_path):
+                sample_graphs[region][sample].add(freebayes_path)
+                tags[freebayes_path] = (region, sample, "freebayes")                
             if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
                 sample_graphs[region][sample].add(g1kvcf_path)
 
@@ -829,12 +1051,22 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
 def main(args):
     
     options = parse_args(args)
-    
 
-    assert options.comp_type in ["corg", "kmer", "vcf", "sompy", "happy"]
+    assert options.comp_type in ["corg", "kmer", "vcf", "sompy", "happy", "vcfeval"]
         
-    if options.comp_type in ["vcf", "sompy", "happy"]:
+    if options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
         assert not options.orig and not options.orig_and_sample
+
+    if options.orig_and_sample:
+        options.orig = True
+        options.sample = True
+
+    if options.comp_type in ["vcfeval", "happy"]:
+        options.chrom_sdf_path = os.path.join(options.comp_dir, "chrom.sdf")
+        if options.overwrite or not os.path.exists(options.chrom_sdf_path):
+            # need to reformat the fasta as sdf for vcfeval
+            run("rm -rf {}; rtg format {} -o {}".format(
+                options.chrom_sdf_path, options.chrom_fa_path, options.chrom_sdf_path))
     
     RealTimeLogger.start_master()
 
@@ -859,7 +1091,7 @@ def main(args):
                     options.pair_comps.append((graph1, graph2))
                     
             # optional original vs sample
-            if options.sample_and_original:
+            if options.orig_and_sample:
                 for sample in options.sample_graphs[region].keys():
                     for graph2 in options.sample_graphs[region][sample]:
                         options.pair_comps.append((graph1, graph2))

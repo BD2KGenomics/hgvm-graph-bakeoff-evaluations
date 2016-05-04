@@ -1,158 +1,201 @@
 #!/usr/bin/env python2.7
 """
-Compute concordance statistics for all gams that are children in trios.  This is 
-determined by checking to see if there are two other gams with same path but 
-with number at end of names incremented by 1 and 2.  
+Get some basic statistics from the vg call output (via rocDistances.py)
 """
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
-import doctest, re, json, collections, time, timeit, string
+import doctest, re, json, collections, time, timeit, string, tempfile
 from collections import defaultdict
 from operator import sub
-from toil.job import Job
-from toillib import RealTimeLogger, robust_makedirs
+from toillib import robust_makedirs
 from callVariants import sample_vg_path, sample_txt_path, augmented_vg_path, alignment_region_tag, alignment_graph_tag
 from callVariants import graph_path, index_path, augmented_vg_path, linear_vg_path, linear_vcf_path, sample_vg_path
-from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag
-from callStats import boxPlot
+from callVariants import alignment_region_tag, alignment_sample_tag, alignment_graph_tag, run
+from plotVariantsDistances import name_map
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
         formatter_class=argparse.RawDescriptionHelpFormatter)
-
-    # Add the Toil options so the job store is the first argument
-    Job.Runner.addToilOptions(parser)
-
+        
     # General options
-    parser.add_argument("in_gams", nargs="+",
-                        help="input alignment files. (must have been run through callVariants.py!)")
-    parser.add_argument("output_path", type=str,
-                        help="directory to write output to.  not to be confused with --out_dir"
-                        "which is the output directory used for callVariants.py")    
-    parser.add_argument("--out_dir", type=str, default="variants",
-                        help="output directory given to callVariants.py")
-    parser.add_argument("--overwrite", action="store_true", default=False,
-                        help="Only compute trios if output not found on disk")
-    parser.add_argument("--tag", type=str, default=None,
-                        help="Tag to add to ouput files")
-    parser.add_argument("--vg_cores", type=int, default=1,
-                        help="number of cores to give to vg commands")
-
+    parser.add_argument("roc_dir", type=str,
+                        help="links directory _comp.best output by rocDistances.py")
+    parser.add_argument("--sample", type=str, default="NA12878",
+                        help="sample name")
                             
     args = args[1:]
         
     return parser.parse_args(args)
 
-def concordance_path(gam, options):
-    """ output path for call to trioConcordance.py """
-    calls_txt = sample_txt_path(gam, options)
-    return calls_txt.replace("_sample.txt", "_concord.txt")
 
-def trio_tsv_path(options):
-    """ output table path """
-    name = "trio_concordance"
-    if options.tag is not None:
-        name = name + "_" + options.tag
-    return os.path.join(options.output_path, name + ".tsv")
+def sompy_stats(sample_vcf, truth_vcf, filter_xref, options):
+    """ run sompy (copied from computeVariantsDistances, mostly) """
 
-def get_relative(gam, offset, options):
-    """ search gam list for relative by offset"""
-    try:
-        base, ext = os.path.splitext(gam)
-        idx = int(base[-3:])
-        rel_name = "{}{}{}".format(base[:-3], idx + offset, ext)
-        if rel_name in options.in_gams:
-            return rel_name
-    except:
-        return None
-    return None
+    out_base = tempfile.mkdtemp(prefix = "callStats_", dir = ".")
 
-def compute_concordance(job, child_txt_path, mom_txt_path, dad_txt_path,
-                        concord_path, options):
-    """ run trioConcordance on a trio of text call files
-    """
-    cmd = "scripts/trioConcordance.py {} {} {} > {}".format(child_txt_path,
-                                                            mom_txt_path,
-                                                            dad_txt_path,
-                                                            concord_path)
-    RealTimeLogger.get().info("RUN: {}".format(cmd))
-    os.system(cmd)
+    if filter_xref is True:
+        filter_vcf = os.path.join(out_base, "filter.vcf")
+        os.system("grep -v XREF {} > {}".format(sample_vcf, filter_vcf))
+        sample_vcf = filter_vcf
 
-def compute_all_trios(job, options):
-    """ run trioConcordance.py in parallel on all trios found in the input
-    """
+    run("som.py {} {} -P -o {} > /dev/null".format(truth_vcf, sample_vcf, os.path.join(out_base, "sp_out")), fail_hard=True)
 
-    for gam in options.in_gams:
-        mom_gam = get_relative(gam, -1, options)
-        dad_gam = get_relative(gam, -2, options)
-        if mom_gam is not None and dad_gam is not None:
-            concord_path = concordance_path(gam, options)
-            if options.overwrite or not os.path.isfile(concord_path):
-                child_txt_path = sample_txt_path(gam, options)
-                mom_txt_path = sample_txt_path(mom_gam, options)
-                dad_txt_path = sample_txt_path(dad_gam, options)
-                job.addChildJobFn(compute_concordance, child_txt_path, mom_txt_path,
-                                  dad_txt_path, concord_path, options)
 
-def concordance_tsv(options):
-    """ scrape up all the concordance data and make a table
-    """
+    indels, snps = None, None
+    with open(os.path.join(out_base, "sp_out.stats.csv")) as sp_result:
+        for line in sp_result:
+            toks = line.split(",")
+            if len(toks) < 2:
+                continue
+            if toks[1] == "type":
+                header = toks
+                tp_idx = toks.index("tp")
+                fp_idx = toks.index("fp")
+            elif toks[1] == "indels":
+                indels = toks
+            elif toks[1] == "SNVs":
+                snps = toks
+            elif toks[1] == "records":
+                total = toks
 
-    table = "#region\tgraph\tsample\tconcordant\tdiscordant\tconcordance\n"
+    os.system("rm -rf {}".format(out_base))
 
-    # map child gam path to pct concordance
-    for gam in options.in_gams:
-        mom_gam = get_relative(gam, -1, options)
-        dad_gam = get_relative(gam, -2, options)
-        if mom_gam is not None and dad_gam is not None:
-            concord_path = concordance_path(gam, options)
-            results = (-1, -1, -1)
-            with open(concord_path) as f:
-                line = f.readline()
-                toks = line.split()
-                results = (int(toks[0]), int(toks[1]), float(toks[2]))
-                
-                sample = alignment_sample_tag(gam, options)
-                region = alignment_region_tag(gam, options)
-                graph = alignment_graph_tag(gam, options)
+    # indels optional
+    if indels is None:
+        indels = [0] * 100
+    if snps is None:
+        snps = [0] * 100
 
-                table += "{}\t{}\t{}\t{}\t{}\t{}\n".format(region,
-                                                           graph,
-                                                           sample,
-                                                           results[0],
-                                                           results[1],
-                                                           results[2])
+    ret = dict()
+    ret["SNP-TP"] = int(snps[tp_idx])
+    ret["SNP-FP"] = int(snps[fp_idx])
+    ret["INDEL-TP"] = int(indels[tp_idx])
+    ret["INDEL-FP"] = int(indels[fp_idx])
+    ret["TOTAL-TP"] = int(total[tp_idx])
+    ret["TOTAL-FP"] = int(total[fp_idx])
+    
+    return ret
 
-    with open(trio_tsv_path(options), "w") as out_file:
-        out_file.write(table)
+def vcf_stats(sample_vcf, truth_vcf, options):
+    """ compute breakdown of snps indels reference non reference false positives true positives
+    """    
+    # compare everything
+    tot_stats = sompy_stats(sample_vcf, truth_vcf, False, options)
+
+    # compare without xref in sample
+    aug_stats = sompy_stats(sample_vcf, truth_vcf, True, options)
+
+    return tot_stats, aug_stats
+
+def stats_row_header(options):
+    """ header """
+    return "\t".join(["Region", "Graph"] +
+                     ["SNPS", "SNPS-TP", "SNPS-FP", "SNPS-FPR", "REF-SNPS", "REF-SNPS-TP", "REF-SNPS-FP", "REF-SNPS-FPR", "AUG-SNPS", "AUG-SNPS-TP", "AUG-SNPS-FP", "AUG-SNPS-FPR", "AUG-SNPS-FPR-DELTA"] +
+                     ["INDELS", "INDELS-TP", "INDELS-FP", "INDELS-FPR", "REF-INDELS", "REF-INDELS-TP", "REF-INDELS-FP", "REF-INDELS-FPR", "AUG-INDELS", "AUG-INDELS-TP", "AUG-INDELS-FP", "AUG-INDELS-FPR", "AUG-INDELS-FPR-DELTA"] +
+                     ["TOTAL", "TOTAL-TP", "TOTAL-FP", "TOTAL-FPR", "REF-TOTAL", "REF-TOTAL-TP", "REF-TOTAL-FP", "REF-TOTAL-FPR", "AUG-TOTAL", "AUG-TOTAL-TP", "AUG-TOTAL-FP", "AUG-TOTAL-FPR", "AUG-TOTAL-FPR-DELTA"])
+
+def stats_row(region, graph, query_vcf, truth_vcf, options):
+    """ make a stats line """
+    tot, aug = vcf_stats(query_vcf, truth_vcf, options)
+
+    def make_row(s):
+        count = tot["{}-FP".format(s)] + tot["{}-TP".format(s)]
+        tp = tot["{}-TP".format(s)]
+        fp = tot["{}-FP".format(s)]
+        aug_count = aug["{}-FP".format(s)] + aug["{}-TP".format(s)]
+        aug_fp = aug["{}-FP".format(s)]
+        aug_tp = aug["{}-TP".format(s)]
+        fpr = float(fp) / count if count > 0 else 0
+        aug_fpr = float(aug_fp) / aug_count if aug_count > 0 else 0
+        ref_count = count - aug_count
+        ref_fp = fp - aug_fp
+        ref_tp = tp - aug_tp
+        ref_fpr = float(ref_fp) / ref_count if ref_count > 0 else 0
+        fpr_delta = aug_fpr - ref_fpr
+
+        return [count, tp, fp, fpr, ref_count, ref_tp, ref_fp, ref_fpr, aug_count, aug_tp, aug_fp, aug_fpr, fpr_delta]
+
+    row = [region, graph]
+    row += make_row("SNP")
+    row += make_row("INDEL")
+    row += make_row("TOTAL")
+    
+    return "\t".join([str(x) for x in row])
+                     
+def best_stats(options):
+    """ get the vcf stats from the "best" call dir as previously created by rocDistances.py"""
+    # get mapping from file names to names we want to show
+    names = name_map()
+    sys.stdout.write(stats_row_header(options) + "\n")
+    for region_path in glob.glob(os.path.join(options.roc_dir, "*")):
+        region = os.path.basename(region_path)
+        for graph_path in glob.glob(os.path.join(region_path, "*")):
+            graph = os.path.basename(graph_path)
+            if graph in names:
+                graph = names[graph]
+            else:
+                sys.stderr.write("Unable to find name for {}".format(graph))
+            truth_vcf = os.path.join(graph_path, "{}_platvcf_basline.vcf".format(options.sample))
+            query_vcf = os.path.join(graph_path, "{}_sample_preprocessed.vcf".format(options.sample))
+            if os.path.exists(truth_vcf) and os.path.exists(query_vcf):
+                row = stats_row(region, graph, query_vcf, truth_vcf, options)
+                sys.stdout.write(row + "\n")
+            else:
+                sys.stderr.write("Cannot find VCF input for {} {}\n".format(region, graph))
             
+    
+        
+def boxPlot(inFile, outFile, x_column = 0, y_column = 1, title = None, x_label = None, y_label = None):
+    """ make a box plot out of one of the tsv's generated above
+    """
+
+    # input format not quite right.  We strip off sample names from row
+    # headers and put the column we want 2nd, and also skip -1 data points
+    tempTsv = inFile.replace(".tsv", "_plot_{}_v_{}.tsv".format(x_column, y_column))
+    with open(inFile) as f, open(tempTsv, "w") as o:
+        for line in f:
+            if len(line) > 0 and line[0] == "#":
+                continue
+            toks = line.split()
+            # strip last _ and beyond
+            name = "_".join(toks[x_column].split("_")[:-1])
+            if name == "":
+                name = toks[x_column]
+            val = toks[y_column]
+            missing = False
+            try:
+                missing = float(val) == -1.
+            except:
+                pass
+            if not missing:
+                o.write("{}\t{}\n".format(name, val))
+    cmd = "scripts/boxplot.py {} --save {} --x_sideways".format(tempTsv, outFile)
+    if title is not None:
+        cmd += " --title {}".format(title)
+    if x_label is not None:
+        cmd += " --x_label {}".format(x_label)
+    if y_label is not None:
+        cmd += " --y_label {}".format(y_label)
+    print cmd
+    os.system(cmd)
+                
 def main(args):
     
     options = parse_args(args)
 
-    robust_makedirs(options.output_path)
-    
-    RealTimeLogger.start_master()
-
-    # Make a root job
-    root_job = Job.wrapJobFn(compute_all_trios, options,
-                             cores=1, memory="2G", disk=0)
-    
-    # Run it and see how many jobs fail
-    failed_jobs = Job.Runner.startToil(root_job,  options)
-    
-    if failed_jobs > 0:
-        raise Exception("{} jobs failed!".format(failed_jobs))
-                               
-    RealTimeLogger.stop_master()
-
-    # write the table
-    concordance_tsv(options)
-
-    # write boxplot
-    boxPlot(trio_tsv_path(options), trio_tsv_path(options).replace(".tsv", ".pdf"),
-            1, 5, "Trio\\ Concordance")
+    best_stats(options)
 
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
