@@ -1,11 +1,15 @@
 #!/usr/bin/env python2.7
 """
-Computes concordance between trio of sample graphs, using text output from vg call -c.  This concordance is the proportion of base calls in the child that can be found in at least one parent.  This will only work if the calls were all computed on the same reference graph. prints num_concordant num_discordant pct_concordant
+Computes Mendelian concordance between trio of sample graphs, as output to vcf. 
 
 """
+# todo: this was written before vcf conversion, then modified to run on vcf.
+#       should look into using off-the-shelf tool on vcfs...
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit, string
+from collections import defaultdict
+from vcfCompare import parse_alts, parse_ref
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -13,133 +17,101 @@ def parse_args(args):
         
     # General options
     parser.add_argument("child", type=str,
-                        help="child calls (from vg call -c)")    
+                        help="child calls (vcf)")    
     parser.add_argument("parent1", type=str,
-                        help="parent1 calls (from vg call -c)")
+                        help="parent1 calls (vcf)")
     parser.add_argument("parent2", type=str,
-                        help="parent2 calls (from vg call -c)")
+                        help="parent2 calls (vcf)")
+    parser.add_argument("-c", action="store_true", default=False,
+                        help="Ignore sequence name (only look at start)")
+    parser.add_argument("-i", action="append", default=[],
+                        help="Ignore lines contaning keyword")
+    parser.add_argument("-g", action="store_true", default=False,
+                        help="Ignore genotype (which isnt reliable for graph calls) assume all alts 0/1")
+    
+    
+    
     
     args = args[1:]
         
     return parser.parse_args(args)
 
-def parse_call(call):
-    """ take a comman-separated call, and return lower case tuple
-    """
-    return map(lambda x : x.lower(), call.split(","))
 
-def is_base(value):
-    """ is value a call, ie not a -, which we treat as null
-    """
-    return value in ["a", "c", "g", "t", "."]
+def parse_alleles(toks, options):
+    """ return the alleles (first sample /last column) todo: more general?"""
+    if toks[-2].split(":")[0] == "GT": 
+        gtcol = len(toks) - 1
+        if options.g:
+            gttok = "0|1"
+        else:
+            gttok = toks[gtcol].split(":")[0]
+        gts = "|".join(gttok.replace(".", "0").split("/")).split("|")
+        vals = [parse_ref(toks)] + parse_alts(toks)
+        alleles = [vals[int(x)] for x in gts]
+        return alleles
+    return []
 
-def score_call(child_call, dad_call, mom_call):
-    """ return tuple of (concordant, discordant) calls in child
-    now compares everything including non-calls.  a call is
-    concordant if it has a match in either parent.  both calls
-    can only be concordant if they do not share a match
+def make_allele_dict(vcf_path, options):
+    """ load up all variants by their coordinates
+    map (chrom, pos) -> [allele1, allele2]
     """
-    parent_call = tuple(dad_call) + tuple(mom_call)
-    c0_idx = None
-    c1_idx = None
-    concordant = 0
-    discordant = 2
-    assert len(child_call) == 2
-    assert len(dad_call) == 2
-    assert len(mom_call) == 2
-    for i in range(len(parent_call)):
-        if c0_idx is None and child_call[0] == parent_call[i]:
-            c0_idx = i
-            concordant += 1
-        elif c1_idx is None and i != c0_idx and\
-             child_call[1] == parent_call[i]:
-            c1_idx = i
-            concordant += 1
-    discordant -= concordant
+    vcf_dict = dict()
+    ref_dict = dict()
+    with open(vcf_path) as f:
+        for line in f:
+            skip = line[0] == "#"
+            for ignore_keyword in options.i:
+                if ignore_keyword in line:
+                    skip = True
+            if not skip:
+                toks = line.split()
+                chrom = toks[0] if options.c is False else None
+                pos = int(toks[1])
+                alleles = parse_alleles(toks, options)
+                vcf_dict[(chrom, pos)] = alleles
+                ref_dict[(chrom, pos)] = [parse_ref(toks)]
+    return vcf_dict, ref_dict
 
-    # move to calling pair of calls concordant or discordant for now
-    #return concordant, discordant
-    if concordant == 2:
-        return 1, 0
+def score_call(child_alleles, parent1_alleles, parent2_alleles, options):
+    """ basic consistency.  score 1 out of 1 if child alleles can come from combination of
+parents, 0 / 1 otherwise 
+    """
+    if len(child_alleles) == 2:
+        # only handle diploid calls
+        if child_alleles[0] in parent1_alleles and child_alleles[1] in parent2_alleles or\
+           child_alleles[0] in parent2_alleles and child_alleles[1] in parent1_alleles:
+            return 1, 1
+        else:
+            return 0, 1
     else:
-        return 0, 1
 
-def find_line(node_id, offset, in_line, in_file):
-    """ scan ahead until we find a position that's >= to given id / offset
-    """
-    def test_line(node_id, offset, line):
-        """ check if line >= input coords """
-        if line is not None and len(line) > 0:
-            toks = line.split()
-            assert len(toks) == 4
-            in_id = int(toks[0])
-            in_offset = int(toks[1])
-            if in_id > node_id or (in_id == node_id and in_offset >= offset):
-                return True
-        return False
-
-    if test_line(node_id, offset, in_line):
-        return in_line
-                            
-    line = in_file.readline()
-    while line:
-        if test_line(node_id, offset, line):
-            return line
-        line = in_file.readline()
-    return None
+        return 0, 0    
     
 def main(args):
-    
-    options = parse_args(args) 
 
-    tot_right = 0
-    tot_wrong = 0
+    options = parse_args(args)
 
-    c_file = open(options.child)
-    m_file = open(options.parent1)
-    d_file = open(options.parent2)
+    parent1_alleles, parent1_refs = make_allele_dict(options.parent1, options)
+    parent2_alleles, parent2_refs = make_allele_dict(options.parent2, options)
+    child_alleles, child_refs = make_allele_dict(options.child, options)
 
-    c_line = c_file.readline()
-    m_line = None
-    d_line = None
-    
-    while c_line:
-        c_toks = c_line.split()
-        assert len(c_toks) == 4
-        c_id = int(c_toks[0])
-        c_offset = int(c_toks[1])
+    # keep track of all reference positions in one place (rather than
+    # bother with fasta)
+    ref_alleles = parent1_refs
+    ref_alleles.update(parent2_refs)
+    ref_alleles.update(child_refs)
+
+    score = 0, 0
+    for pos, alleles in child_alleles.items():
+        p1 = parent1_alleles[pos] if pos in parent1_alleles else ref_alleles[pos]
+        p2 = parent2_alleles[pos] if pos in parent2_alleles else ref_alleles[pos]
+        a = score_call(alleles, p1, p2, options)
+        #sys.stderr.write("{} {} -> {}\n".format(pos, alleles, a))
+        score = score[0] + a[0], score[1] + a[1]
         
-        m_line = find_line(c_id, c_offset, m_line, m_file)
-        d_line = find_line(c_id, c_offset, d_line, d_file)
-
-        c_call = parse_call(c_toks[3])
-        m_call = ("-", "-")
-        d_call = ("-", "-")
-
-        if m_line is not None:
-            m_toks = m_line.split()
-            if m_toks[0] == c_toks[0] and m_toks[1] == c_toks[1]:
-                assert m_toks[2] == c_toks[2]
-                m_call = parse_call(m_toks[3])
-
-        if d_line is not None:
-            d_toks = d_line.split()
-            if d_toks[0] == c_toks[0] and d_toks[1] == c_toks[1]:
-                assert d_toks[2] == c_toks[2]
-                d_call = parse_call(d_toks[3])
-                
-        score = score_call(c_call, m_call, d_call)
-        tot_right += score[0]
-        tot_wrong += score[1]
-        
-        c_line = c_file.readline()
-
-    c_file.close()
-    d_file.close()
-    m_file.close()
-
-    print "{}\t{}\t{}".format(tot_right, tot_wrong,
-                              float(tot_right) / max(1, (tot_right + tot_wrong)))
+    print "{}\t{}\t{}".format(score[0], score[1] - score[0],
+                              float(score[0]) / max(1, (score[1])))
+    return 0
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

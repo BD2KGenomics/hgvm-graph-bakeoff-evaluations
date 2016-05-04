@@ -19,18 +19,9 @@ def parse_args(args):
                         help="Input vcf file 2")
     parser.add_argument("-r", action="store_true", default=False,
                         help="Do vcf2 - vcf1 instead of vcf1 - vcf2")
-    parser.add_argument("-c", action="store_true", default=False,
-                        help="Ignore sequence name (only look at start)")
-    parser.add_argument("-g", action="store_true", default=False,
-                        help="Take into account GT (10th col)")
     parser.add_argument("-a", action="store_true", default=False,
                         help="Do intersection of vcf1 AND vcf2")
-    parser.add_argument("-s", action="store_true", default=False,
-                        help="Only snps")
-    parser.add_argument("-i", action="append", default=[],
-                        help="Ignore lines contaning keyword")    
-    
-    
+        
     args = args[1:]
     options = parser.parse_args(args)
     return options
@@ -41,6 +32,31 @@ def main(args):
     if options.r is True:
         options.vcf1, options.vcf2 = options.vcf2, options.vcf1
 
+    # this was originally written when I for some reason had a bcftools that was too old for isec, replace here
+    vcf1 = options.vcf1
+    if not options.vcf1[-6:] == ".vcf.gz":
+        os.system("bgzip {} -c > {}.gz".format(options.vcf1, options.vcf1))
+        vcf1 += ".gz"
+    vcf2 = options.vcf2
+    if not options.vcf1[-6:] == ".vcf.gz":
+        os.system("bgzip {} -c > {}.gz".format(options.vcf2, options.vcf2))
+        vcf2 += ".gz"
+
+    os.system("tabix -p vcf {}".format(vcf1))
+    os.system("tabix -p vcf {}".format(vcf2))
+
+    os.system("bcftools isec {} {} -p vcfd_".format(vcf1, vcf2))
+
+    if options.a:
+        os.system("cat vcfd_/0002.vcf")
+    else:
+        os.system("cat vcfd_/0000.vcf")
+    os.system("rm -rf vcfd_")
+        
+    return 0
+
+    # old...
+        
     # load vcf2 into dictionary lookup
     vcf_dict2 = make_vcf_dict(options.vcf2, options)
 

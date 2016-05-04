@@ -20,6 +20,8 @@ def parse_args(args):
                         help="Filter multibase snps")
     parser.add_argument("--qual", action="store_true",
                         help="Require 7th column = PASS")
+    parser.add_argument("--comp", action="store_true",
+                        help="Return things that don't pass filter")
     
     args = args[1:]
     options = parser.parse_args(args)
@@ -80,6 +82,10 @@ def main(args):
                 if skip is False and options.overlap is True and prev >= vcf_pos:
                     skip = True
                     overlap_count += 1
+
+                # apply complement
+                if options.comp:
+                    skip = not skip
 
                 # write to output
                 if skip is False:
