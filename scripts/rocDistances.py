@@ -34,10 +34,14 @@ def parse_args(args):
                         help="skip (alphabetically) first N input dirs")
     parser.add_argument("--skip_last", type=int, default=0,
                         help="skip (alphabetically) last N input dirs")
+    parser.add_argument("--best_baseline", type=str, default="platvcf",
+                        help="Bseline to use for generating best results.")        
+    parser.add_argument("--best_comp", type=str, default="sompy",
+                        help="comparison to use for generating best results. (see following columns for columns to use)")
     parser.add_argument("--pcol", type=int, default=1,
-                        help="column to look for for precision")
+                        help="0-based column to look for for precision")
     parser.add_argument("--rcol", type=int, default=2,
-                        help="column to look for for recall")
+                        help="0-based column to look for for recall")
     parser.add_argument("--smooth", action="store_true",
                         help="apply greedy smoothing to remove outliers")
                             
@@ -185,7 +189,7 @@ def main(args):
             print "{} {}".format(c, os.path.join(options.out_dir, "comp_tables",
                                                      os.path.basename(tsv)))
             tb = os.path.basename(tsv).split("-")
-            if len(tb) > 2 and tb[0] == "platvcf" and tb[1] == "sompy":
+            if len(tb) > 2 and tb[0] == options.best_baseline and tb[1] == options.best_comp:
                 avg_table.append(avg_acc(tsv, options))
                 update_best_table(best_table, tsv, options)
                 
@@ -195,7 +199,10 @@ def main(args):
     make_best_calls(best_table, options)
 
     # write out our sompy vcf snp accutacy
-    with open(os.path.join(options.out_dir, "platvcf-sompy-SNP-avg.tsv"), "w") as f:
+    with open(os.path.join(options.out_dir, "{}-{}-{}_{}-avg.tsv".format(options.best_baseline,
+                                                                         options.best_comp,
+                                                                         options.pcol,
+                                                                         options.rcol)), "w") as f:
         lines = sorted(avg_table)
         for line in lines:
             for tok in line:

@@ -113,7 +113,7 @@ done
 wait
 
 # scrape together all results into one tsv / region / comp type
-scripts/rocDistances.py ${OUT_DIR}/primary_*_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots --pcol 7 --rcol 8
+scripts/rocDistances.py ${OUT_DIR}/primary_*_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots --best_comp vcf
 
 # finally, draw out the tables created above
 scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots
