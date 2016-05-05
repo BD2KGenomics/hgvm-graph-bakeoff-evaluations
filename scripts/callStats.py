@@ -22,6 +22,8 @@ def parse_args(args):
                         help="links directory _comp.best output by rocDistances.py")
     parser.add_argument("--sample", type=str, default="NA12878",
                         help="sample name")
+    parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
+                        help="fasta file with entire chromosome info for all regions")    
                             
     args = args[1:]
         
@@ -38,7 +40,8 @@ def sompy_stats(sample_vcf, truth_vcf, filter_xref, options):
         os.system("grep -v XREF {} > {}".format(sample_vcf, filter_vcf))
         sample_vcf = filter_vcf
 
-    run("som.py {} {} -P -o {} > /dev/null".format(truth_vcf, sample_vcf, os.path.join(out_base, "sp_out")), fail_hard=True)
+    run("som.py {} {} -P -o {} -r {} > /dev/null".format(truth_vcf, sample_vcf, os.path.join(out_base, "sp_out"),
+                                                         options.chrom_fa_path), fail_hard=True)
 
 
     indels, snps = None, None
@@ -124,7 +127,7 @@ def trio_stats(sample_vcf, filter_xref, ignore_genotype, options):
         ts["BAD"] = -1
         ts["RATIO"] = -1.0
 
-     os.system("rm -rf {}".format(out_base))
+    os.system("rm -rf {}".format(out_base))
 
     
     return ts
