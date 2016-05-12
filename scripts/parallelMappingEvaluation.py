@@ -71,6 +71,10 @@ def parse_args(args):
     parser.add_argument("--index_mode", choices=["rocksdb", "gcsa-kmer",
         "gcsa-mem"], default="gcsa-mem",
         help="type of vg index to use for mapping")
+    parser.add_argument("--include_pruned", action="store_true",
+        help="use the pruned graph in the index")
+    parser.add_argument("--include_primary", action="store_true",
+        help="use the primary path in the index")
     
     
     # The command line arguments start with the program name, which we don't
@@ -377,33 +381,108 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # We want a GCSA2/xg index. We have to prune the graph ourselves.
             # See <https://github.com/vgteam/vg/issues/286>.
             
-            # Where will we save the pruned graph kmers?
-            kmers_filename = "{}/index.graph".format(
+            # What will we use as our temp combined graph file (containing only
+            # the bits of the graph we want to index, used for deduplication)?
+            to_index_filename = "{}/to_index.vg".format(
                 job.fileStore.getLocalTempDir())
             
-            # And the primary path kmers?
-            path_kmers_filename = "{}/index_path.graph".format(
+            # Where will we save the kmers?
+            kmers_filename = "{}/index.graph".format(
                 job.fileStore.getLocalTempDir())
+                
+            with open(to_index_filename, "w") as to_index_file:
+                
+                if options.include_pruned:
+                
+                    RealTimeLogger.get().info("Pruning {} to {}".format(
+                        graph_filename, to_index_filename))
+                    
+                    # Prune out hard bits of the graph
+                    tasks = []
+                    
+                    # Prune out complex regions
+                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                        "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
+                        "-e", str(options.edge_max), graph_filename],
+                        stdout=subprocess.PIPE))
+                        
+                    # Throw out short disconnected chunks
+                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                        "-S", "-l", str(options.kmer_size * 2),
+                        "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                        stdout=to_index_file))
+                        
+                    # Did we make it through all the tasks OK?
+                    for task in tasks:
+                        if task.wait() != 0:
+                            raise RuntimeError("Pipeline step returned {}".format(
+                                task.returncode))
+                                
+                    time.sleep(1)
+                    
+                if options.include_primary:
+                
+                    # Then append in the primary path. Since we don't knoiw what
+                    # "it's called, we retain "ref" and all the 19", "6", etc paths
+                    # "from 1KG.
+                    
+                    RealTimeLogger.get().info(
+                        "Adding primary path to {}".format(to_index_filename))
+                    
+                    # See
+                    # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
+                    
+                    # Generate all the paths names we might have for primary paths.
+                    # It should be "ref" but some graphs don't listen
+                    ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
+                        [str(x) for x in xrange(1, 23)])
+                        
+                    ref_options = []
+                    for name in ref_names:
+                        # Put each in a -r option to retain the path
+                        ref_options.append("-r")
+                        ref_options.append(name)
+
+                    tasks = []
+
+                    # Retain only the specified paths (only one should really exist)
+                    tasks.append(subprocess.Popen(
+                        ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
+                        ["-t", str(job.cores), graph_filename], 
+                        stdout=to_index_file))
+                        
+                    # TODO: if we merged the primary path back on itself, it's
+                    # possible for it to braid with itself. Right now we just ignore
+                    # this and let those graphs take a super long time to index.
+                        
+                    # Wait for this second pipeline. We don't parallelize with the
+                    # first one so we don't need to use an extra cat step.
+                    for task in tasks:
+                        if task.wait() != 0:
+                            raise RuntimeError("Pipeline step returned {}".format(
+                                task.returncode))
+                             
+                    # Wait to make sure no weird file-not-being-full bugs happen
+                    # TODO: how do I wait on child process output?
+                    time.sleep(1)
+                
+            time.sleep(1)
+                
+            # Now we have the combined to-index graph in one vg file. We'll load
+            # it (which deduplicates nodes/edges) and then find kmers.
                 
             with open(kmers_filename, "w") as kmers_file:
             
                 tasks = []
                 
-                RealTimeLogger.get().info("Pruning {} to {}".format(
-                    graph_filename, kmers_filename))
+                RealTimeLogger.get().info("Finding kmers in {} to {}".format(
+                    to_index_filename, kmers_filename))
                 
-                # Prune out complex regions
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                    "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
-                    "-e", str(options.edge_max), graph_filename],
+                # Deduplicate the graph
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                    "view", "-v", to_index_filename],
                     stdout=subprocess.PIPE))
-                    
-                # Throw out short disconnected chunks
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                    "-S", "-l", str(options.kmer_size * 2),
-                    "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                    stdout=subprocess.PIPE))
-                    
+                
                 # Make the GCSA2 kmers file
                 tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
                     "kmers", "-g", "-B", "-k", str(options.kmer_size),
@@ -420,77 +499,19 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 # Wait to make sure no weird file-not-being-full bugs happen
                 # TODO: how do I wait on child process output?
                 time.sleep(1)
-                            
-            with open(path_kmers_filename, "w") as path_kmers_file:
-                            
-                # Then append in the kmers from just the primary path. Since we
-                # don't knoiw what it's called, we retain "ref" and all the
-                # "19", "6", etc paths from 1KG.
                 
-                RealTimeLogger.get().info(
-                    "Adding primary path kmers from {} to {}".format(
-                    graph_filename, path_kmers_filename))
-                
-                # See
-                # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
-                
-                tasks = []
-                
-                # Generate all the paths names we might have for primary paths.
-                # It should be "ref" but some graphs don't listen
-                ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
-                    [str(x) for x in xrange(1, 23)])
-                    
-                ref_options = []
-                for name in ref_names:
-                    # Put each in a -r option to retain the path
-                    ref_options.append("-r")
-                    ref_options.append(name)
-
-                # Retain only the specified paths (only one should really exist)
-                tasks.append(subprocess.Popen(
-                    ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
-                    ["-t", str(job.cores), graph_filename], 
-                    stdout=subprocess.PIPE))
-                    
-                # TODO: if we merged the primary path back on itself, it's
-                # possible for it to braid with itself. Right now we just ignore
-                # this and let those graphs take a super long time to index.
-                    
-                # Make the GCSA2 kmers for just the primary path. Repetition is
-                # OK.
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "kmers", "-g", "-B", "-k", str(options.kmer_size),
-                    "-H", "1000000000", "-T", "1000000001",
-                    "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                    stdout=path_kmers_file))
-                    
-                # Wait for this second pipeline. We don't parallelize with the
-                # first one so we don't need to use an extra cat step.
-                for task in tasks:
-                    if task.wait() != 0:
-                        raise RuntimeError("Pipeline step returned {}".format(
-                            task.returncode))
-                         
-                # Wait to make sure no weird file-not-being-full bugs happen
-                # TODO: how do I wait on child process output?
-                time.sleep(1)
-                
-            # Wait to make sure no weird file-not-being-full bugs happen
-            # TODO: how do I wait on child process output?
             time.sleep(1)
-            
+                            
             # Where do we put the GCSA2 index?
             gcsa_filename = graph_filename + ".gcsa"
             
-            RealTimeLogger.get().info("GCSA-indexing {} and {} to {}".format(
-                    kmers_filename, path_kmers_filename, gcsa_filename))
+            RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
+                    kmers_filename, gcsa_filename))
             
             # Make the gcsa2 index. Make sure to use 3 doubling steps to work
             # around <https://github.com/vgteam/vg/issues/301>
             subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
-                kmers_filename, "-i", path_kmers_filename, "-g", gcsa_filename,
-                "-X", "3"])
+                kmers_filename, "-g", gcsa_filename, "-X", "3"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
