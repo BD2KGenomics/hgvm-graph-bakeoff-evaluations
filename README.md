@@ -144,6 +144,10 @@ The output will be in `call_comparison/pr_plots`
 
 ### Generate Variant Call Statistics
 
-TODO
+To get general statistics on the calls, including breakdown on reference vs non-reference calls, their proporitional accuracy, and trio concordance, run
+
+     ./scripts/callStats.py call_comparison/pr_plots.best > stats.tsv
+
+*Note*:  `call_pr.sh` must be edited so that `--skipBaseline` is removed from `OPTS` and all trio samples must be run (not just NA12878)
 
 
