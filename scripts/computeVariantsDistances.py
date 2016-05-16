@@ -81,6 +81,8 @@ def parse_args(args):
                         help="run vt normalization on all input vcfs")
     parser.add_argument("--clip", type=str, default=None,
                         help="clip vcf using specified bed file before call comparisons")
+    parser.add_argument("--clip_fp", type=str, default=None,
+                        help="false positives outside region will be called unknown (hap.py or som.py)")
     parser.add_argument("--roc", action="store_true", default=False,
                         help="generate happy rocs for gatk3 and platypus")
     parser.add_argument("--qpct", type=float, default=None,
@@ -829,7 +831,9 @@ def preprocess_vcf(job, graph, options):
         if sts == 0:
             run("cp {} {}".format(output_vcf + ".vt", output_vcf))
 
-    if options.clip is not None:
+    # clipping done in happy, sompy, and vcfeval command line now.  only do
+    # in preprocessing for other tools 
+    if options.clip is not None and options.comp_type not in ["happy", "sompy", "vcfeval"]:
         clip_bed = clip_bed_path(graph, options)        
         if not os.path.isfile(clip_bed):
             RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
@@ -883,6 +887,11 @@ def compute_vcf_comparison(job, graph1, graph2, options):
 
         if options.comp_type == "sompy":
             sp_opts = "-P"
+            if options.clip_fp:
+                sp_opts += " -f {}".format(options.clip_fp)
+            if options.clip:
+                sp_opts += " -R {}".format(options.clip)
+                
             run("export HGREF={} ; som.py {} {} --output {} {} 2> {}".format(options.chrom_fa_path, truth_vcf_path,
                                                                              query_vcf_path, out_path.replace(".stats.csv", ""),
                                                                              sp_opts, out_path + ".stderr"))
@@ -890,6 +899,10 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             hp_opts = ""
             # cant figure out how to get vcfeval working in happy.  leave off for now
             #hp_opts += "--engine vcfeval --engine-vcfeval-path rtg --engine-vcfeval-template {}".format(options.chrom_sdf_path)
+            if options.clip_fp:
+                hp_opts += " -f {}".format(options.clip_fp)
+            if options.clip:
+                hp_opts += " -R {}".format(options.clip)
             
             # make roc curves for gatk and platypus (hardcoding name check as hack for now)
             if method1 in ["gatk3", "platypus", "g1kvcf", "freebayes"] and options.roc is True:
@@ -906,6 +919,8 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             
         elif options.comp_type == "vcfeval":
             ve_opts = "" if options.gt else "--squash-ploidy"
+            if options.clip:
+                ve_opts += " --bed-regions={}".format(options.clip)
             # indexing and compression was done by preprocessing phase
             run("rm -rf {}".format(out_path))
             run("rtg vcfeval -b {}.gz -c {}.gz --all-records -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
@@ -1061,7 +1076,7 @@ def main(args):
         options.orig = True
         options.sample = True
 
-    if options.comp_type in ["vcfeval", "happy"]:
+    if options.comp_type in ["vcfeval"]:
         options.chrom_sdf_path = os.path.join(options.comp_dir, "chrom.sdf")
         if options.overwrite or not os.path.exists(options.chrom_sdf_path):
             # need to reformat the fasta as sdf for vcfeval
