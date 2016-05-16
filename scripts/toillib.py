@@ -533,7 +533,7 @@ class FileIOStore(IOStore):
                 if with_times:
                     # What is the mtime in seconds since epoch?
                     mtime_epoch_seconds = os.path.getmtime(os.path.join(
-                        input_path, item))
+                        self.path_prefix, input_path, item))
                     # Convert it to datetime
                     mtime_datetime = datetime.datetime.utcfromtimestamp(
                         mtime_epoch_seconds).replace(
