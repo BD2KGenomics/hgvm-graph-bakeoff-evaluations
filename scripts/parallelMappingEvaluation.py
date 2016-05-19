@@ -510,8 +510,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             
             # Make the gcsa2 index. Make sure to use 3 doubling steps to work
             # around <https://github.com/vgteam/vg/issues/301>
-            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
-                kmers_filename, "-g", gcsa_filename, "-X", "3"])
+            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+                str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
+                "-X", "3"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
@@ -519,8 +520,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             RealTimeLogger.get().info("XG-indexing {} to {}".format(
                     graph_filename, xg_filename))
                     
-            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-x",
-                xg_filename, graph_filename])
+            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+                str(job.cores), "-x", xg_filename, graph_filename])
         
         else:
             raise RuntimeError("Invalid indexing mode: " + options.index_mode)
