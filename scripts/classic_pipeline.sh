@@ -3,6 +3,8 @@
 # run some other variant callers on linear (non-graph) alignmetns as points of comparison
 # use mostly default options.  
 
+# expects there to be a rocksdb index for graphs in <graph_name>.index
+
 if [ "$#" -ne 4 ]; then
 	 echo "Syntax $0 <graphs_dir> <alginments_dir> <reads_dir> <out_dir>"
 	 exit 1
@@ -18,16 +20,16 @@ OUT_DIR=$4
 FA_DIR="/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/data/altRegions"
 PLATYPUS_CMD="python /cluster/home/hickey/tools/Platypus/bin/Platypus.py"
 
-REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
-SAMPLES=( "NA12878" "NA12877" "NA12879" )
+#REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
+#SAMPLES=( "NA12878" "NA12877" "NA12879" )
 
 REGIONS=( "LRC_KIR" )
-#SAMPLES=( "CHM1" )
+SAMPLES=( "NA12878" )
 
 PLATYPUS_OPTS=" --mergeClusteredVariants=1"
 FREEBAYES_OPTS=" --strict-vcf"
-#BWA_OPTS=" -t 20 -p"
-BWA_OPTS=" -t 20"
+BWA_OPTS=" -t 20 -p"
+#BWA_OPTS=" -t 20"
 SURJECT_OPTS=" -p ref -b -t 30"
 OVERWRITE=0
 
@@ -98,7 +100,7 @@ function set_mapq {
 	 samtools view -b $OUT_BAM > $OUT_BAM.temp
 	 mv $OUT_BAM.temp $OUT_BAM
 
-	 samtools sort $OUT_BAM -o ${OUT_BAM}.temp > ${OUT_BAM}.sort
+	 samtools sort $OUT_BAM  > ${OUT_BAM}.sort
 	 mv ${OUT_BAM}.sort $OUT_BAM
 	 samtools index -b $OUT_BAM
 }
@@ -113,7 +115,7 @@ function remove_pairing {
 	 samtools view -b $OUT_BAM > $OUT_BAM.temp
 	 mv $OUT_BAM.temp $OUT_BAM
 
-	 samtools sort $OUT_BAM -o ${OUT_BAM}.temp > ${OUT_BAM}.sort
+	 samtools sort $OUT_BAM > ${OUT_BAM}.sort
 	 mv ${OUT_BAM}.sort $OUT_BAM
 	 samtools index -b $OUT_BAM
 }
@@ -143,7 +145,7 @@ function bwa_mem {
 	 then
 		  echo "bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM"
 		  bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM
-		  samtools sort $OUT_BAM -o ${OUT_BAM}.temp > ${OUT_BAM}.sort
+		  samtools sort $OUT_BAM > ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
 		  samtools index -b $OUT_BAM
 	 fi
@@ -158,7 +160,7 @@ function surject_gam {
 	 if [[ ! -f $OUT_BAM ]] || [[ $OVERWRITE -eq 1 ]]
 	 then
 		  vg surject $SURJECT_OPTS -d $INDEX $GAM > $OUT_BAM
-		  samtools sort $OUT_BAM -o ${OUT_BAM}.temp > ${OUT_BAM}.sort
+		  samtools sort $OUT_BAM > ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
 		  samtools index -b $OUT_BAM
 	 fi	 

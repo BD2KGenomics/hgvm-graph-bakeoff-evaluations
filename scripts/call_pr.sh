@@ -34,15 +34,16 @@ TOIL_DIR=call_pr_toil5
 #COMPS=( "sompy" "happy" "vcf" )
 # graph comparison : kmer corg
 #COMPS=( "kmer" "corg")
-COMPS=( "vcf" )
+COMPS=( "happy" )
 
 # Parameters for indexing (used for corg / kmer comparison)
 INDEX_OPTS="--kmer 20 --edge_max 5 --timeout 5000"
 
 # Calling parameters
-#REGIONS=( "brca2" "mhc" "brca1" "sma" "lrc_kir" )
+##REGIONS=( "brca2" "mhc" "brca1" "sma" "lrc_kir" )
 REGIONS=( "lrc_kir" )
-OPTS="--maxCores 8 --vg_cores 4 --vg_only --depth 10 --skipBaseline"
+#OPTS="--maxCores 8 --vg_cores 4 --vg_only --depth 10 --skipBaseline"
+OPTS="--maxCores 20 --vg_cores 4 --vg_only --depth 10 --skipBaseline"
 
 # Comparison parameters
 
@@ -51,12 +52,12 @@ OPTS="--maxCores 8 --vg_cores 4 --vg_only --depth 10 --skipBaseline"
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30"
 
 # No normalization (only recommended for vcfeval and hap.py)
-COMP_OPTS="--clip data/filters/platinum.bed --ignore Conflict --ignore Silver --vg_cores 4 --maxCores 8 --gt"
+COMP_OPTS="--vg_cores 4 --maxCores 20 --gt"
 
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
-COMP_TAG=comp
+COMP_TAG=comp.gt
 
 # call variants, compute and plot baseline comparison
 # note how sample name (NA12878) is hardcoded.  Use wildcard to do all available samples
@@ -72,7 +73,7 @@ function run_pipeline {
 	 do
 		  GLOBIGNORE=$GLOBIGNORE_CALL
 		  mkdir ${VARIANTS_OUT_DIR}
-		  rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/NA12878.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+		  #rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/NA12878.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 
 		  for j in "${COMPS[@]}"
 		  do
@@ -97,26 +98,28 @@ secscore=10000
 
 # points on the precision-precall chart hard-coded here. 
 depths=(01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 22 24 26 28 30 35 40 45)
+supports=(01 02 03 04 05 06 07 08 09 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 15 15 15 15)
 quals=(0.000 0.020 0.040 0.060 0.080 0.010 0.100 0.120 0.140 0.160 0.180 0.200 0.220 0.240 0.260 0.280 0.300 0.320 0.340 0.360 0.380 0.400 0.500 0.600 0.700 0.800 0.900 1.000)
 #for i in {0..27}
 #for i in 1 2 3 4 5 6 7 8 1 10 20
-for i in 1 2 5 10 20
+for i in 1 2 5 10 12 15 20 23
 do
 	 depth=${depths[${i}]}
 	 qual=${quals[${i}]}
+	 support=${supports[${i}]}
 	 ROC_FLAG="--qpct ${qual}"
 	 if [ "$depth" == "01" ]; then
 		  ROC_FLAG="${ROC_FLAG} --roc"
 	 fi
-	 run_pipeline ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_${secscore} "-r 0.0001 -b 0.4 -f 0.25 -d ${depth}" "$PILEUP_OPTS" "-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -o 10 " "$ROC_FLAG"
+	 run_pipeline ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_${secscore} "-r 0.0001 -b 0.4 -f 0.25 -s ${support} -d ${depth}" "$PILEUP_OPTS" "-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -o 10 " "$ROC_FLAG"
 done
 wait
 
 # scrape together all results into one tsv / region / comp type
-scripts/rocDistances.py ${OUT_DIR}/primary_*_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots --best_comp vcf
+scripts/rocDistances.py ${OUT_DIR}/primary_*_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${COMP_TAG} --best_comp happy
 
 # finally, draw out the tables created above
-scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots
+scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${COMP_TAG}
 
 exit 0
 
