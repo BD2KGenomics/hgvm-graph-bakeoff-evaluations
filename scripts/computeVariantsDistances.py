@@ -831,9 +831,7 @@ def preprocess_vcf(job, graph, options):
         if sts == 0:
             run("cp {} {}".format(output_vcf + ".vt", output_vcf))
 
-    # clipping done in happy, sompy, and vcfeval command line now.  only do
-    # in preprocessing for other tools 
-    if options.clip is not None and options.comp_type not in ["happy", "sompy", "vcfeval"]:
+    if options.clip is not None:
         clip_bed = clip_bed_path(graph, options)        
         if not os.path.isfile(clip_bed):
             RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
@@ -844,6 +842,17 @@ def preprocess_vcf(job, graph, options):
             run("rm {}".format(output_vcf + ".gz*"))
             run("scripts/vcfsort {} | uniq > {}".format(output_vcf, output_vcf + ".sort"), fail_hard=True)
             run("cp {} {}".format(output_vcf + ".sort", output_vcf), fail_hard=True)
+
+    # one final sort, and strip ignored variants
+    ig_opts = ""
+    for ignore_keyword in options.ignore:
+        ig_opts += " | grep -v {}".format(ignore_keyword)
+    # also strip genotypes
+    if not options.gt:
+        ig_opts += " | scripts/vcfSetGenotypes.py -"
+    run("mv {} {} ; scripts/vcfsort {} {} > {}".format(output_vcf, output_vcf + ".ig",
+                                                       output_vcf + ".ig", ig_opts,
+                                                       output_vcf), fail_hard=True)
 
     # need compressed index for vcfeval
     run("bgzip {} -c > {}".format(output_vcf, output_vcf + ".gz"), fail_hard=True)
@@ -889,8 +898,9 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             sp_opts = "-P"
             if options.clip_fp:
                 sp_opts += " -f {}".format(options.clip_fp)
-            if options.clip:
-                sp_opts += " -R {}".format(options.clip)
+            # doesn't seem to work
+            #if options.clip:
+            #    sp_opts += " -R {}".format(options.clip)
                 
             run("export HGREF={} ; som.py {} {} --output {} {} 2> {}".format(options.chrom_fa_path, truth_vcf_path,
                                                                              query_vcf_path, out_path.replace(".stats.csv", ""),
@@ -901,8 +911,9 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             #hp_opts += "--engine vcfeval --engine-vcfeval-path rtg --engine-vcfeval-template {}".format(options.chrom_sdf_path)
             if options.clip_fp:
                 hp_opts += " -f {}".format(options.clip_fp)
-            if options.clip:
-                hp_opts += " -R {}".format(options.clip)
+            # doesn't seem to work
+            #if options.clip:
+            #    hp_opts += " -R {}".format(options.clip)
             
             # make roc curves for gatk and platypus (hardcoding name check as hack for now)
             if method1 in ["gatk3", "platypus", "g1kvcf", "freebayes"] and options.roc is True:
@@ -919,8 +930,9 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             
         elif options.comp_type == "vcfeval":
             ve_opts = "" if options.gt else "--squash-ploidy"
-            if options.clip:
-                ve_opts += " --bed-regions={}".format(options.clip)
+            # doesn't seem to work
+            #if options.clip:
+            #    ve_opts += " --bed-regions={}".format(options.clip)
             # indexing and compression was done by preprocessing phase
             run("rm -rf {}".format(out_path))
             run("rtg vcfeval -b {}.gz -c {}.gz --all-records -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
