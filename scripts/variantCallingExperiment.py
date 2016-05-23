@@ -93,7 +93,7 @@ class ExperimentCondition:
         """
         
         # We use both the read filtering and pileup options
-        return hashlib.sha1(self.get_read_filter_options() + "|" + self.get_pileup_options())
+        return hashlib.sha1(self.get_read_filter_options() + "|" + self.get_pileup_options()).hexdigest()
     
     def get_glennfile_condition_name(self):
         """
@@ -102,7 +102,7 @@ class ExperimentCondition:
         """
         
         # Depends on the pileup and the call options
-        return hashlib.sha1(self.get_pileup_condition_name() + "|" + self.get_call_options())
+        return hashlib.sha1(self.get_pileup_condition_name() + "|" + self.get_call_options()).hexdigest()
         
     def get_vcf_condition_name(self):
         """
@@ -111,7 +111,7 @@ class ExperimentCondition:
         """
         
         # Depends on the gelnnfile and the glenn2vcf options
-        return hashlib.sha1(self.get_glennfile_condition_name() + "|" + self.get_vcf_options())
+        return hashlib.sha1(self.get_glennfile_condition_name() + "|" + self.get_vcf_options()).hexdigest()
         
         
         
@@ -538,7 +538,7 @@ def run_experiment(job, options):
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
                 pileup_job = job.addChildJobFn(make_pileup, gam_key, condition, options,
-                    cores=16, memory="100G", disk="10G")
+                    cores=1, memory="10G", disk="10G")
                 glennfile_job = pileup_job.addFollowOnJobFn(make_glennfile_from_pileup, gam_key, condition, options,
                     cores=16, memory="100G", disk="10G")
                 vcf_job = glennfile_job.addFollowOnJobFn(make_vcf_from_glennfile, gam_key, condition, options,
