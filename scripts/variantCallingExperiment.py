@@ -366,7 +366,7 @@ def make_pileup(job, gam_key, condition, options):
     # Make IOStores
     gam_store = IOStore.get(options.in_gams)
     graph_store = IOStore.get(options.in_graphs)
-    cache_store = IOStore.get(options.in_graphs)
+    cache_store = IOStore.get(options.cache)
     
     # Download the GAM
     input_gam = gam_store.get_input_file(job, gam_key)
@@ -400,7 +400,7 @@ def make_glennfile_from_pileup(job, gam_key, condition, options):
     
     # Make IOStores
     graph_store = IOStore.get(options.in_graphs)
-    cache_store = IOStore.get(options.in_graphs)
+    cache_store = IOStore.get(options.cache)
     
     # Get the non-augmented graph
     input_graph = graph_store.get_input_file(job, graph_key(gam_key))
@@ -436,7 +436,7 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     """
     
     # Make IOStores
-    cache_store = IOStore.get(options.in_graphs)
+    cache_store = IOStore.get(options.cache)
     region_store = IOStore.get(options.regions)
     
     # Get the augmented graph from the cache
