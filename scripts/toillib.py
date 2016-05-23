@@ -304,6 +304,24 @@ class IOStore(object):
         
         raise NotImplementedError()
         
+    def get_input_file(self, job, input_path):
+        """
+        Get a local file containing the contents of the given file in the
+        IOStore. The local file may or may not be in the localTempDir of the
+        given Toil job.
+        
+        """
+        
+        # Default implementation: read to a new temp file
+        
+        # Make the temp file and get its name
+        (handle, temp_file) = tempfile.mktemp(dir=job.fileStore.getLocalTempDir())
+        os.close(handle)
+        
+        self.read_input_file(input_path, temp_file)
+        
+        return temp_file
+        
     def list_input_directory(self, input_path, recursive=False,
         with_times=False):
         """
@@ -484,6 +502,41 @@ class FileIOStore(IOStore):
                 # If something goes wrong here (like us not having permission to
                 # change permissions), ignore it.
                 pass
+                
+    def get_input_file(self, job, input_path):
+        """
+        Get an input file name directly, without making a symlink.
+        """
+        
+        # Where is the file actually?
+        real_path = os.path.abspath(os.path.join(self.path_prefix, input_path))
+        
+        if not os.path.exists(real_path):
+            RealTimeLogger.get().error(
+                "Can't find {} from FileIOStore in {}!".format(input_path,
+                self.path_prefix))
+            raise RuntimeError("File {} missing!".format(real_path)) 
+        
+        # Look at the file stats
+        file_stats = os.stat(real_path)
+        
+        if (file_stats.st_uid == os.getuid() and 
+            file_stats.st_mode & stat.S_IWUSR):
+            # We own this file and can write to it. We don't want the user
+            # script messing it up.
+            
+            try:
+                # Clear the user write bit, so the user can't accidentally
+                # clobber the file in the actual store through the symlink.
+                os.chmod(real_path, file_stats.st_mode ^ stat.S_IWUSR)
+            except OSError:
+                # If something goes wrong here (like us not having permission to
+                # change permissions), ignore it.
+                pass
+                
+        # Now that the file is read-only, reveal its real path to the user
+        # script
+        return real_path
         
     def list_input_directory(self, input_path, recursive=False,
         with_times=False):
