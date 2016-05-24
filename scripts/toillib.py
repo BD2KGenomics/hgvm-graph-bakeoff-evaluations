@@ -24,7 +24,7 @@ try:
     import azure
     # Make sure to get the 0.11 BlobService, in case the new azure storage
     # module is also installed.
-    from azure.storage import BlobService
+    from azure.storage.blob import BlobService
     import toil.jobStores.azureJobStore
     have_azure = True
 except ImportError:
@@ -802,8 +802,9 @@ class AzureIOStore(IOStore):
         
             # Get the results from Azure. We don't use delimiter since Azure
             # doesn't seem to provide the placeholder entries it's supposed to.
+            
             result = self.connection.list_blobs(self.container_name, 
-                prefix=fake_directory, marker=marker)
+                marker=marker)
                 
             RealTimeLogger.get().info("Found {} files".format(len(result)))
                 
@@ -811,7 +812,7 @@ class AzureIOStore(IOStore):
                 # Yield each result's blob name, but directory names only once
                 
                 # Drop the common prefix
-                relative_path = blob.name[len(fake_directory):]
+                relative_path = blob.name
                 
                 if (not recursive) and "/" in relative_path:
                     # We found a file in a subdirectory, and we aren't supposed
