@@ -354,7 +354,7 @@ def vcf_log_key(alignment_key, condition):
     """
    
     name = os.path.splitext(os.path.basename(alignment_key))[0]
-    name += "{}_sample.vcf.stderr"
+    name += "_sample.vcf.stderr"
     region = alignment_region_tag(alignment_key)
     graph = alignment_graph_tag(alignment_key)
     return "/".join([region, graph, condition.get_pileup_condition_name(),
