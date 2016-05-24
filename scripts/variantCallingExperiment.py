@@ -140,8 +140,9 @@ def parse_args(args):
     parser.add_argument("--regions",
         help="IOStore to search for region BEDs. For each region we "
         "expect <REGION>.bed, with the region in upper-case.")
-    parser.add_argument("--blacklist", nargs="+", default=["vglr", 
-        "mhc:camel", "lrc_kir:camel", "debruijn", "simons"],
+    parser.add_argument("--blacklist", nargs="+", default=["vglr", "mhc:camel",
+        "lrc_kir:camel", "debruijn-k31", "debruijn-k63", "cenx", "simons",
+        "curoverse"],
         help="ignore the specified regions, graphs, or region:graph pairs")
     
     args = args[1:]
@@ -303,7 +304,7 @@ def glennfile_key(alignment_key, condition):
     # We nest inside the pileup condition so it's easier to find the relevant
     # pileup.
     return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_gelnnfile_condition_name(), name])
+        condition.get_glennfile_condition_name(), name])
         
 def augmented_graph_key(alignment_key, condition):
     """
@@ -313,13 +314,13 @@ def augmented_graph_key(alignment_key, condition):
     """
    
     name = os.path.splitext(os.path.basename(alignment_key))[0]
-    name += "{}_augmented.vg"
+    name += "_augmented.vg"
     region = alignment_region_tag(alignment_key)
     graph = alignment_graph_tag(alignment_key)
     # We nest inside the pileup condition so it's easier to find the relevant
     # pileup.
     return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_gelnnfile_condition_name(), name])
+        condition.get_glennfile_condition_name(), name])
         
 def vcf_key(alignment_key, condition):
     """
@@ -329,11 +330,11 @@ def vcf_key(alignment_key, condition):
     """
    
     name = os.path.splitext(os.path.basename(alignment_key))[0]
-    name += "{}_sample.vcf"
+    name += "_sample.vcf"
     region = alignment_region_tag(alignment_key)
     graph = alignment_graph_tag(alignment_key)
     return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_gelnnfile_condition_name(),
+        condition.get_glennfile_condition_name(),
         condition.get_vcf_condition_name(), name])
         
 def vcf_log_key(alignment_key, condition):
@@ -348,7 +349,7 @@ def vcf_log_key(alignment_key, condition):
     region = alignment_region_tag(alignment_key)
     graph = alignment_graph_tag(alignment_key)
     return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_gelnnfile_condition_name(),
+        condition.get_glennfile_condition_name(),
         condition.get_vcf_condition_name(), name])
 
 def make_pileup(job, gam_key, condition, options):
@@ -368,6 +369,13 @@ def make_pileup(job, gam_key, condition, options):
     graph_store = IOStore.get(options.in_graphs)
     cache_store = IOStore.get(options.cache)
     
+    # Determine output key
+    out_pileup_key = pileup_key(gam_key, condition)
+    
+    if cache_store.exists(out_pileup_key):
+        # We already made this file
+        return
+    
     # Download the GAM
     input_gam = gam_store.get_input_file(job, gam_key)
     
@@ -386,7 +394,7 @@ def make_pileup(job, gam_key, condition, options):
     run(pipeline, fail_hard = True)
     
     # Upload the pileup to the cache for the current experimental conditions
-    cache_store.write_output_file(out_pileup_path, pileup_key(gam_key, condition))
+    cache_store.write_output_file(out_pileup_path, out_pileup_key)
     
     
 def make_glennfile_from_pileup(job, gam_key, condition, options):
@@ -401,6 +409,14 @@ def make_glennfile_from_pileup(job, gam_key, condition, options):
     # Make IOStores
     graph_store = IOStore.get(options.in_graphs)
     cache_store = IOStore.get(options.cache)
+    
+    # Determine output filenames
+    out_glennfile_key = glennfile_key(gam_key, condition)
+    out_augmented_graph_key = augmented_graph_key(gam_key, condition)
+    
+    if cache_store.exists(out_glennfile_key) and cache_store.exists(out_augmented_graph_key):
+        # We already made these files
+        return
     
     # Get the non-augmented graph
     input_graph = graph_store.get_input_file(job, graph_key(gam_key))
@@ -422,8 +438,8 @@ def make_glennfile_from_pileup(job, gam_key, condition, options):
     run(pipeline, fail_hard = True)
     
     # Save the glennfile and augmented graph back to the cache
-    cache_store.write_output_file(out_glennfile, glennfile_key(gam_key, condition))
-    cache_store.write_output_file(out_augmented_graph, augmented_graph_key(gam_key, condition))
+    cache_store.write_output_file(out_glennfile, out_glennfile_key)
+    cache_store.write_output_file(out_augmented_graph, out_augmented_graph_key)
     
 def make_vcf_from_glennfile(job, gam_key, condition, options):
     """
@@ -439,6 +455,14 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     cache_store = IOStore.get(options.cache)
     region_store = IOStore.get(options.regions)
     
+    # Determine output keys
+    out_vcf_key = vcf_key(gam_key, condition)
+    out_vcf_log_key = vcf_log_key(gam_key, condition)
+    
+    if cache_store.exists(out_vcf_key) and cache_store.exists(out_vcf_log_key):
+        # We already made these files
+        return
+    
     # Get the augmented graph from the cache
     input_augmented_graph = cache_store.get_input_file(job, augmented_graph_key(gam_key, condition))
     
@@ -446,7 +470,7 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     input_glennfile = cache_store.get_input_file(job, glennfile_key(gam_key, condition))
     
     # Get the BED that tells us where the region is
-    region_bed = region_store.get(alignment_region_tag(gam_key).upper() + ".bed")
+    region_bed = region_store.get_input_file(job, alignment_region_tag(gam_key).upper() + ".bed")
 
     with open(region_bed) as f:
         # Read the contig and offset we want our VCF to be in from the BED file.
@@ -469,8 +493,8 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     run(pipeline, fail_hard = True)
     
     # Save the vcf and its error log back to the cache
-    cache_store.write_output_file(out_vcf, vcf_key(gam_key, condition))
-    cache_store.write_output_file(out_errlog, vcf_log_key(gam_key, condition))
+    cache_store.write_output_file(out_vcf, out_vcf_key)
+    cache_store.write_output_file(out_errlog, out_vcf_log_key)
     
 def run_experiment(job, options):
     """
@@ -540,9 +564,9 @@ def run_experiment(job, options):
                 pileup_job = job.addChildJobFn(make_pileup, gam_key, condition, options,
                     cores=1, memory="10G", disk="10G")
                 glennfile_job = pileup_job.addFollowOnJobFn(make_glennfile_from_pileup, gam_key, condition, options,
-                    cores=16, memory="100G", disk="10G")
+                    cores=1, memory="10G", disk="10G")
                 vcf_job = glennfile_job.addFollowOnJobFn(make_vcf_from_glennfile, gam_key, condition, options,
-                    cores=16, memory="100G", disk="10G")
+                    cores=1, memory="10G", disk="10G")
     
 def main(args):
     
