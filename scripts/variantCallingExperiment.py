@@ -624,10 +624,20 @@ def compute_performance_from_vcf(job, gam_key, condition, options):
     cache_store = IOStore.get(options.cache)
     truth_store = IOStore.get(options.truth)
     
-    # Determine where the result goes
+    # Determine where the resuls go
+    # Summary
     out_summary_key = vcfeval_summary_key(gam_key, condition)
+    # False positives VCF
+    out_fp_key = vcfeval_fp_key(gam_key, condition)
+    # False negatives VCF
+    out_fn_key = vcfeval_fn_key(gam_key, condition)
+    # ROC curve data
+    out_roc_key = vcfeval_roc_key(gam_key, condition)
     
-    if cache_store.exists(out_summary_key):
+    if (cache_store.exists(out_summary_key) and
+        cache_store.exists(out_fp_key) and
+        cache_store.exists(out_fn_key) and
+        cache_store.exists(out_roc_key)):
         # We already did this
         return
 
@@ -665,8 +675,11 @@ def compute_performance_from_vcf(job, gam_key, condition, options):
         condition.get_vcfeval_options()))
     run(pipeline, fail_hard=True)
     
-    # Save the summary back to the cache
+    # Save the result files back to the cache
     cache_store.write_output_file(out_dir + "/summary.txt", out_summary_key)
+    cache_store.write_output_file(out_dir + "/fp.vcf.gz", out_fp_key)
+    cache_store.write_output_file(out_dir + "/fn.vcf.gz", out_fn_key)
+    cache_store.write_output_file(out_dir + "/weighted_roc.tsv.gz", out_roc_key)
     
     
     
