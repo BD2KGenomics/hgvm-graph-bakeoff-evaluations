@@ -4,9 +4,16 @@
 # gold standard vcf.  Directory structure
 # of input is important, and explained in ../README.md and callVariants.py
 # running is grouped by region to slightly facilitate debugging and resuming
+# qgraph is 0/1 flag.  0: old way running vg call with different depths. 1: new way:
+# run vg call once and use vcfQalutiyFilter for plot
 
-if [ "$#" -ne 3 ]; then
-	 echo "Syntax $0 <graphs_dir> <alignments_dir> <out_dir>"
+if [ "$#" -ne 4 ]; then
+	 echo "Syntax $0 <graphs_dir> <alignments_dir> <out_dir> <qgraph>"
+	 exit 1
+fi
+
+if [[ "$4" -ne 0 && "$4" -ne 1 ]]; then
+	 echo "qgraph must be 0 or 1"
 	 exit 1
 fi
 
@@ -27,6 +34,7 @@ GLOBIGNORE_CALL=$GLOBIGNORE
 GRAPHS=$1
 ALIGNMENTS=$2
 OUT_DIR=$3
+QGRAPH=$4
 
 TOIL_DIR=call_pr_toil5
 
@@ -34,7 +42,7 @@ TOIL_DIR=call_pr_toil5
 #COMPS=( "sompy" "happy" "vcf" )
 # graph comparison : kmer corg
 #COMPS=( "kmer" "corg")
-COMPS=( "happy" )
+COMPS=( "vcfeval" )
 
 # Parameters for indexing (used for corg / kmer comparison)
 INDEX_OPTS="--kmer 20 --edge_max 5 --timeout 5000"
@@ -52,10 +60,15 @@ OPTS="--maxCores 20 --vg_cores 4 --vg_only --depth 10 --skipBaseline"
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30"
 
 # No normalization (only recommended for vcfeval and hap.py)
-COMP_OPTS="--vg_cores 4 --maxCores 20 --gt"
+COMP_OPTS="--vg_cores 4 --maxCores 20 --gt --freebayes_path platinum_classic2/freebayes"
 
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
+
+# make sure qgraph option gets into compare script
+if [ "$QGRAPH" = 1 ]; then
+	 COMP_OPTS="${COMP_OPTS} --qgraph"
+fi
 
 COMP_TAG=comp.gt
 
@@ -64,23 +77,26 @@ COMP_TAG=comp.gt
 function run_pipeline {
 
 	 VARIANTS_OUT_DIR=$1
-	 CALL_OPTS=$2
-	 PILEUP_OPTS=$3
-	 FILTER_OPTS=$4
-	 ROC=$5
+	 COMP_OUT_DIR=$2
+	 CALL_OPTS=$3
+	 PILEUP_OPTS=$4
+	 FILTER_OPTS=$5
+	 ROC=$6
+	 RUN_CALLER=$7
 	 	 
 	 for i in "${REGIONS[@]}"
 	 do
-		  GLOBIGNORE=$GLOBIGNORE_CALL
-		  mkdir ${VARIANTS_OUT_DIR}
-		  #rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/NA12878.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
-
+		  if [ "$RUN_CALLER" = true ]; then
+				GLOBIGNORE=$GLOBIGNORE_CALL
+				mkdir ${VARIANTS_OUT_DIR}
+				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/NA12878.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+		  fi
 		  for j in "${COMPS[@]}"
 		  do
 				GLOBIGNORE=$GLOBIGNORE_COMP				
 				# compute distances
-				mkdir ${VARIANTS_OUT_DIR}.${COMP_TAG}
-				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/NA12878.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${VARIANTS_OUT_DIR}.${COMP_TAG} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${VARIANTS_OUT_DIR}.${COMP_TAG}/comp_log_${i}_${j}.txt
+				mkdir ${COMP_OUT_DIR}
+				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/NA12878.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
 				GLOBIGNORE=$GLOBIGNORE_CALL
 		  done
 
@@ -102,7 +118,8 @@ supports=(01 02 03 04 05 06 07 08 09 10 10 10 10 10 10 10 10 10 10 10 10 10 10 1
 quals=(0.000 0.020 0.040 0.060 0.080 0.010 0.100 0.120 0.140 0.160 0.180 0.200 0.220 0.240 0.260 0.280 0.300 0.320 0.340 0.360 0.380 0.400 0.500 0.600 0.700 0.800 0.900 1.000)
 #for i in {0..27}
 #for i in 1 2 3 4 5 6 7 8 1 10 20
-for i in 1 2 5 10 12 15 20 23
+points=( 1 2 5 10 12 15 20 23 )
+for i in "${points[@]}" 
 do
 	 depth=${depths[${i}]}
 	 qual=${quals[${i}]}
@@ -111,7 +128,15 @@ do
 	 if [ "$depth" == "01" ]; then
 		  ROC_FLAG="${ROC_FLAG} --roc"
 	 fi
-	 run_pipeline ${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_${secscore} "-r 0.0001 -b 0.4 -f 0.25 -s ${support} -d ${depth}" "$PILEUP_OPTS" "-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -o 10 " "$ROC_FLAG"
+	 if [[ "$i" = "${points[0]}" || "$QGRAPH" = 0 ]]; then
+		  DO_CALL=true
+		  calldepth=$depth
+	 else
+		  DO_CALL=false
+	 fi
+	 VAR_OUT_DIR=${OUT_DIR}/primary_${calldepth}_i_${ident}_delt_${delta}_ss_${secscore}
+	 COMP_OUT_DIR=${OUT_DIR}/primary_${depth}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG}
+	 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "-r 0.0001 -b 0.5 -f 0.20 -s ${support} -d ${depth}" "$PILEUP_OPTS" "-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -o 10 " "$ROC_FLAG" $DO_CALL
 done
 wait
 
