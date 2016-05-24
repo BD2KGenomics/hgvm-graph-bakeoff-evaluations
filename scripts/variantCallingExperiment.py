@@ -62,6 +62,15 @@ class ExperimentCondition:
         # Flatten and join into a string
         return " ".join((item for pair in nested for item in pair))
         
+    def string_to_path(self, string):
+        """
+        Convert a string into a usable path component (directory name).
+        """
+        
+        # Condense spaces to underscores, and remove all but a few safe
+        # characters.
+        return re.sub('[^a-zA-Z0-9_!.]', "", re.sub('\s+', "_", string).strip("_"))
+        
     def get_read_filter_options(self):
         """
         Return the options string for read filtering.
@@ -92,8 +101,8 @@ class ExperimentCondition:
         on all the parameters that affect the pielup.
         """
         
-        # We use both the read filtering and pileup options
-        return hashlib.sha1(self.get_read_filter_options() + "|" + self.get_pileup_options()).hexdigest()
+        # Depends on the filter and pileup options
+        return self.string_to_path(self.get_read_filter_options() + "!" + self.get_pileup_options())
     
     def get_glennfile_condition_name(self):
         """
@@ -101,8 +110,8 @@ class ExperimentCondition:
         on all the parameters that affect the glenn file.
         """
         
-        # Depends on the pileup and the call options
-        return hashlib.sha1(self.get_pileup_condition_name() + "|" + self.get_call_options()).hexdigest()
+        # Depends on the pileup file and the call options
+        return self.string_to_path(self.get_pileup_condition_name() + "!" + self.get_call_options())
         
     def get_vcf_condition_name(self):
         """
@@ -111,7 +120,7 @@ class ExperimentCondition:
         """
         
         # Depends on the gelnnfile and the glenn2vcf options
-        return hashlib.sha1(self.get_glennfile_condition_name() + "|" + self.get_vcf_options()).hexdigest()
+        return self.string_to_path(self.get_glennfile_condition_name() + "!" + self.get_vcf_options())
         
         
         
