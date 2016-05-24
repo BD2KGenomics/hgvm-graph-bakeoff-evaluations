@@ -402,7 +402,7 @@ def vcfeval_fp_key(alignment_key, condition):
     """
    
     name = alignment_sample_tag(alignment_key)
-    name += "_pf.vcf.gz"
+    name += "_fp.vcf.gz"
     return "/".join([cache_key_stem(alignment_key), condition.get_vcfeval_condition_name(), name])
         
 def vcfeval_fn_key(alignment_key, condition):
