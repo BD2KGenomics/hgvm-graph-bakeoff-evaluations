@@ -35,13 +35,13 @@ class ExperimentCondition:
     generating, and vcf filtering options.
     """
     
-    def __init__(self, read_filter_options, pileup_options, call_options, vcf_options):
+    def __init__(self, read_filter_options, pileup_options, call_options, vcf_options, vcfeval_options):
         """
         Take dicts from option string to option value for read filtering,
-        pileup-ing, graph augmenting, and vcf conversion, and produces an
-        ExperimentCondition wrapping them. Option values may only be single
-        strings, and an option may only occur a single time (since we have a
-        dict). TODO: also add VCF filtering
+        pileup-ing, graph augmenting, vcf conversion, and vcf evaluation, and
+        produces an ExperimentCondition wrapping them. Option values may only be
+        single strings, and an option may only occur a single time (since we
+        have a dict). TODO: also add VCF filtering
         
         """
         
@@ -49,6 +49,7 @@ class ExperimentCondition:
         self.pileup_options = pileup_options
         self.call_options = call_options
         self.vcf_options = vcf_options
+        self.vcfeval_options = vcfeval_options
         
     def dict_to_string(self, options_dict):
         """
@@ -69,7 +70,7 @@ class ExperimentCondition:
         
         # Condense spaces to underscores, and remove all but a few safe
         # characters.
-        return re.sub('[^a-zA-Z0-9_!.]', "", re.sub('\s+', "_", string).strip("_"))
+        return re.sub('[^a-zA-Z0-9_.]', "", re.sub('\s+', "_", re.sub("_", "", string)).strip("_"))
         
     def get_read_filter_options(self):
         """
@@ -94,6 +95,12 @@ class ExperimentCondition:
         Return the options string for glenn2vcf.
         """
         return self.dict_to_string(self.vcf_options)
+    
+    def get_vcfeval_options(self):
+        """
+        Return the options string for vcfeval.
+        """
+        return self.dict_to_string(self.vcfeval_options)
         
     def get_pileup_condition_name(self):
         """
@@ -102,25 +109,40 @@ class ExperimentCondition:
         """
         
         # Depends on the filter and pileup options
-        return self.string_to_path(self.get_read_filter_options() + "!" + self.get_pileup_options())
+        return self.string_to_path(self.get_read_filter_options()) + "/" + self.string_to_path(self.get_pileup_options())
     
     def get_glennfile_condition_name(self):
         """
-        Return a string that can be part of a filesystem path and which depends
-        on all the parameters that affect the glenn file.
+        Return a string that can be part of a filesystem path (potentially
+        including slashes) and which depends on all the parameters that affect
+        the glenn file, including those that affect the pileup.
+        
         """
         
         # Depends on the pileup file and the call options
-        return self.string_to_path(self.get_pileup_condition_name() + "!" + self.get_call_options())
+        return self.get_pileup_condition_name() + "/" + self.string_to_path(self.get_call_options())
         
     def get_vcf_condition_name(self):
         """
-        Return a string that can be part of a filesystem path and which depends
-        on all the parameters that affect the final VCF file.
+        Return a string that can be part of a filesystem path (potentially
+        including slashes) and which depends on all the parameters that affect
+        the final VCF file, given the glenn file.
+        
         """
         
         # Depends on the gelnnfile and the glenn2vcf options
-        return self.string_to_path(self.get_glennfile_condition_name() + "!" + self.get_vcf_options())
+        return self.get_glennfile_condition_name() + "/" + self.string_to_path(self.get_vcf_options())
+        
+    def get_vcfeval_condition_name(self):
+        """
+        Return a string that can be part of a filesystem path (potentially
+        including slashes) and which depends on all the parameters that affect
+        the vcfeval evaluation.
+        
+        """
+        
+        # Depends on the gelnnfile and the glenn2vcf options
+        return self.get_vcf_condition_name() + "/" + self.string_to_path(self.get_vcfeval_options())
         
         
         
@@ -141,17 +163,18 @@ def parse_args(args):
     parser.add_argument("out_dir",
         help="output IOStore, containing experimental results")
     parser.add_argument("--truth",
-        help="IOStore to search for truth vcfs for comparison. For each region "
-        "we expect <region>/<region>.vcf")
-    parser.add_argument("--references",
-        help="IOStore to search for reference FASTAs. For each region we "
-        "expect <region>/ref.fa")
+        help="IOStore to search for truth vcfs for comparison. For each sample "
+        "and region we expect <sample>/<REGION>.vcf.gz and "
+        "<sample>/<REGION>.vcf.gz.tbi")
     parser.add_argument("--regions",
         help="IOStore to search for region BEDs. For each region we "
         "expect <REGION>.bed, with the region in upper-case.")
+    parser.add_argument("--sdf", default="data/g1kvcf/chrom.sdf",
+        help="SDF-format directory structure for reference assembly for "
+        "vcfeval")
     parser.add_argument("--blacklist", nargs="+", default=["vglr", "mhc:camel",
         "lrc_kir:camel", "debruijn-k31", "debruijn-k63", "cenx", "simons",
-        "curoverse"],
+        "curoverse", "flat1kg", "primary1kg"],
         help="ignore the specified regions, graphs, or region:graph pairs")
     
     args = args[1:]
@@ -284,6 +307,17 @@ def graph_key(alignment_key):
     else:
         tag = ""
     return "{}-{}{}.vg".format(graph, region, tag)    
+   
+def cache_key_stem(alignment_key):
+    """
+    Get the cache key stem (region/graph) for the given GAM key.
+    """
+    
+    region = alignment_region_tag(alignment_key)
+    graph = alignment_graph_tag(alignment_key)
+    
+    return region + "/" + graph
+    
     
 def pileup_key(alignment_key, condition):
     """
@@ -292,12 +326,9 @@ def pileup_key(alignment_key, condition):
     
     """
     
-    name = os.path.splitext(os.path.basename(alignment_key))[0]
+    name = alignment_sample_tag(alignment_key)
     name += ".vgpu"
-    region = alignment_region_tag(alignment_key)
-    graph = alignment_graph_tag(alignment_key)
-    # Stratify by region, then graph, then options used for the filtering and pileup, then sample.
-    return "/".join([region, graph, condition.get_pileup_condition_name(), name])
+    return "/".join([cache_key_stem(alignment_key), condition.get_pileup_condition_name(), name])
     
 def glennfile_key(alignment_key, condition):
     """
@@ -306,14 +337,9 @@ def glennfile_key(alignment_key, condition):
     
     """
    
-    name = os.path.splitext(os.path.basename(alignment_key))[0]
+    name = alignment_sample_tag(alignment_key)
     name += "_call.tsv"
-    region = alignment_region_tag(alignment_key)
-    graph = alignment_graph_tag(alignment_key)
-    # We nest inside the pileup condition so it's easier to find the relevant
-    # pileup.
-    return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_glennfile_condition_name(), name])
+    return "/".join([cache_key_stem(alignment_key), condition.get_glennfile_condition_name(), name])
         
 def augmented_graph_key(alignment_key, condition):
     """
@@ -322,29 +348,29 @@ def augmented_graph_key(alignment_key, condition):
     
     """
    
-    name = os.path.splitext(os.path.basename(alignment_key))[0]
-    name += "_augmented.vg"
-    region = alignment_region_tag(alignment_key)
-    graph = alignment_graph_tag(alignment_key)
-    # We nest inside the pileup condition so it's easier to find the relevant
-    # pileup.
-    return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_glennfile_condition_name(), name])
+    name = alignment_sample_tag(alignment_key)
+    name += "_augmented.tsv"
+    return "/".join([cache_key_stem(alignment_key), condition.get_glennfile_condition_name(), name])
         
-def vcf_key(alignment_key, condition):
+def vcf_compressed_key(alignment_key, condition):
     """
-    Get the key for the VCF file in the cache, based on the experimental
-    condition and the original GAM name.
+    Get the key for the compressed VCF file in the cache, based on the
+    experimental condition and the original GAM name.
     
     """
    
-    name = os.path.splitext(os.path.basename(alignment_key))[0]
-    name += "_sample.vcf"
-    region = alignment_region_tag(alignment_key)
-    graph = alignment_graph_tag(alignment_key)
-    return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_glennfile_condition_name(),
-        condition.get_vcf_condition_name(), name])
+    name = alignment_sample_tag(alignment_key)
+    name += "_sample.vcf.gz"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcf_condition_name(), name])
+        
+def vcf_index_key(alignment_key, condition):
+    """
+    Get the key for the index of the compressed VCF file in the cache, based on
+    the experimental condition and the original GAM name.
+    
+    """
+   
+    return vcf_compressed_key(alignment_key, condition) + ".tbi"
         
 def vcf_log_key(alignment_key, condition):
     """
@@ -353,13 +379,73 @@ def vcf_log_key(alignment_key, condition):
     
     """
    
-    name = os.path.splitext(os.path.basename(alignment_key))[0]
+    name = alignment_sample_tag(alignment_key)
     name += "_sample.vcf.stderr"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcf_condition_name(), name])
+        
+def vcfeval_summary_key(alignment_key, condition):
+    """
+    Get the key for the vcfeval comparison summary in the cache, based on the
+    experimental condition and the original GAM name.
+    
+    """
+   
+    name = alignment_sample_tag(alignment_key)
+    name += "_summary.txt"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcfeval_condition_name(), name])
+        
+def vcfeval_fp_key(alignment_key, condition):
+    """
+    Get the key for the vcfeval false positives VCF in the cache, based on the
+    experimental condition and the original GAM name.
+    
+    """
+   
+    name = alignment_sample_tag(alignment_key)
+    name += "_pf.vcf.gz"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcfeval_condition_name(), name])
+        
+def vcfeval_fn_key(alignment_key, condition):
+    """
+    Get the key for the vcfeval false negatives VCF in the cache, based on the
+    experimental condition and the original GAM name.
+    
+    """
+   
+    name = alignment_sample_tag(alignment_key)
+    name += "_fn.vcf.gz"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcfeval_condition_name(), name])
+        
+def vcfeval_roc_key(alignment_key, condition):
+    """
+    Get the key for the vcfeval weighted ROC curve in the cache, based on the
+    experimental condition and the original GAM name.
+    
+    """
+   
+    name = alignment_sample_tag(alignment_key)
+    name += "_weighted_roc.tsv.gz"
+    return "/".join([cache_key_stem(alignment_key), condition.get_vcfeval_condition_name(), name])
+        
+def truth_compressed_key(alignment_key):
+    """
+    Get the key for the compressed truth VCF for this sample in the **truth
+    IOstore**, not the cache.
+    
+    """
+   
+    sample = os.path.splitext(os.path.basename(alignment_key))[0]
     region = alignment_region_tag(alignment_key)
-    graph = alignment_graph_tag(alignment_key)
-    return "/".join([region, graph, condition.get_pileup_condition_name(),
-        condition.get_glennfile_condition_name(),
-        condition.get_vcf_condition_name(), name])
+    return "{}/{}.vcf.gz".format(sample, region.upper())
+    
+def truth_index_key(alignment_key):
+    """
+    Get the key for the index of the compressed truth VCF for this sample in the
+    **truth IOstore**, not the cache.
+    
+    """
+   
+    return truth_compressed_key(alignment_key) + ".tbi"
 
 def make_pileup(job, gam_key, condition, options):
     """
@@ -465,10 +551,13 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     region_store = IOStore.get(options.regions)
     
     # Determine output keys
-    out_vcf_key = vcf_key(gam_key, condition)
+    out_vcf_compressed_key = vcf_compressed_key(gam_key, condition)
+    out_vcf_index_key = vcf_index_key(gam_key, condition)
     out_vcf_log_key = vcf_log_key(gam_key, condition)
     
-    if cache_store.exists(out_vcf_key) and cache_store.exists(out_vcf_log_key):
+    if (cache_store.exists(out_vcf_compressed_key) and 
+        cache_store.exists(out_vcf_index_key) and
+        cache_store.exists(out_vcf_log_key)):
         # We already made these files
         return
     
@@ -491,6 +580,13 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     # Plan where to put the output VCF
     out_vcf = "{}/sample.vcf".format(job.fileStore.getLocalTempDir())
     
+    # And its compressed and indexed versions
+    out_vcf_compressed = out_vcf + ".gz"
+    out_vcf_index = out_vcf_compressed + ".tbi"
+    
+    # Plan where to put the intermediate unsorted VCF
+    unsorted_vcf = "{}/unsorted.vcf".format(job.fileStore.getLocalTempDir())
+    
     # And the glenn2vcf error log (which has bases dropped, etc.)
     out_errlog = "{}/sample.err".format(job.fileStore.getLocalTempDir())
     
@@ -498,12 +594,83 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     pipeline = []
     pipeline.append("glenn2vcf {} {} -o {} -c {} -s {} {} > {} 2> {}".format(
         input_augmented_graph, input_glennfile, offset, contig, sample_name,
-        condition.get_vcf_options(), out_vcf, out_errlog))
+        condition.get_vcf_options(), unsorted_vcf, out_errlog))
     run(pipeline, fail_hard = True)
     
-    # Save the vcf and its error log back to the cache
-    cache_store.write_output_file(out_vcf, out_vcf_key)
+    # Sort the VCF
+    pipeline = []
+    pipeline.append("scripts/vcfsort {} > {}".format(unsorted_vcf, out_vcf))
+    run(pipeline, fail_hard = True)
+    
+    # Compress and index the VCF
+    run(["bgzip {} -c > {}".format(out_vcf, out_vcf_compressed)], fail_hard=True)
+    # TODO: This is forced to append .tbi as the index name
+    run(["tabix -f -p vcf {}".format(out_vcf_compressed)], fail_hard=True)
+    
+    # Save the compressed VCF, its index, and its error log back to the cache
+    cache_store.write_output_file(out_vcf_compressed, out_vcf_compressed_key)
+    cache_store.write_output_file(out_vcf_index, out_vcf_index_key)
     cache_store.write_output_file(out_errlog, out_vcf_log_key)
+    
+def compute_performance_from_vcf(job, gam_key, condition, options):
+    """
+    Compute the performance of the given GAM (aligned to the given graph)
+    against the truth set for its region.
+    
+    Places the vcfeval summary file for the given sample in the cache.
+    """
+    
+    # Make IOStores
+    cache_store = IOStore.get(options.cache)
+    truth_store = IOStore.get(options.truth)
+    
+    # Determine where the result goes
+    out_summary_key = vcfeval_summary_key(gam_key, condition)
+    
+    if cache_store.exists(out_summary_key):
+        # We already did this
+        return
+
+    # Get the query VCF
+    query_vcf_compressed = cache_store.get_input_file(job, vcf_compressed_key(gam_key, condition))
+    query_vcf_index = cache_store.get_input_file(job, vcf_index_key(gam_key, condition))
+    
+    if query_vcf_index != query_vcf_compressed + ".tbi":
+        # Hack them over to the right names with symlinks
+        new_vcf_name = "{}/sample.vcf.gz".format(job.fileStore.getLocalTempDir())
+        os.symlink(query_vcf_compressed, new_vcf_name)
+        os.symlink(query_vcf_index, new_vcf_name + ".tbi")
+        query_vcf_compressed = new_vcf_name
+        query_vcf_index = query_vcf_compressed + ".tbi"
+        
+    # Find the truth VCF
+    truth_vcf_compressed = truth_store.get_input_file(job, truth_compressed_key(gam_key))
+    truth_vcf_index = truth_store.get_input_file(job, truth_index_key(gam_key))
+    
+    if truth_vcf_index != truth_vcf_compressed + ".tbi":
+        # Hack them over to the right names with symlinks
+        new_vcf_name = "{}/truth.vcf.gz".format(job.fileStore.getLocalTempDir())
+        os.symlink(truth_vcf_compressed, new_vcf_name)
+        os.symlink(truth_vcf_index, new_vcf_name + ".tbi")
+        truth_vcf_compressed = new_vcf_name
+        truth_vcf_index = truth_vcf_compressed + ".tbi"
+    
+    # Decide on an output directory
+    out_dir = "{}/vcfeval".format(job.fileStore.getLocalTempDir())
+    
+    # Do the actual VCF conversion
+    pipeline = []
+    pipeline.append("rtg vcfeval -b {} -c {} -t {} -o {} {}".format(
+        truth_vcf_compressed, query_vcf_compressed, options.sdf, out_dir,
+        condition.get_vcf_options()))
+    run(pipeline, fail_hard=True)
+    
+    # Save the summary back to the cache
+    cache_store.write_output_file(out_dir + "/summary.txt", out_summary_key)
+    
+    
+    
+    
     
 def run_experiment(job, options):
     """
@@ -546,27 +713,31 @@ def run_experiment(job, options):
                 # Make some experimental conditions with filter, pileup, call,
                 # and glenn2vcf options. TODO: change to long options for
                 # readability
-                condition = ExperimentCondition({
-                    "-r": 0.90,
-                    "-d": 0.05,
-                    "-e": 0.05,
-                    "-a": "",
-                    "-f": "",
-                    "-u": "",
-                    "-s": 10000,
-                    "-o": 10
-                }, {
-                    "-w": 40,
-                    "-m": 10,
-                    "-q": 10
-                }, {
-                    "-r": 0.0001,
-                    "-b": 0.4,
-                    "-f": 0.25,
-                    "-d": 11
-                }, {
-                    "--depth": 10
-                })
+                condition = ExperimentCondition(
+                    { # vg filter 
+                        "-r": 0.90,
+                        "-d": 0.05,
+                        "-e": 0.05,
+                        "-a": "",
+                        "-f": "",
+                        "-u": "",
+                        "-s": 10000,
+                        "-o": 10
+                    }, { # vg pileup
+                        "-w": 40,
+                        "-m": 10,
+                        "-q": 10
+                    }, { # vg call
+                        "-r": 0.0001,
+                        "-b": 0.4,
+                        "-f": 0.25,
+                        "-d": 11
+                    }, { # glenn2vcf
+                        "--depth": 10
+                    }, { # vcfeval
+                        "--all-records": "",
+                        "--vcf-score-field": "DP"
+                    })
                 
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
@@ -575,6 +746,8 @@ def run_experiment(job, options):
                 glennfile_job = pileup_job.addFollowOnJobFn(make_glennfile_from_pileup, gam_key, condition, options,
                     cores=1, memory="10G", disk="10G")
                 vcf_job = glennfile_job.addFollowOnJobFn(make_vcf_from_glennfile, gam_key, condition, options,
+                    cores=1, memory="10G", disk="10G")
+                vcfeval_job = vcf_job.addFollowOnJobFn(compute_performance_from_vcf, gam_key, condition, options,
                     cores=1, memory="10G", disk="10G")
     
 def main(args):

@@ -128,11 +128,23 @@ Fasta and vcf data is also required to make some baseline sample graphs for the 
 
 	  tar xzf data/g1kvcf.tar.gz -C data
 	  tar xzf data/platinum.tar.gz -C data
+	  # Index truth set for vcfeval
+	  PLATINUM_DIR="data/platinum"
+      for REGION in BRCA1 BRCA2 LRC_KIR MHC SMA
+      do
+          for SAMPLE in NA12877 NA12878
+          do
+              bgzip ${PLATINUM_DIR}/${SAMPLE}/${REGION}.vcf -c > ${PLATINUM_DIR}/${SAMPLE}/${REGION}.vcf.gz
+              tabix -f -p vcf ${PLATINUM_DIR}/${SAMPLE}/${REGION}.vcf.gz
+          done
+      done
 	  tar xzf data/gatk3.tar.gz -C data
 	  tar xzf data/platypus.tar.gz -C data
 	  tar xzf data/filters.tar.gz -C data
 	  scripts/downloadChromFa.py
 	  scripts/downloadChromFa.py --leaveChr --out_fa data/g1kvcf/chrom2.fa
+	  # For vcfeval
+	  rtg format -o data/g1kvcf/chrom.sdf data/g1kvcf/chrom.fa
 
 ### Generate Precision-Recall Plot using Platinum Genomes NA12878 VCF
 
