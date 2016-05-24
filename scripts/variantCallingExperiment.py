@@ -662,7 +662,7 @@ def compute_performance_from_vcf(job, gam_key, condition, options):
     pipeline = []
     pipeline.append("rtg vcfeval -b {} -c {} -t {} -o {} {}".format(
         truth_vcf_compressed, query_vcf_compressed, options.sdf, out_dir,
-        condition.get_vcf_options()))
+        condition.get_vcfeval_options()))
     run(pipeline, fail_hard=True)
     
     # Save the summary back to the cache
