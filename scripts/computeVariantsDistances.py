@@ -87,6 +87,8 @@ def parse_args(args):
                         help="generate happy rocs for gatk3 and platypus")
     parser.add_argument("--qpct", type=float, default=None,
                         help="apply quality percentile filter for gatk and platypus and freebayes")
+    parser.add_argument("--qgraph", action="store_true", default=False,
+                        help="apply quality percentile filter to graphs too")
     parser.add_argument("--baseline", type=str, default="platvcf",
                         help="baseline to use (platvcf or g1kvcf) for vcf comparisons")
     parser.add_argument("--gt", action="store_true",
@@ -812,10 +814,13 @@ def preprocess_vcf(job, graph, options):
     run("scripts/vcfsort {} > {}".format(input_vcf, output_vcf), fail_hard=True)
 
     if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus", "freebayes"] or
-                                     options.tags[graph][2] == "g1kvcf" and options.baseline != "g1kvcf"):
+                                     (options.tags[graph][2] == "g1kvcf" and options.baseline != "g1kvcf") or
+                                     options.qgraph is True):
         # g1kvcf has no quality info.  proxy with read depth to at least get a curve
         #filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
         filter_opts = ""
+        if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "g1kvcf", "platvcf", "platvcf-baseline"]:
+            filter_opts += " --info DP"
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
