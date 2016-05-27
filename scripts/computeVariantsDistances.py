@@ -820,7 +820,8 @@ def preprocess_vcf(job, graph, options):
         #filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
         filter_opts = ""
         if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "g1kvcf", "platvcf", "platvcf-baseline"]:
-            filter_opts += " --info DP"
+            #filter_opts += " --info DP"
+            filter_opts += " --ad"
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
