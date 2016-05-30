@@ -39,15 +39,19 @@ def get_qual_from_line(line, options):
                 return float(tok[len(options.info) + 1:])
         assert False
     elif options.ad is True:
-        gt = line.split("\t")[-1]
-        gts = gt.split(":")[0]
-        gts = gts.split("/") if "/" in gts else gts.split("|")
-        ads = gt.split(":")[-1]
+        toks = line.split("\t")
+        gth = toks[-2].split(":")
+        gts = toks[-1].split(":")
+        gt_idx = gth.index("GT")
+        gt = gts[gt_idx]
+        gt = gt.split("/") if "/" in gt else gt.split("|")
+        ad_idx = gth.index("AD")
+        ads = gts[ad_idx]
         ads = ads.split(",")
         ads = [int(x) for x in ads]
-        assert len(gts) == len(ads)
+        assert len(gt) == len(ads)
         min_ad = sys.maxint
-        for i, g in enumerate(gts):
+        for i, g in enumerate(gt):
             g = i if g == "." else int(g)
             min_ad = min(min_ad, ads[g])
         return float(min_ad)                
