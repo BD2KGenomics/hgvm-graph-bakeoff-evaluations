@@ -31,6 +31,28 @@ except ImportError:
     have_azure = False
     pass
     
+def de_defaultdict(defaultdict):
+    """
+    Replace defaultdicts with dicts in the given defaultdict.
+    
+    Returns a plain dict.
+    
+    Useful because defaultdicts with lambda arguments can't be pickled.
+    """
+    
+    # This is the non-defaultdict version
+    fixed = {}
+    
+    for key, value in defaultdict.iteritems():
+        if isinstance(value, collections.defaultdict):
+            # Recurse on the value
+            fixed[key] = de_defaultdict(value)
+        else:
+            # Copy the leaf
+            fixed[key] = value
+            
+    return fixed
+
 
 def robust_makedirs(directory):
     """

@@ -26,8 +26,11 @@ import doctest, re, json, collections, time, timeit, string
 import hashlib
 import signal
 from threading import Timer
+import tsv
+import gzip
+import json
 from toil.job import Job
-from toillib import RealTimeLogger, robust_makedirs, IOStore
+from toillib import RealTimeLogger, robust_makedirs, IOStore, de_defaultdict
 
 class ExperimentCondition:
     """
@@ -143,6 +146,15 @@ class ExperimentCondition:
         
         # Depends on the gelnnfile and the glenn2vcf options
         return self.get_vcf_condition_name() + "/" + self.string_to_path(self.get_vcfeval_options())
+        
+    def __repr__(self):
+        """
+        Represent this object as a string for debugging.
+        """
+        
+        # This happens to include all the options
+        return self.get_vcfeval_condition_name()
+        
         
         
         
@@ -349,7 +361,7 @@ def augmented_graph_key(alignment_key, condition):
     """
    
     name = alignment_sample_tag(alignment_key)
-    name += "_augmented.tsv"
+    name += "_augmented.vg"
     return "/".join([cache_key_stem(alignment_key), condition.get_glennfile_condition_name(), name])
         
 def vcf_compressed_key(alignment_key, condition):
@@ -612,7 +624,7 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     cache_store.write_output_file(out_vcf_index, out_vcf_index_key)
     cache_store.write_output_file(out_errlog, out_vcf_log_key)
     
-def compute_performance_from_vcf(job, gam_key, condition, options):
+def make_vcfeval_from_vcf(job, gam_key, condition, options):
     """
     Compute the performance of the given GAM (aligned to the given graph)
     against the truth set for its region.
@@ -681,10 +693,109 @@ def compute_performance_from_vcf(job, gam_key, condition, options):
     cache_store.write_output_file(out_dir + "/fn.vcf.gz", out_fn_key)
     cache_store.write_output_file(out_dir + "/weighted_roc.tsv.gz", out_roc_key)
     
+def get_max_f_score(job, gam_key, condition, options):
+    """
+    Given the GAM file key for a sample that has already had vcfeval run under
+    the given conditions, parse the vcfeval roc and return the biggest F score.
     
+    """
     
+    # Make the IOStore
+    cache_store = IOStore.get(options.cache)
     
+    # Find the ROC curve
+    roc_key = vcfeval_roc_key(gam_key, condition)
     
+    # Get the file
+    roc_compressed = cache_store.get_input_file(job, roc_key)
+    
+    # Read it
+    reader = tsv.TsvReader(gzip.GzipFile(roc_compressed))
+    
+    # What's the max F score we found?
+    max_f_score = None
+    for parts in reader:
+        # Parse all the F scores
+        f_score = float(parts[6])
+        
+        if max_f_score is None or f_score > max_f_score:
+            # And keep the max
+            max_f_score = f_score
+            
+    # Return the max F score.
+    return max_f_score
+    
+def run_conditions(job, gam_key, conditions, options):
+    """
+    Run the pipeline for all the conditions given, and put all the results into
+    the cache.
+    
+    Returns a dict from condition to best F score.
+    
+    Avoids re-doing work in parallel.
+    """
+    
+    # Maps from pileup condition name to pileup job
+    pileup_jobs = {}
+    # And glennfile condition name to glennfile job
+    glennfile_jobs = {}
+    # And vcf condition name to glenn2vcf job
+    vcf_jobs = {}
+    # And vcfeval condition name to vcfeval job
+    vcfeval_jobs = {}
+    
+    # And vcfeval condition name to F score (promise)
+    f_score_jobs = {}
+    
+    # This is the dict from condition to best F score.
+    f_scores = {}
+    
+    for condition in conditions:
+        # For each condition, what pileup do we need?
+        pileup = condition.get_pileup_condition_name()
+        if not pileup_jobs.has_key(pileup):
+            # We need to make this pileup
+            pileup_jobs[pileup] = job.addChildJobFn(make_pileup, gam_key,
+                condition, options, cores=1, memory="10G", disk="10G")
+                
+        # And what glennfile do we need?
+        glennfile = condition.get_glennfile_condition_name()
+        if not glennfile_jobs.has_key(glennfile):
+            # We need to make this glennfile
+            glennfile_jobs[glennfile] = pileup_jobs[pileup].addFollowOnJobFn(
+                make_glennfile_from_pileup, gam_key, condition, options,
+                cores=1, memory="10G", disk="10G")
+                
+        # And what vcf do we need?
+        vcf = condition.get_vcf_condition_name()
+        if not vcf_jobs.has_key(vcf):
+            # We need to make this vcf
+            vcf_jobs[vcf] = glennfile_jobs[glennfile].addFollowOnJobFn(
+                make_vcf_from_glennfile, gam_key, condition, options,
+                cores=1, memory="10G", disk="10G")
+                
+        # And what vcfeval do we need?
+        vcfeval = condition.get_vcfeval_condition_name()
+        if not vcfeval_jobs.has_key(vcfeval):
+            # We need to make this vcfeval result
+            vcfeval_jobs[vcfeval] = vcf_jobs[vcf].addFollowOnJobFn(
+                make_vcfeval_from_vcf, gam_key, condition, options,
+                cores=1, memory="10G", disk="10G")
+                
+        # And what job do we need to compute the F score?
+        if not f_score_jobs.has_key(vcfeval):
+            # We need to parse the results and extract the max F score
+            f_score_jobs[vcfeval] = vcfeval_jobs[vcfeval].addFollowOnJobFn(
+                get_max_f_score, gam_key, condition, options,
+                cores=1, memory="2G", disk="2G")
+                
+            # And save the result in our return dict for this condition
+            f_scores[condition] = f_score_jobs[vcfeval].rv()
+            
+    # Send back f scores by condition.
+    return f_scores
+                
+                
 def run_experiment(job, options):
     """
     Toil job to run an experiment on a variety of conditions and compare the
@@ -693,6 +804,10 @@ def run_experiment(job, options):
     
     # Make the IOStore we can search for GAMs
     gam_store = IOStore.get(options.in_gams)
+    
+    # This will hold best F score by region, graph, sample, and then condition.
+    # We stick in dicts by condition.
+    results = collections.defaultdict(lambda: collections.defaultdict(dict))
     
     
     for region_dir in gam_store.list_input_directory(""):
@@ -728,7 +843,7 @@ def run_experiment(job, options):
                 # readability
                 condition = ExperimentCondition(
                     { # vg filter 
-                        "-r": 0.90,
+                        #"-r": 0.90,
                         "-d": 0.05,
                         "-e": 0.05,
                         "-a": "",
@@ -741,27 +856,29 @@ def run_experiment(job, options):
                         "-m": 10,
                         "-q": 10
                     }, { # vg call
-                        "-r": 0.0001,
-                        "-b": 0.4,
-                        "-f": 0.25,
-                        "-d": 11
+                        "-r": 0.0001, # Prior for being heterozygous
+                        "-b": 1, # Max strand bias
+                        "-f": 0.05, # Min fraction of reads required to support a variant
+                        "-d": 2 # Min pileup depth
                     }, { # glenn2vcf
                         "--depth": 10
                     }, { # vcfeval
                         "--all-records": "",
-                        "--vcf-score-field": "DP"
+                        "--vcf-score-field": "DP",
+                        "--squash-ploidy": ""
                     })
                 
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
-                pileup_job = job.addChildJobFn(make_pileup, gam_key, condition, options,
-                    cores=1, memory="10G", disk="10G")
-                glennfile_job = pileup_job.addFollowOnJobFn(make_glennfile_from_pileup, gam_key, condition, options,
-                    cores=1, memory="10G", disk="10G")
-                vcf_job = glennfile_job.addFollowOnJobFn(make_vcf_from_glennfile, gam_key, condition, options,
-                    cores=1, memory="10G", disk="10G")
-                vcfeval_job = vcf_job.addFollowOnJobFn(compute_performance_from_vcf, gam_key, condition, options,
-                    cores=1, memory="10G", disk="10G")
+                exp_job = job.addChildJobFn(run_conditions, gam_key, [condition], options,
+                    cores=1, memory="2G", disk="10G")
+                    
+                # Save the best F score by condition under this region, graph, and sample filename
+                results[region_dir][graph_dir][filename] = exp_job.rv()
+                
+    # Give back the results
+    # TODO: we run it through JSON to fix the pickle-ability.
+    return de_defaultdict(results)
     
 def main(args):
     
@@ -780,6 +897,9 @@ def main(args):
         raise Exception("{} jobs failed!".format(failed_jobs))
                                
     RealTimeLogger.stop_master()
+    
+    print("Root return value:")
+    print(root_job.rv())
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
