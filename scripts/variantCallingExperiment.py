@@ -153,7 +153,7 @@ class ExperimentCondition:
         """
         
         # This happens to include all the options
-        return self.get_vcfeval_condition_name()
+        return "Condition:" + self.get_vcfeval_condition_name()
         
         
         
@@ -880,6 +880,48 @@ def run_experiment(job, options):
     # TODO: we run it through JSON to fix the pickle-ability.
     return de_defaultdict(results)
     
+def pick_best(job, results, options):
+    """
+    Given the return value of run_experiment, pick the best condition for each
+    region, graph, and sample.
+    
+    Returns a dict of (best condition, f score) by region, graph, and sample.
+    """
+    
+    for region, region_results in results.iteritems():
+        for graph, graph_results in region_results.iteritems():
+            for sample, sample_results in graph_results.iteritems():
+                
+                best_condition = None
+                best_f_score = None
+                
+                for condition, f_score in sample_results.iteritems():
+                    if best_condition is None or f_score > best_f_score:
+                        # This is the best for this sample
+                        best_condition = condition
+                        best_f_score = f_score
+                
+                # Fix up the results for this sample to be just the winning
+                # condition and F score.
+                graph_results[sample] = (best_condition, best_f_score)
+                
+    return results
+    
+    
+def run_and_evaluate(job, options):
+    """
+    Run the experiment, then evaluate its results and return a summary.
+    """
+    
+    # Run the experiment
+    exp_job = job.addChildJobFn(run_experiment, options, cores=1, memory="2G", disk="2G")
+    
+    # Then evaluate the results and come to a conclusion
+    eval_job = exp_job.addFollowOnJobFn(pick_best, exp_job.rv(), options, cores=1, memory="2G", disk="2G")
+    
+    # Return the evaluation
+    return eval_job.rv()
+    
 def main(args):
     
     options = parse_args(args) 
@@ -887,19 +929,16 @@ def main(args):
     RealTimeLogger.start_master()
 
     # Make a root job
-    root_job = Job.wrapJobFn(run_experiment, options,
+    root_job = Job.wrapJobFn(run_and_evaluate, options,
                              cores=1, memory="2G", disk="2G")
     
-    # Run it and see how many jobs fail
-    failed_jobs = Job.Runner.startToil(root_job,  options)
-    
-    if failed_jobs > 0:
-        raise Exception("{} jobs failed!".format(failed_jobs))
-                               
+    # Run it and get the return value
+    answer = Job.Runner.startToil(root_job,  options)
+
     RealTimeLogger.stop_master()
     
     print("Root return value:")
-    print(root_job.rv())
+    print(answer)
     
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
