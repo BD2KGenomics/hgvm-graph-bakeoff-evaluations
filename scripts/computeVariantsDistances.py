@@ -453,6 +453,42 @@ def happy_dist_fn(graph1, graph2, options):
                  total[prec_idx],
                  total[rec_idx]]]
 
+def vcf_num_records(vcf_path, bed_path = None):
+    """ use bcftools stats to get the number of snps indels other in vcf """
+    if not os.path.exists(vcf_path):
+        return -1
+    cmd = "bcftools stats {}".format(vcf_path)
+    if bed_path is not None:
+        cmd += " -R {}".format(bed_path)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=sys.stderr, bufsize=-1)
+    output, _ = p.communicate()
+    assert p.wait() == 0
+    hits = 0
+    for line in output.split("\n"):
+        toks = line.split("\t")
+        if len(toks) == 4 and toks[0] == "SN":
+            if toks[2] == "number of SNPs:":
+                num_snps = int(toks[3])
+                hits += 1
+            if toks[2] == "number of MNPs:":
+                num_mnps = int(toks[3])
+                hits += 1
+            elif toks[2] == "number of indels:":
+                num_indels = int(toks[3])
+                hits += 1
+            elif toks[2] == "number of records:":
+                hits += 1
+                num_records = int(toks[3])
+            elif toks[2] == "number of others:":
+                hits += 1
+                num_other = int(toks[3])
+        if hits == 5:
+            break
+                
+    # generally, mnps are snps for our purposes (TODO: can separate?)
+    num_snps += num_mnps
+    return num_snps, num_indels, num_other
 
 def vcfeval_dist_fn(graph1, graph2, options):
     out_dir = comp_path_vcfeval(graph1, graph2, options)
@@ -469,18 +505,40 @@ def vcfeval_dist_fn(graph1, graph2, options):
         rec_idx = header.index("Sensitivity")
         f.readline()
         data = f.readline().split()
-        total_precision = data[prec_idx]
-        total_recall = data[rec_idx]
+        total_precision = float(data[prec_idx])
+        total_recall = float(data[rec_idx])
 
+    # it's actually better to compute precision and recall from the vcf output
+    # because we can do clipping here and it won't break normalization and
+    # we can do a snp indel breakdown
+    
+    fn_path = os.path.join(out_dir, "fn.vcf.gz")
+    fp_path = os.path.join(out_dir, "fp.vcf.gz")
+    tp_path = os.path.join(out_dir, "tp.vcf.gz")
+
+    # count variants
+    assert options.clip is None or options.clip_fp is None
+    fns, fni, fno = vcf_num_records(fn_path, options.clip)
+    fps, fpi, fpo = vcf_num_records(fp_path, options.clip_fp if options.clip_fp else options.clip)
+    tps, tpi, tpo = vcf_num_records(tp_path, options.clip)
+    fnt = fns + fni + fno
+    fpt = fps + fpi + fpo
+    tpt = tps + tpi + tpo
+
+    precs = 0. if tps + fps == 0 else float(tps) / float(tps + fps)
+    recs = 0. if tps + fns  == 0 else float(tps) / float(tps + fns)
+    preci = 0. if tpi + fpi == 0 else float(tpi) / float(tpi + fpi)
+    reci = 0. if tpi + fni  == 0 else float(tpi) / float(tpi + fni)
+    prect = 0. if tpt + fpt == 0 else float(tpt) / float(tpt + fpt)
+    rect = 0. if tpt + fnt  == 0 else float(tpt) / float(tpt + fnt)
+
+    if options.clip is None and options.clip_fp is None:
+        # keep old way of computing as sanity check
+        assert abs(rect - total_recall) < 0.05 and abs(prect - total_precision) < 0.05
+    
     # shoehorn into vcfCompre style output (todo, revise this)
-    return [[0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            total_precision,
-            total_recall]]
+    return [[precs, recs, 0, 0, preci, reci, prect, rect]]
+    
     
 def make_mat(options, row_graphs, column_graphs, dist_fns):
     """ make a distance matix """
@@ -837,7 +895,7 @@ def preprocess_vcf(job, graph, options):
         if sts == 0:
             run("cp {} {}".format(output_vcf + ".vt", output_vcf))
 
-    if options.clip is not None:
+    if options.clip is not None and options.comp_type != "vcfeval":
         clip_bed = clip_bed_path(graph, options)        
         if not os.path.isfile(clip_bed):
             RealTimeLogger.get().warning("Clip bed file not found {}".format(clip_bed))
@@ -941,7 +999,7 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             #    ve_opts += " --bed-regions={}".format(options.clip)
             # indexing and compression was done by preprocessing phase
             run("rm -rf {}".format(out_path))
-            run("rtg vcfeval -b {}.gz -c {}.gz --all-records -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
+            run("rtg vcfeval -b {}.gz -c {}.gz --all-records --ref-overlap -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
                                                                                          options.chrom_sdf_path, ve_opts,
                                                                                          out_path))
         
