@@ -155,6 +155,18 @@ class ExperimentCondition:
         # This happens to include all the options
         return "Condition:" + self.get_vcfeval_condition_name()
         
+    def report(self):
+        """
+        Return a string report that's easy to manually turn into script commands
+        to execute this condition.
+        """
+        
+        return "\n".join(["vg filter " + self.get_read_filter_options(),
+            "vg pileup " + self.get_pileup_options(),
+            "vg call " + self.get_call_options(),
+            "glenn2vcf " + self.get_vcf_options(),
+            "rtg vcfeval " + self.get_vcfeval_options()])
+        
         
         
         
@@ -868,18 +880,18 @@ def run_experiment(job, options):
                 
                 # First define the lists we want the product of for all the parameters
                 grid = [{ # vg filter 
-                        "-r": [0.90, 0.97, 0.99], # minimum score to keep primary alignment [default=0]
-                        "-d": [0.05], # mininum (primary - secondary) score delta to keep secondary alignment
-                        "-e": [0.05], # minimum (primary - secondary) score delta to keep primary alignment
+                        "-r": [0.97], # minimum score to keep primary alignment [default=0]
+                        "-d": [0], # mininum (primary - secondary) score delta to keep secondary alignment
+                        "-e": [0], # minimum (primary - secondary) score delta to keep primary alignment
                         "-a": [""], # use (secondary / primary) for delta comparisons
                         "-f": [""], # normalize score based on length
                         "-u": [""], # use substitution count instead of score
-                        "-s": [10000], # minimum score to keep secondary alignment [default=0]
-                        "-o": [0, 5] #  filter reads whose alignments begin or end with an insert > N [default=99999]
+                        "-s": [2], # minimum score to keep secondary alignment [default=0]
+                        "-o": [0] #  filter reads whose alignments begin or end with an insert > N [default=99999]
                     }, { # vg pileup
-                        "-w": [40],
-                        "-m": [10],
-                        "-q": [10]
+                        "-w": [40], # size of window to apply -m option (default=0)
+                        "-m": [2], # ignore bases with > N mismatches within window centered on read (default=1)
+                        "-q": [10] # ignore bases with PHRED quality < N (default=0)
                     }, { # vg call
                         "-r": [0.0001], # Prior for being heterozygous
                         "-b": [1], # Max strand bias
@@ -887,9 +899,9 @@ def run_experiment(job, options):
                         "-d": [2] # Min pileup depth
                     }, { # glenn2vcf
                         "--depth": [10], # search depth not read depth
-                        "--min_fraction": [0.05, 0.10, 0.15], # Min fraction of average coverage to call at
-                        "--min_count": [5, 6, 7, 8], # Min total supporting reads for an allele to have it
-                        "--max_het_bias": [4.2, 4.3, 4.4, 4.5] # Max bias towards one alt of a called het
+                        "--min_fraction": [0.15], # Min fraction of average coverage to call at
+                        "--min_count": [6], # Min total supporting reads for an allele to have it
+                        "--max_het_bias": [4.2] # Max bias towards one alt of a called het
                     }, { # vcfeval
                         "--all-records": [""],
                         "--vcf-score-field": ["XAAD"]
