@@ -839,38 +839,83 @@ def run_experiment(job, options):
                 gam_key = "{}/{}/{}".format(region_dir, graph_dir, filename)
                 
                 # Make some experimental conditions with filter, pileup, call,
-                # and glenn2vcf options. TODO: change to long options for
-                # readability
-                condition = ExperimentCondition(
+                # and glenn2vcf options. 
+                conditions = []                
+                
+                for min_fraction, min_count, max_het_bias, min_primary_score, max_overhang in itertools.product(
+                    [0.05, 0.10, 0.15], # min fraction of average coverage
+                    [5, 6, 7, 8], # min count
+                    [4.2, 4.3, 4.4, 4.5], # Max het bais (1 = always call het)
+                    [0.90, 0.97, 0.99], # filter: min score to keep primary alignment
+                    [0, 5] # filter: max overhang [default=99999]
+                    ):
+                    # Try different min depths for vg call
+                    condition = ExperimentCondition(
+                        { # vg filter 
+                            "-r": min_primary_score, # minimum score to keep primary alignment [default=0]
+                            "-d": 0.05, # mininum (primary - secondary) score delta to keep secondary alignment
+                            "-e": 0.05, # minimum (primary - secondary) score delta to keep primary alignment
+                            "-a": "", # use (secondary / primary) for delta comparisons
+                            "-f": "", # normalize score based on length
+                            "-u": "", # use substitution count instead of score
+                            "-s": 10000, # minimum score to keep secondary alignment [default=0]
+                            "-o": max_overhang #  filter reads whose alignments begin or end with an insert > N [default=99999]
+                        }, { # vg pileup
+                            "-w": 40,
+                            "-m": 10,
+                            "-q": 10
+                        }, { # vg call
+                            "-r": 0.0001, # Prior for being heterozygous
+                            "-b": 1, # Max strand bias
+                            "-f": 0.05, # Min fraction of reads required to support a variant
+                            "-d": 2 # Min pileup depth
+                        }, { # glenn2vcf
+                            "--depth": 10, # search depth not read depth
+                            "--min_fraction": min_fraction, # Min fraction of average coverage to call at
+                            "--min_count": min_count, # Min total supporting reads for an allele to have it
+                            "--max_het_bias": max_het_bias # Max bias towards one alt of a called het
+                        }, { # vcfeval
+                            "--all-records": "",
+                            "--vcf-score-field": "XAAD"
+                        })
+                        
+                    conditions.append(condition)
+                    
+                # Add a condition that opens everything way up so we can try and
+                # get maximum recall.
+                conditions.append(ExperimentCondition(
                     { # vg filter 
-                        #"-r": 0.90,
+                        "-r": 0,
                         "-d": 0.05,
                         "-e": 0.05,
                         "-a": "",
                         "-f": "",
                         "-u": "",
                         "-s": 10000,
-                        "-o": 10
+                        "-o": 99999
                     }, { # vg pileup
                         "-w": 40,
                         "-m": 10,
                         "-q": 10
                     }, { # vg call
-                        "-r": 0.0001, # Prior for being heterozygous
-                        "-b": 1, # Max strand bias
-                        "-f": 0.05, # Min fraction of reads required to support a variant
-                        "-d": 2 # Min pileup depth
+                        "-r": 0.0001,
+                        "-b": 0.4,
+                        "-f": 0.25,
+                        "-d": 11
                     }, { # glenn2vcf
-                        "--depth": 10
+                        "--depth": 10,
+                        "--min_fraction": 0, # Min fraction of average coverage to call at
+                        "--min_count": 1, # Min total supporting reads for an allele to have it
+                        "--max_het_bias": 20 # Max bias towards one alt of a called het
                     }, { # vcfeval
                         "--all-records": "",
-                        "--vcf-score-field": "DP",
-                        "--squash-ploidy": ""
+                        "--vcf-score-field": "XAAD"
                     })
+                )
                 
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
-                exp_job = job.addChildJobFn(run_conditions, gam_key, [condition], options,
+                exp_job = job.addChildJobFn(run_conditions, gam_key, conditions, options,
                     cores=1, memory="2G", disk="10G")
                     
                 # Save the best F score by condition under this region, graph, and sample filename
@@ -885,25 +930,43 @@ def pick_best(job, results, options):
     Given the return value of run_experiment, pick the best condition for each
     region, graph, and sample.
     
-    Returns a dict of (best condition, f score) by region, graph, and sample.
+    Returns a dict of (best condition, f score, next best f score) by region, graph, and sample.
     """
     
     for region, region_results in results.iteritems():
         for graph, graph_results in region_results.iteritems():
             for sample, sample_results in graph_results.iteritems():
                 
+                # We track the best condition and its score
                 best_condition = None
                 best_f_score = None
+                
+                # Also the second best condition and its score so we can get an
+                # idea of if it's better.
+                second_best_condition = None
+                second_best_f_score = None
+                
                 
                 for condition, f_score in sample_results.iteritems():
                     if best_condition is None or f_score > best_f_score:
                         # This is the best for this sample
+                        
+                        # Demote the old best
+                        second_best_condition = best_condition
+                        second_best_f_score = best_f_score
+                        
+                        # Promothe the new one
                         best_condition = condition
                         best_f_score = f_score
+                    elif second_best_condition is None or f_score > second_best_f_score:
+                        # This isn't the best bus is a new second best
+                        second_best_condition = condition
+                        second_best_f_score = f_score
                 
                 # Fix up the results for this sample to be just the winning
-                # condition and F score.
-                graph_results[sample] = (best_condition, best_f_score)
+                # condition and F score, and the second best F score so we can
+                # guess at how sensitive we are to these parameters.
+                graph_results[sample] = (best_condition, best_f_score, second_best_f_score)
                 
     return results
     
