@@ -794,7 +794,32 @@ def run_conditions(job, gam_key, conditions, options):
             
     # Send back f scores by condition.
     return f_scores
-                
+   
+def make_grid(description):
+    """
+    Given a grid description, in the form of a list of dicts of lists, produce
+    lists of dicts with all combinations of the internal lists.
+    """
+    
+    # Make all the combos for each dict, and then compute the product of those lists.
+    return itertools.product(*[make_single_grid(params) for params in description])
+    
+    
+def make_single_grid(description):
+    """
+    Given a dict of lists, produce all combinations of items from the list, as
+    dicts.
+    """
+    
+    # Transpose items into key and value lists.
+    # TODO: are .keys() and .values() always in the same order?
+    keys, values = zip(*description.items())
+    
+    for value_combo in itertools.product(*values):
+        # Get all the combinations of items from the value lists
+        
+        # Zip item values with their keys and make a dict.
+        yield dict(zip(keys, value_combo))
                 
 def run_experiment(job, options):
     """
@@ -840,46 +865,39 @@ def run_experiment(job, options):
                 
                 # Make some experimental conditions with filter, pileup, call,
                 # and glenn2vcf options. 
-                conditions = []                
                 
-                for min_fraction, min_count, max_het_bias, min_primary_score, max_overhang in itertools.product(
-                    [0.05, 0.10, 0.15], # min fraction of average coverage
-                    [5, 6, 7, 8], # min count
-                    [4.2, 4.3, 4.4, 4.5], # Max het bais (1 = always call het)
-                    [0.90, 0.97, 0.99], # filter: min score to keep primary alignment
-                    [0, 5] # filter: max overhang [default=99999]
-                    ):
-                    # Try different min depths for vg call
-                    condition = ExperimentCondition(
-                        { # vg filter 
-                            "-r": min_primary_score, # minimum score to keep primary alignment [default=0]
-                            "-d": 0.05, # mininum (primary - secondary) score delta to keep secondary alignment
-                            "-e": 0.05, # minimum (primary - secondary) score delta to keep primary alignment
-                            "-a": "", # use (secondary / primary) for delta comparisons
-                            "-f": "", # normalize score based on length
-                            "-u": "", # use substitution count instead of score
-                            "-s": 10000, # minimum score to keep secondary alignment [default=0]
-                            "-o": max_overhang #  filter reads whose alignments begin or end with an insert > N [default=99999]
-                        }, { # vg pileup
-                            "-w": 40,
-                            "-m": 10,
-                            "-q": 10
-                        }, { # vg call
-                            "-r": 0.0001, # Prior for being heterozygous
-                            "-b": 1, # Max strand bias
-                            "-f": 0.05, # Min fraction of reads required to support a variant
-                            "-d": 2 # Min pileup depth
-                        }, { # glenn2vcf
-                            "--depth": 10, # search depth not read depth
-                            "--min_fraction": min_fraction, # Min fraction of average coverage to call at
-                            "--min_count": min_count, # Min total supporting reads for an allele to have it
-                            "--max_het_bias": max_het_bias # Max bias towards one alt of a called het
-                        }, { # vcfeval
-                            "--all-records": "",
-                            "--vcf-score-field": "XAAD"
-                        })
+                # First define the lists we want the product of for all the parameters
+                grid = [{ # vg filter 
+                        "-r": [0.90, 0.97, 0.99], # minimum score to keep primary alignment [default=0]
+                        "-d": [0.05], # mininum (primary - secondary) score delta to keep secondary alignment
+                        "-e": [0.05], # minimum (primary - secondary) score delta to keep primary alignment
+                        "-a": [""], # use (secondary / primary) for delta comparisons
+                        "-f": [""], # normalize score based on length
+                        "-u": [""], # use substitution count instead of score
+                        "-s": [10000], # minimum score to keep secondary alignment [default=0]
+                        "-o": [0, 5] #  filter reads whose alignments begin or end with an insert > N [default=99999]
+                    }, { # vg pileup
+                        "-w": [40],
+                        "-m": [10],
+                        "-q": [10]
+                    }, { # vg call
+                        "-r": [0.0001], # Prior for being heterozygous
+                        "-b": [1], # Max strand bias
+                        "-f": [0.05], # Min fraction of reads required to support a variant
+                        "-d": [2] # Min pileup depth
+                    }, { # glenn2vcf
+                        "--depth": [10], # search depth not read depth
+                        "--min_fraction": [0.05, 0.10, 0.15], # Min fraction of average coverage to call at
+                        "--min_count": [5, 6, 7, 8], # Min total supporting reads for an allele to have it
+                        "--max_het_bias": [4.2, 4.3, 4.4, 4.5] # Max bias towards one alt of a called het
+                    }, { # vcfeval
+                        "--all-records": [""],
+                        "--vcf-score-field": ["XAAD"]
+                    }]
+                    
+                # Make the whole grid of conditions for the grid search
+                conditions = [ExperimentCondition(*point) for point in make_grid(grid)]
                         
-                    conditions.append(condition)
                     
                 # Add a condition that opens everything way up so we can try and
                 # get maximum recall.
@@ -912,6 +930,8 @@ def run_experiment(job, options):
                         "--vcf-score-field": "XAAD"
                     })
                 )
+                
+                RealTimeLogger.get().info("Running {} conditions...".format(len(conditions)))
                 
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
