@@ -147,6 +147,26 @@ class ExperimentCondition:
         # Depends on the gelnnfile and the glenn2vcf options
         return self.get_vcf_condition_name() + "/" + self.string_to_path(self.get_vcfeval_options())
         
+    def __hash__(self):
+        """
+        Get the hash of this object for use in a dict.
+        """
+        
+        return hash(self.get_vcfeval_condition_name())
+
+    def __eq__(self, other):
+        """
+        Determine if this condition equals another.
+        """
+        
+        return self.get_vcfeval_condition_name() == other.get_vcfeval_condition_name()
+
+    def __ne__(self, other):
+        """
+        Determine if this condition does not equal another.
+        """
+        return not (self == other)
+        
     def __repr__(self):
         """
         Represent this object as a string for debugging.
@@ -200,6 +220,12 @@ def parse_args(args):
         "lrc_kir:camel", "debruijn-k31", "debruijn-k63", "cenx", "simons",
         "curoverse", "flat1kg", "primary1kg"],
         help="ignore the specified regions, graphs, or region:graph pairs")
+    parser.add_argument("--important_regions", nargs="+", default=None,
+        help="use only these regions when computing the best condition")
+    parser.add_argument("--important_graphs", nargs="+", default=None,
+        help="use only these graphs when computing the best condition")
+    parser.add_argument("--important_samples", nargs="+", default=None,
+        help="use only these GAM basenames when computing the best condition")
     
     args = args[1:]
         
@@ -969,48 +995,77 @@ def run_experiment(job, options):
     
 def pick_best(job, results, options):
     """
-    Given the return value of run_experiment, pick the best condition for each
-    region, graph, and sample.
+    Given the return value of run_experiment, which is a dict from region, then
+    graph, then sample, then condition to f score, pick the best condition for
+    each region, graph, and sample.
     
-    Returns a dict of (best condition, f score, next best f score) by region, graph, and sample.
+    Returns (best condition, f score, next best f score).
     """
     
+    # Strategy
+    
+    # We have a collection of regions, graphs, and samples that we care about
+    # (or None for "all of them"). We'll loop through these parts of the dict
+    # and sum up all the f scores for each condition, then average. Then the
+    # condition with the highest average f score will win.
+    
+    # This holds F score lists (and later averages) by condition
+    condition_scores = collections.defaultdict(list)
+    
     for region, region_results in results.iteritems():
+        # For every region
+        if options.important_regions is not None and region not in options.important_regions:
+            # Skip it if it's unimportant
+            continue
         for graph, graph_results in region_results.iteritems():
+            # For every graph
+            if options.important_graphs is not None and graph not in options.important_graphs:
+                # Skip it if it's unimportant
+                continue
             for sample, sample_results in graph_results.iteritems():
-                
-                # We track the best condition and its score
-                best_condition = None
-                best_f_score = None
-                
-                # Also the second best condition and its score so we can get an
-                # idea of if it's better.
-                second_best_condition = None
-                second_best_f_score = None
-                
-                
+                # For every sample
+                if options.important_samples is not None and sample not in options.important_samples:
+                    # Skip it if it's unimportant
+                    continue
+                    
+                # OK now actually process this region/graph/sample.
                 for condition, f_score in sample_results.iteritems():
-                    if best_condition is None or f_score > best_f_score:
-                        # This is the best for this sample
-                        
-                        # Demote the old best
-                        second_best_condition = best_condition
-                        second_best_f_score = best_f_score
-                        
-                        # Promothe the new one
-                        best_condition = condition
-                        best_f_score = f_score
-                    elif second_best_condition is None or f_score > second_best_f_score:
-                        # This isn't the best bus is a new second best
-                        second_best_condition = condition
-                        second_best_f_score = f_score
+                    # Put the f score in the list for the condition
+                    condition_scores[condition].append(f_score)
+                    
+    for condition in condition_scores.iterkeys():
+        # Replace each list with an average.
+        condition_scores[condition] = sum(condition_scores[condition]) / len(condition_scores[condition])
                 
-                # Fix up the results for this sample to be just the winning
-                # condition and F score, and the second best F score so we can
-                # guess at how sensitive we are to these parameters.
-                graph_results[sample] = (best_condition, best_f_score, second_best_f_score)
                 
-    return results
+    # We track the best condition and its score
+    best_condition = None
+    best_f_score = None
+    
+    # Also the second best condition and its score so we can get an
+    # idea of if it's better.
+    second_best_condition = None
+    second_best_f_score = None
+                
+    for condition, f_score in condition_scores.iteritems():
+        if best_condition is None or f_score > best_f_score:
+            # This is the best for this sample
+            
+            # Demote the old best
+            second_best_condition = best_condition
+            second_best_f_score = best_f_score
+            
+            # Promothe the new one
+            best_condition = condition
+            best_f_score = f_score
+        elif second_best_condition is None or f_score > second_best_f_score:
+            # This isn't the best bus is a new second best
+            second_best_condition = condition
+            second_best_f_score = f_score
+    
+    # Return the best overall condition and its f score average, as compared to
+    # the second best.
+    return (best_condition, best_f_score, second_best_f_score)
     
     
 def run_and_evaluate(job, options):
