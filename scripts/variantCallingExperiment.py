@@ -496,6 +496,47 @@ def truth_index_key(alignment_key):
     """
    
     return truth_compressed_key(alignment_key) + ".tbi"
+    
+    
+def add_optional_followon(job, job_function, *args, **kwargs):
+    """
+    Given a job, and a Toil job function with pre-execution support, create a
+    new follow on of the given job that runs the given job function with the
+    given args and kwargs (which are probably all Toil args like "cores" and
+    "memory").
+    
+    The job function has to support "pre-execution": you can call it with None
+    for the job argument, and it will return True if it thinks it really needs
+    to be scheduled, and False otherwise. This lets us encapsulate the "is the
+    job done?" code with the "what does the job do?" code, which might be a good
+    design.
+    
+    Note that kwargs are discarded in pre-execution mode, because Toil doesn't
+    offer a simple way to strip the ones it is going to consume, and the job
+    functions shouldn't have to deal with extra ones.
+    
+    If the job needs to be scheduled, returns the newly created Toil job.
+    Otherwise, returns the Toil job we were going to add a followon to.
+    """
+    
+    # Run the job with None as a first argument and see what it returns. TODO:
+    # filter out Toil kwargs and enable us to pass the remaining ones to the job
+    # function.
+    need_to_run = job_function(None, *args)
+    
+    if need_to_run != False and need_to_run != True:
+        # It's not speaking the protocol
+        raise RuntimeError("Job function {} does not have pre-execution support!".format(job_function))
+        
+    if need_to_run:
+        # Actually schedule
+        RealTimeLogger.get().debug("Running {}".format(job_function))
+        return job.addFollowOnJobFn(job, job_function, *args, **kwargs)
+    else:
+        # Don't schedule and give back the job we were adding onto instead.
+        RealTimeLogger.get().debug("Skipping {}".format(job_function))
+        return job
+        
 
 def make_pileup(job, gam_key, condition, options):
     """
@@ -506,6 +547,9 @@ def make_pileup(job, gam_key, condition, options):
     place in the cache IOStore for the given sample.
     
     Returns nothing.
+    
+    Supports a pre-execution mode: if job is None, returns True if we really
+    need to run the job, and False otherwise.
     
     """
     
@@ -518,8 +562,11 @@ def make_pileup(job, gam_key, condition, options):
     out_pileup_key = pileup_key(gam_key, condition)
     
     if cache_store.exists(out_pileup_key):
-        # We already made this file
-        return
+        # We already made this file. No need to run if we aren't already.
+        return False
+    elif job is None:
+        # We aren't really executing yet, but we need to
+        return True
     
     # Download the GAM
     input_gam = gam_store.get_input_file(job, gam_key)
@@ -549,6 +596,9 @@ def make_glennfile_from_pileup(job, gam_key, condition, options):
     graph and associated glennfile in the cache for the current condition.
     
     Returns nothing.
+    
+    Supports a pre-execution mode: if job is None, returns True if we really
+    need to run the job, and False otherwise.
     """
     
     # Make IOStores
@@ -561,7 +611,10 @@ def make_glennfile_from_pileup(job, gam_key, condition, options):
     
     if cache_store.exists(out_glennfile_key) and cache_store.exists(out_augmented_graph_key):
         # We already made these files
-        return
+        return False
+    elif job is None:
+        # We aren't really executing yet, but we need to
+        return True
     
     # Get the non-augmented graph
     input_graph = graph_store.get_input_file(job, graph_key(gam_key))
@@ -594,6 +647,9 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
     Needs the regions option to be specified.
     
     Returns nothing.
+    
+    Supports a pre-execution mode: if job is None, returns True if we really
+    need to run the job, and False otherwise.
     """
     
     # Make IOStores
@@ -609,7 +665,10 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
         cache_store.exists(out_vcf_index_key) and
         cache_store.exists(out_vcf_log_key)):
         # We already made these files
-        return
+        return False
+    elif job is None:
+        # We aren't really executing yet, but we need to
+        return True
     
     # Get the augmented graph from the cache
     input_augmented_graph = cache_store.get_input_file(job, augmented_graph_key(gam_key, condition))
@@ -670,6 +729,9 @@ def make_vcfeval_from_vcf(job, gam_key, condition, options):
     against the truth set for its region.
     
     Places the vcfeval summary file for the given sample in the cache.
+    
+    Supports a pre-execution mode: if job is None, returns True if we really
+    need to run the job, and False otherwise.
     """
     
     # Make IOStores
@@ -691,7 +753,10 @@ def make_vcfeval_from_vcf(job, gam_key, condition, options):
         cache_store.exists(out_fn_key) and
         cache_store.exists(out_roc_key)):
         # We already did this
-        return
+        return False
+    elif job is None:
+        # We aren't really executing yet, but we need to
+        return True
 
     # Get the query VCF
     query_vcf_compressed = cache_store.get_input_file(job, vcf_compressed_key(gam_key, condition))
@@ -784,9 +849,6 @@ def run_conditions(job, gam_key, conditions, options):
     # And vcfeval condition name to vcfeval job
     vcfeval_jobs = {}
     
-    # And vcfeval condition name to F score (promise)
-    f_score_jobs = {}
-    
     # This is the dict from condition to best F score.
     f_scores = {}
     
@@ -794,43 +856,47 @@ def run_conditions(job, gam_key, conditions, options):
         # For each condition, what pileup do we need?
         pileup = condition.get_pileup_condition_name()
         if not pileup_jobs.has_key(pileup):
-            # We need to make this pileup
-            pileup_jobs[pileup] = job.addChildJobFn(make_pileup, gam_key,
+            # We need to have a job representing having made this pileup
+            pileup_jobs[pileup] = add_optional_followon(job, make_pileup, gam_key,
                 condition, options, cores=1, memory="10G", disk="10G")
                 
         # And what glennfile do we need?
         glennfile = condition.get_glennfile_condition_name()
         if not glennfile_jobs.has_key(glennfile):
-            # We need to make this glennfile
-            glennfile_jobs[glennfile] = pileup_jobs[pileup].addFollowOnJobFn(
+            # We need to have a job representing having made this glennfile
+            glennfile_jobs[glennfile] = add_optional_followon(pileup_jobs[pileup],
                 make_glennfile_from_pileup, gam_key, condition, options,
                 cores=1, memory="10G", disk="10G")
                 
         # And what vcf do we need?
         vcf = condition.get_vcf_condition_name()
         if not vcf_jobs.has_key(vcf):
-            # We need to make this vcf
-            vcf_jobs[vcf] = glennfile_jobs[glennfile].addFollowOnJobFn(
+            # We need to have a job representing having made this vcf
+            vcf_jobs[vcf] = add_optional_followon(glennfile_jobs[glennfile],
                 make_vcf_from_glennfile, gam_key, condition, options,
                 cores=1, memory="10G", disk="10G")
                 
         # And what vcfeval do we need?
         vcfeval = condition.get_vcfeval_condition_name()
         if not vcfeval_jobs.has_key(vcfeval):
-            # We need to make this vcfeval result
-            vcfeval_jobs[vcfeval] = vcf_jobs[vcf].addFollowOnJobFn(
+            # We need to have a job representing having made this vcfeval result
+            vcfeval_jobs[vcfeval] = add_optional_followon(vcf_jobs[vcf],
                 make_vcfeval_from_vcf, gam_key, condition, options,
                 cores=1, memory="10G", disk="10G")
                 
-        # And what job do we need to compute the F score?
-        if not f_score_jobs.has_key(vcfeval):
-            # We need to parse the results and extract the max F score
-            f_score_jobs[vcfeval] = vcfeval_jobs[vcfeval].addFollowOnJobFn(
+        # We always need to go get the F score.
+        if vcfeval_jobs[vcfeval] == job:
+            # We can do it right now! There's nothing to wait on!
+            # Run that job as if it is this job.
+            f_scores[condition] = get_max_f_score(job, gam_key, condition, options)
+        else:
+            # We need to wait until the results are ready.
+            f_score_job = vcfeval_jobs[vcfeval].addFollowOnJobFn(
                 get_max_f_score, gam_key, condition, options,
                 cores=1, memory="2G", disk="2G")
                 
             # And save the result in our return dict for this condition
-            f_scores[condition] = f_score_jobs[vcfeval].rv()
+            f_scores[condition] = f_score_job.rv()
             
     # Send back f scores by condition.
     return f_scores
