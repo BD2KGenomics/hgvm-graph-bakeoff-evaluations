@@ -1015,6 +1015,11 @@ def run_experiment(job, options):
     for region_dir in gam_store.list_input_directory(""):
         # Within every region we have samples for, look through all the
         # different graphs.
+        
+        if options.important_regions is not None and region_dir not in options.important_regions:
+            # Skip it if it's unimportant
+            continue
+        
         for graph_dir in gam_store.list_input_directory(region_dir):
             # Within every graph for a region, we have a collection of samples.
             
@@ -1026,6 +1031,10 @@ def run_experiment(job, options):
                     region_dir, graph_dir))
                 continue
                 
+            if options.important_graphs is not None and graph_dir not in options.important_graphs:
+                # Skip it if it's unimportant
+                continue
+                
             for filename in gam_store.list_input_directory("{}/{}".format(
                 region_dir, graph_dir)):
                 # Look at each potential sample file
@@ -1035,6 +1044,10 @@ def run_experiment(job, options):
                 
                 if not match:
                     # It's not a sample
+                    continue
+                    
+                if options.important_samples is not None and filename not in options.important_samples:
+                    # Skip it if it's unimportant
                     continue
                     
                 # Otherwise, compose the full GAM key
@@ -1080,21 +1093,10 @@ def pick_best(job, results, options):
     
     for region, region_results in results.iteritems():
         # For every region
-        if options.important_regions is not None and region not in options.important_regions:
-            # Skip it if it's unimportant
-            continue
         for graph, graph_results in region_results.iteritems():
             # For every graph
-            if options.important_graphs is not None and graph not in options.important_graphs:
-                # Skip it if it's unimportant
-                continue
             for sample, sample_results in graph_results.iteritems():
                 # For every sample
-                if options.important_samples is not None and sample not in options.important_samples:
-                    # Skip it if it's unimportant
-                    continue
-                    
-                # OK now actually process this region/graph/sample.
                 for condition, f_score in sample_results.iteritems():
                     # Put the f score in the list for the condition
                     condition_scores[condition].append(f_score)
