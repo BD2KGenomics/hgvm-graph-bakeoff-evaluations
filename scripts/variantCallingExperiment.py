@@ -621,9 +621,11 @@ def make_vcf_from_glennfile(job, gam_key, condition, options):
         condition.get_vcf_options(), unsorted_vcf, out_errlog))
     run(pipeline, fail_hard = True)
     
-    # Sort the VCF
     pipeline = []
-    pipeline.append("scripts/vcfsort {} > {}".format(unsorted_vcf, out_vcf))
+    # Sort the VCF
+    pipeline.append("scripts/vcfsort {}".format(unsorted_vcf))
+    # And uniquify it
+    pipeline.append("vcfuniq > {}".format(out_vcf))
     run(pipeline, fail_hard = True)
     
     # Compress and index the VCF
@@ -841,11 +843,82 @@ def run_experiment(job, options):
     
     # Make the IOStore we can search for GAMs
     gam_store = IOStore.get(options.in_gams)
+    # And one so we can check if truth files exist
+    truth_store = IOStore.get(options.truth)
     
     # This will hold best F score by region, graph, sample, and then condition.
     # We stick in dicts by condition.
     results = collections.defaultdict(lambda: collections.defaultdict(dict))
     
+    # Make some experimental conditions with filter, pileup, call,
+    # and glenn2vcf options. 
+    
+    # First define the lists we want the product of for all the parameters
+    grid = [{ # vg filter 
+            "-r": [0.97], # minimum score to keep primary alignment [default=0]
+            "-d": [0], # mininum (primary - secondary) score delta to keep secondary alignment
+            "-e": [0], # minimum (primary - secondary) score delta to keep primary alignment
+            "-a": [""], # use (secondary / primary) for delta comparisons
+            "-f": [""], # normalize score based on length
+            "-u": [""], # use substitution count instead of score
+            "-s": [2], # minimum score to keep secondary alignment [default=0]
+            "-o": [0] #  filter reads whose alignments begin or end with an insert > N [default=99999]
+        }, { # vg pileup
+            "-w": [40], # size of window to apply -m option (default=0)
+            "-m": [2], # ignore bases with > N mismatches within window centered on read (default=1)
+            "-q": [10] # ignore bases with PHRED quality < N (default=0)
+        }, { # vg call
+            "-r": [0.0001], # Prior for being heterozygous
+            "-b": [1.0], # Max strand bias
+            "-f": [0.05], # Min fraction of reads required to support a variant
+            "-d": [4] # Min pileup depth
+        }, { # glenn2vcf
+            "--depth": [10], # search depth not read depth
+            "--min_fraction": [0.15], # Min fraction of average coverage to call at
+            "--min_count": [6], # Min total supporting reads for an allele to have it
+            "--max_het_bias": [4.2] # Max bias towards one alt of a called het
+        }, { # vcfeval
+            "--all-records": [""],
+            "--vcf-score-field": ["XAAD"]
+        }]
+        
+    # Make the whole grid of conditions for the grid search
+    conditions = [ExperimentCondition(*point) for point in make_grid(grid)]
+            
+        
+    # Add a condition that opens everything way up so we can try and
+    # get maximum recall.
+    conditions.append(ExperimentCondition(
+        { # vg filter 
+            "-r": 0,
+            "-d": 0.05,
+            "-e": 0.05,
+            "-a": "",
+            "-f": "",
+            "-u": "",
+            "-s": 10000,
+            "-o": 99999
+        }, { # vg pileup
+            "-w": 40,
+            "-m": 10,
+            "-q": 10
+        }, { # vg call
+            "-r": 0.0001,
+            "-b": 0.4,
+            "-f": 0.25,
+            "-d": 11
+        }, { # glenn2vcf
+            "--depth": 10,
+            "--min_fraction": 0, # Min fraction of average coverage to call at
+            "--min_count": 1, # Min total supporting reads for an allele to have it
+            "--max_het_bias": 20 # Max bias towards one alt of a called het
+        }, { # vcfeval
+            "--all-records": "",
+            "--vcf-score-field": "XAAD"
+        })
+    )
+    
+    RealTimeLogger.get().info("Running {} conditions...".format(len(conditions)))
     
     for region_dir in gam_store.list_input_directory(""):
         # Within every region we have samples for, look through all the
@@ -875,75 +948,12 @@ def run_experiment(job, options):
                 # Otherwise, compose the full GAM key
                 gam_key = "{}/{}/{}".format(region_dir, graph_dir, filename)
                 
-                # Make some experimental conditions with filter, pileup, call,
-                # and glenn2vcf options. 
-                
-                # First define the lists we want the product of for all the parameters
-                grid = [{ # vg filter 
-                        "-r": [0.97], # minimum score to keep primary alignment [default=0]
-                        "-d": [0], # mininum (primary - secondary) score delta to keep secondary alignment
-                        "-e": [0], # minimum (primary - secondary) score delta to keep primary alignment
-                        "-a": [""], # use (secondary / primary) for delta comparisons
-                        "-f": [""], # normalize score based on length
-                        "-u": [""], # use substitution count instead of score
-                        "-s": [2], # minimum score to keep secondary alignment [default=0]
-                        "-o": [0] #  filter reads whose alignments begin or end with an insert > N [default=99999]
-                    }, { # vg pileup
-                        "-w": [40], # size of window to apply -m option (default=0)
-                        "-m": [2], # ignore bases with > N mismatches within window centered on read (default=1)
-                        "-q": [10] # ignore bases with PHRED quality < N (default=0)
-                    }, { # vg call
-                        "-r": [0.0001], # Prior for being heterozygous
-                        "-b": [1], # Max strand bias
-                        "-f": [0.05], # Min fraction of reads required to support a variant
-                        "-d": [2] # Min pileup depth
-                    }, { # glenn2vcf
-                        "--depth": [10], # search depth not read depth
-                        "--min_fraction": [0.15], # Min fraction of average coverage to call at
-                        "--min_count": [6], # Min total supporting reads for an allele to have it
-                        "--max_het_bias": [4.2] # Max bias towards one alt of a called het
-                    }, { # vcfeval
-                        "--all-records": [""],
-                        "--vcf-score-field": ["XAAD"]
-                    }]
+                if (not truth_store.exists(truth_compressed_key(gam_key)) or
+                    not truth_store.exists(truth_index_key(gam_key))):
                     
-                # Make the whole grid of conditions for the grid search
-                conditions = [ExperimentCondition(*point) for point in make_grid(grid)]
-                        
-                    
-                # Add a condition that opens everything way up so we can try and
-                # get maximum recall.
-                conditions.append(ExperimentCondition(
-                    { # vg filter 
-                        "-r": 0,
-                        "-d": 0.05,
-                        "-e": 0.05,
-                        "-a": "",
-                        "-f": "",
-                        "-u": "",
-                        "-s": 10000,
-                        "-o": 99999
-                    }, { # vg pileup
-                        "-w": 40,
-                        "-m": 10,
-                        "-q": 10
-                    }, { # vg call
-                        "-r": 0.0001,
-                        "-b": 0.4,
-                        "-f": 0.25,
-                        "-d": 11
-                    }, { # glenn2vcf
-                        "--depth": 10,
-                        "--min_fraction": 0, # Min fraction of average coverage to call at
-                        "--min_count": 1, # Min total supporting reads for an allele to have it
-                        "--max_het_bias": 20 # Max bias towards one alt of a called het
-                    }, { # vcfeval
-                        "--all-records": "",
-                        "--vcf-score-field": "XAAD"
-                    })
-                )
-                
-                RealTimeLogger.get().info("Running {} conditions...".format(len(conditions)))
+                    # We don't have a truth for this sample, so don't bother doing it.
+                    RealTimeLogger.get().warning("Skipping missing truth for {}".format(gam_key))
+                    continue
                 
                 # Kick off a pipeline to make the variant calls.
                 # TODO: assumes all the extra directories we need to read stuff from are set
