@@ -70,6 +70,8 @@ def parse_args(args):
                         help="options to pass to vg pileup. wrap in \"\"")
     parser.add_argument("--filter_opts", type=str, default="",
                         help="options to pass to vg filter. wrap in \"\"")
+    parser.add_argument("--g2v_opts", type=str, default="",
+                        help="options to pass to glenn2vcf. wrap in \"\"")    
     parser.add_argument("--platinum_samples", type=str, default="NA12877,NA12878",
                         help="comma-separated list of sample names that have vcf"
                         " data in platinum folder")
@@ -79,8 +81,7 @@ def parse_args(args):
                         help="dont make vg sample graphs from g1k and platinum vcfs")
     parser.add_argument("--sample", action="store_true",
                         help="write sample vg graphs in addition to augmented graphs")
-    parser.add_argument("--depth", type=int, default=10,
-                        help="pass -d option to glenn2vcf")
+
     args = args[1:]
         
     return parser.parse_args(args)
@@ -388,13 +389,13 @@ def compute_vg_variants(job, input_gam, options):
                 
         if ref is not None:
             tasks = []
-            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} -d {} > {} 2> {}".format(out_augmented_vg_path,
+            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(out_augmented_vg_path,
                                                                                   out_sample_txt_path,
                                                                                   offset,
                                                                                   ref,
                                                                                   contig,
                                                                                   alignment_sample_tag(input_gam, options),
-                                                                                  options.depth,
+                                                                                  options.g2v_opts,
                                                                                   out_sample_vg_path.replace(".vg", ".vcf"),
                                                                                   out_sample_vg_path.replace(".vg", ".vcf.stderr")),
                 fail_hard = True)
