@@ -65,6 +65,9 @@ def parse_args(args):
     parser.add_argument("--freebayes_path", type=str, default="data/freebayes",
                         help="path to search for freebayes vcf. expects "
                         " these to bein <freebayes_path>/<sample>/BRCA1.vcf etc.")
+    parser.add_argument("--samtools_path", type=str, default="data/samtools",
+                        help="path to search for samtools vcf. expects "
+                        " these to bein <samtools_path>/<sample>/BRCA1.vcf etc.")
     parser.add_argument("--vg_cores", type=int, default=1,
                         help="number of cores to give to vg commands (and hap.py)")
     parser.add_argument("--timeout", type=int, default=sys.maxint,
@@ -169,6 +172,8 @@ def input_vcf_path(graph, options, region = None, sample = None, method = None):
         return os.path.join(options.platypus_path, sample, region.upper() + ".vcf")
     elif method == "freebayes":
         return os.path.join(options.freebayes_path, sample, region.upper() + ".vcf")
+    elif method == "samtools":
+        return os.path.join(options.samtools_path, sample, region.upper() + ".vcf")    
     else:
         return graph.replace(".vg", ".vcf")    
  
@@ -401,7 +406,7 @@ def happy_dist_fn(graph1, graph2, options):
     indels = None
     total = None
 
-    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus", "g1kvcf", "freebayes"]:
+    if options.roc is True and options.tags[graph1][2] in ["gatk3", "platypus", "g1kvcf", "freebayes", "samtools"]:
         # read happy roc output.
         # todo : indels and total:  problem= rocs have differen numbers of lines wwhich doesnt fit interface as is
         snp_roc_path = jpath.replace("summary.csv", "roc.snp.all.tsv")
@@ -871,15 +876,15 @@ def preprocess_vcf(job, graph, options):
 
     run("scripts/vcfsort {} > {}".format(input_vcf, output_vcf), fail_hard=True)
 
-    if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus", "freebayes"] or
+    if options.qpct is not None and (options.tags[graph][2] in ["gatk3", "platypus", "freebayes", "samtools"] or
                                      (options.tags[graph][2] == "g1kvcf" and options.baseline != "g1kvcf") or
                                      options.qgraph is True):
         # g1kvcf has no quality info.  proxy with read depth to at least get a curve
         #filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
         filter_opts = ""
-        if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "g1kvcf", "platvcf", "platvcf-baseline"]:
+        if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
             #filter_opts += " --info DP"
-            filter_opts += " --ad"
+            filter_opts += " --xaad"
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
@@ -888,7 +893,7 @@ def preprocess_vcf(job, graph, options):
 
     # todo: see why gatk wont normalize
     if options.normalize is True and options.tags[graph][2] != "gatk3":
-        sts = run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - | uniq > {}".format(
+        sts = run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - | vcfuniq > {}".format(
             output_vcf,
             options.chrom_fa_path,
             output_vcf + ".vt"))
@@ -904,7 +909,7 @@ def preprocess_vcf(job, graph, options):
             run("tabix -f -p vcf {}".format(output_vcf + ".gz"), fail_hard=True)
             run("bcftools view {} -R {} > {}".format(output_vcf + ".gz", clip_bed, output_vcf), fail_hard=True)
             run("rm {}".format(output_vcf + ".gz*"))
-            run("scripts/vcfsort {} | uniq > {}".format(output_vcf, output_vcf + ".sort"), fail_hard=True)
+            run("scripts/vcfsort {} | vcfuniq > {}".format(output_vcf, output_vcf + ".sort"), fail_hard=True)
             run("cp {} {}".format(output_vcf + ".sort", output_vcf), fail_hard=True)
 
     # one final sort, and strip ignored variants
@@ -912,11 +917,11 @@ def preprocess_vcf(job, graph, options):
     for ignore_keyword in options.ignore:
         ig_opts += " | grep -v {}".format(ignore_keyword)
     # also strip genotypes
-    if not options.gt:
+    if not options.gt and options.comp_type != "vcfeval":
         ig_opts += " | scripts/vcfSetGenotypes.py -"
-    run("mv {} {} ; scripts/vcfsort {} {} > {}".format(output_vcf, output_vcf + ".ig",
-                                                       output_vcf + ".ig", ig_opts,
-                                                       output_vcf), fail_hard=True)
+    run("mv {} {} ; scripts/vcfsort {} {} | vcfuniq > {}".format(output_vcf, output_vcf + ".ig",
+                                                                 output_vcf + ".ig", ig_opts,
+                                                                 output_vcf), fail_hard=True)
 
     # need compressed index for vcfeval
     run("bgzip {} -c > {}".format(output_vcf, output_vcf + ".gz"), fail_hard=True)
@@ -980,7 +985,7 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             #    hp_opts += " -R {}".format(options.clip)
             
             # make roc curves for gatk and platypus (hardcoding name check as hack for now)
-            if method1 in ["gatk3", "platypus", "g1kvcf", "freebayes"] and options.roc is True:
+            if method1 in ["gatk3", "platypus", "g1kvcf", "freebayes", "samtools"] and options.roc is True:
                 hp_opts += " -V --roc Q_GQ --roc-filter LowGQX"
             # since we use just numbers for chrom names in the vcf, use options.happy_fa_path as a hack to make happy happy.
             run("export HGREF={} ; hap.py {} {} -o {} --threads {} {} 2> {}".format(options.happy_fa_path, truth_vcf_path,
@@ -1129,7 +1134,11 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             freebayes_path = input_vcf_path(None, options, region, sample, "freebayes")
             if os.path.isfile(freebayes_path):
                 sample_graphs[region][sample].add(freebayes_path)
-                tags[freebayes_path] = (region, sample, "freebayes")                
+                tags[freebayes_path] = (region, sample, "freebayes")
+            samtools_path = input_vcf_path(None, options, region, sample, "samtools")
+            if os.path.isfile(samtools_path):
+                sample_graphs[region][sample].add(samtools_path)
+                tags[samtools_path] = (region, sample, "samtools")                                
             if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
                 sample_graphs[region][sample].add(g1kvcf_path)
 

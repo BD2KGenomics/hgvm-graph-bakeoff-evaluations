@@ -49,6 +49,7 @@ PLOT_PARAMS = [
     "platypus",
     "g1kvcf",
     "freebayes",
+    "samtools",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -74,6 +75,7 @@ PLOT_PARAMS = [
     "Platypus",
     "\"1000 Genomes\"",
     "FreeBayes",
+    "Samtools",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -98,7 +100,8 @@ PLOT_PARAMS = [
     "\"#25BBD4\"",
     "\"#9E7C72\"",
     "\"#cab2d6\"",
-    "\"#FF00FF\"",    
+    "\"#FF00FF\"",
+    "\"#2F4F4F\"",
     "--font_size 20 --dpi 90"]
 
 def name_map():

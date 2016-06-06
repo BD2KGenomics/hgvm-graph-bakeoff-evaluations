@@ -20,14 +20,16 @@ OUT_DIR=$4
 FA_DIR="/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/data/altRegions"
 PLATYPUS_CMD="python /cluster/home/hickey/tools/Platypus/bin/Platypus.py"
 
-#REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
+REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
 #SAMPLES=( "NA12878" "NA12877" "NA12879" )
 
-REGIONS=( "LRC_KIR" )
+#REGIONS=( "LRC_KIR" )
 SAMPLES=( "NA12878" )
 
 PLATYPUS_OPTS=" --mergeClusteredVariants=1"
 FREEBAYES_OPTS=" --strict-vcf"
+MPILEUP_OPTS=""
+BCFTOOLS_CALL_OPTS=""
 BWA_OPTS=" -t 20 -p"
 #BWA_OPTS=" -t 20"
 SURJECT_OPTS=" -p ref -b -t 30"
@@ -198,20 +200,42 @@ function free_bayes {
 	 fi	 
 }
 
+# run samtools
+function sam_tools {
+	 local IN_BAM=$1
+	 local IN_REF=$2
+	 local REGION=$3
+	 local SAMPLE=$4
+	 local OUT_VCF=$5
+
+	 if [[ ! -f $OUT_VCF ]] || [[ $OVERWRITE -eq 1 ]]
+	 then
+		  samtools faidx $IN_REF
+		  samtools mpileup -uf $IN_REF $IN_BAM $MPILEUP_OPTS | bcftools call -mv -Ov $BCFTOOLS_CALL_OPTS > $OUT_VCF
+		  change_coordinates $OUT_VCF $REGION $SAMPLE
+	 fi	 
+}
+
+
 # do bwa on all the read sets
 function align_all {
 
 	 mkdir $OUT_DIR 2> /dev/null
 	 mkdir ${OUT_DIR}/platypus 2> /dev/null
 	 mkdir ${OUT_DIR}/freebayes 2> /dev/null
+	 mkdir ${OUT_DIR}/samtools 2> /dev/null
 	 mkdir ${OUT_DIR}/platypus_surject 2> /dev/null
 	 mkdir ${OUT_DIR}/freebayes_surject 2> /dev/null
+	 mkdir ${OUT_DIR}/samtools_surject 2> /dev/null
 	 mkdir ${OUT_DIR}/platypus_mapq 2> /dev/null
 	 mkdir ${OUT_DIR}/freebayes_mapq 2> /dev/null
+	 mkdir ${OUT_DIR}/samtools_mapq 2> /dev/null
 	 mkdir ${OUT_DIR}/platypus_pair 2> /dev/null
 	 mkdir ${OUT_DIR}/freebayes_pair 2> /dev/null
+	 mkdir ${OUT_DIR}/samtools_pair 2> /dev/null
 	 mkdir ${OUT_DIR}/platypus_pairo 2> /dev/null
 	 mkdir ${OUT_DIR}/freebayes_pairo 2> /dev/null
+	 mkdir ${OUT_DIR}/samtools_pairo 2> /dev/null
 	 
 	 for REGION in "${REGIONS[@]}"
 	 do
@@ -238,6 +262,10 @@ function align_all {
 				local FREEBAYES_OUTPUT=${OUT_DIR}/freebayes/${SAMPLE}/${REGION}.vcf
 				free_bayes $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT
 
+				mkdir ${OUT_DIR}/samtools/${SAMPLE} 2> /dev/null
+				local SAMTOOLS_OUTPUT=${OUT_DIR}/samtools/${SAMPLE}/${REGION}.vcf
+				sam_tools $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT
+
 				# as above, but zap map qualities to 60
 				local MAPQ_BAM=${BASE_DIR}/${SAMPLE}_mapq.bam
 				set_mapq $OUTPUT_BAM 60 $MAPQ_BAM
@@ -249,6 +277,10 @@ function align_all {
 				mkdir ${OUT_DIR}/freebayes_mapq/${SAMPLE} 2> /dev/null
 				local FREEBAYES_OUTPUT_MAPQ=${OUT_DIR}/freebayes_mapq/${SAMPLE}/${REGION}.vcf
 				free_bayes $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_MAPQ
+
+				mkdir ${OUT_DIR}/samtools_mapq/${SAMPLE} 2> /dev/null
+				local SAMTOOLS_OUTPUT_MAPQ=${OUT_DIR}/samtools_mapq/${SAMPLE}/${REGION}.vcf
+				sam_tools $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_MAPQ
 
 				# remove pairing information
 				local PAIRO_BAM=${BASE_DIR}/${SAMPLE}_pairo.bam
@@ -262,6 +294,10 @@ function align_all {
 				local FREEBAYES_OUTPUT_PAIRO=${OUT_DIR}/freebayes_pairo/${SAMPLE}/${REGION}.vcf
 				free_bayes $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIRO
 
+				mkdir ${OUT_DIR}/samtools_pairo/${SAMPLE} 2> /dev/null
+				local SAMTOOLS_OUTPUT_PAIRO=${OUT_DIR}/samtools_pairo/${SAMPLE}/${REGION}.vcf
+				sam_tools $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIRO
+
 				# zap map qualities to 60 and remove pairing information
 				local PAIR_BAM=${BASE_DIR}/${SAMPLE}_pair.bam
 				remove_pairing $MAPQ_BAM $PAIR_BAM
@@ -273,7 +309,11 @@ function align_all {
 				mkdir ${OUT_DIR}/freebayes_pair/${SAMPLE} 2> /dev/null
 				local FREEBAYES_OUTPUT_PAIR=${OUT_DIR}/freebayes_pair/${SAMPLE}/${REGION}.vcf
 				free_bayes $PAIR_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIR
-				
+
+				mkdir ${OUT_DIR}/samtools_pair/${SAMPLE} 2> /dev/null
+				local SAMTOOLS_OUTPUT_PAIR=${OUT_DIR}/samtools_pair/${SAMPLE}/${REGION}.vcf
+				sam_tools $PAIR_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIR
+
 				# surject bams and run on those
 				local SURJECT_BAM=${BASE_DIR}/${SAMPLE}_surject.bam
 				local GRAPH_PATH=`primary_graph $REGION`
@@ -288,6 +328,11 @@ function align_all {
 				mkdir ${OUT_DIR}/freebayes_surject/${SAMPLE} 2> /dev/null
 				local FREEBAYES_OUTPUT_SURJECT=${OUT_DIR}/freebayes_surject/${SAMPLE}/${REGION}.vcf
 				free_bayes $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_SURJECT
+
+				mkdir ${OUT_DIR}/samtools_surject/${SAMPLE} 2> /dev/null
+				local SAMTOOLS_OUTPUT_SURJECT=${OUT_DIR}/samtools_surject/${SAMPLE}/${REGION}.vcf
+				sam_tools $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_SURJECT
+
 		  done
 	 done				
 }

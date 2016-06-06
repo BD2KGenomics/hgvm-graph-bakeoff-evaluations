@@ -22,6 +22,8 @@ def parse_args(args):
                         help="Use given info field")
     parser.add_argument("--ad", action="store_true",
                         help="Use minimum AD from genotype")
+    parser.add_argument("--xaad", action="store_true",
+                        help="Use XAAD file")
                         
     
     args = args[1:]
@@ -39,6 +41,9 @@ def get_qual_from_line(line, options):
                 return float(tok[len(options.info) + 1:])
         assert False
     elif options.ad is True:
+        assert options.xaad == False
+        # this block is deprecated because of xaad.  keeping it
+        # around for near term in case we need sanity check. 
         toks = line.split("\t")
         gth = toks[-2].split(":")
         gts = toks[-1].split(":")
@@ -54,7 +59,14 @@ def get_qual_from_line(line, options):
         for i, g in enumerate(gt):
             g = i if g == "." else int(g)
             min_ad = min(min_ad, ads[g])
-        return float(min_ad)                
+        return float(min_ad)
+    elif options.xaad is True:
+        toks = line.split("\t")
+        gth = toks[-2].split(":")
+        gts = toks[-1].split(":")
+        xaad_idx = gth.index("XAAD")
+        xaad = int(gts[xaad_idx])
+        return float(xaad)
     else:
         # quality 
         return float(line.split("\t")[5])
