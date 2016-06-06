@@ -8,8 +8,11 @@
 # qgraph is 0/1 flag.  0: old way running vg call with different depths. 1: new way:
 # run vg call once and use vcfQalutiyFilter for plot
 
-if [ "$#" -ne 4 ]; then
-	 echo "Syntax $0 <graphs_dir> <alignments_dir> <out_dir> <qgraph>"
+# wildcards used to work for samples, activate by wrapping in quotes
+SAMPLE="CHM1"
+
+if [ "$#" -ne 5 ]; then
+	 echo "Syntax $0 <graphs_dir> <alignments_dir> <out_dir> <sample> <qgraph>"
 	 exit 1
 fi
 
@@ -38,7 +41,8 @@ GLOBIGNORE_CALL=$GLOBIGNORE
 GRAPHS=$1
 ALIGNMENTS=$2
 OUT_DIR=$3
-QGRAPH=$4
+SAMPLE=$4
+QGRAPH=$5
 
 TOIL_DIR=call_pr_toil5
 
@@ -54,11 +58,7 @@ INDEX_OPTS="--kmer 20 --edge_max 5 --timeout 5000"
 # Calling parameters
 REGIONS=( "brca2" "mhc" "brca1" "sma" "lrc_kir" )
 #REGIONS=( "brca2" "brca1" "sma" "lrc_kir" )
-#REGIONS=( "lrc_kir" )
-
-# wildcards work (or at least used to) here
-SAMPLE="NA12878"
-#SAMPLE="CHM1"
+REGIONS=( "brca2" )
 
 #OPTS="--maxCores 8 --vg_cores 4 --vg_only --skipBaseline"
 OPTS="--maxCores 20 --vg_cores 4 --vg_only --skipBaseline"
@@ -83,7 +83,6 @@ fi
 COMP_TAG=comp.gt.noclip
 
 # call variants, compute and plot baseline comparison
-# note how sample name (NA12878) is hardcoded.  Use wildcard to do all available samples
 function run_pipeline {
 
 	 local VARIANTS_OUT_DIR=$1
@@ -99,7 +98,7 @@ function run_pipeline {
 	 do
 		  if [ "$RUN_CALLER" = true ]; then
 				GLOBIGNORE=$GLOBIGNORE_CALL
-				mkdir ${VARIANTS_OUT_DIR}
+				mkdir ${VARIANTS_OUT_DIR}				
 				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
 		  for j in "${COMPS[@]}"
