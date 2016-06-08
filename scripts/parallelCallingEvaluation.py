@@ -672,7 +672,7 @@ def run_calling(options, job_cores):
     # do the vcf export.
     vcf_path = options.out_dir + "/" + options.sample_name + ".vcf"
     xg_path = options.out_dir + "/" + graph_filename + ".xg"
-    #offset = xg_path_node_offset(xg_path, options.path_name, options.offset)
+    offset = xg_path_node_offset(xg_path, options.path_name, options.offset)
     run("glenn2vcf {} {} -o {} -c {} -s {} -l {} > {} 2> {}".format(
         ag_path, tsv_path, options.offset, options.path_name, options.sample_name, options.path_size,
         vcf_path + ".us", vcf_path + ".log"))
@@ -732,11 +732,11 @@ def main(args):
 
     options = parse_args(args) # This holds the nicely-parsed options object
     
-    #run_indexing(options, job_cores=32)
+    run_indexing(options, job_cores=32)
     
-    #run_alignment(options, job_cores=32)
+    run_alignment(options, job_cores=32)
     
-    #run_stats(options, job_cores=2)
+    run_stats(options, job_cores=2)
 
     run_calling(options, job_cores=32)
 
