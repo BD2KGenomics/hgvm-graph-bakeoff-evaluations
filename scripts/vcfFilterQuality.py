@@ -24,8 +24,9 @@ def parse_args(args):
                         help="Use minimum AD from genotype")
     parser.add_argument("--xaad", action="store_true",
                         help="Use XAAD file")
+    parser.add_argument("--dedupe", action="store_true",
+                        help="Filter entries with same coordinate, choosing one with higest quality")
                         
-    
     args = args[1:]
     options = parser.parse_args(args)
     return options
@@ -100,9 +101,27 @@ def main(args):
     else:
         vcf_file = open(options.in_vcf)
 
+    buf = None, None, None, None # chrom , start, qual ,line
     for line in vcf_file:
-        if line[0] == "#" or get_qual_from_line(line, options) >= cutoff:
+        if line[0] == "#":
             sys.stdout.write(line)
+        else:
+            toks = line.split("\t")
+            chrom, start = toks[0], int(toks[1])
+            qual = get_qual_from_line(line, options)
+            # new coordinate, write and clear buffer
+            if not options.dedupe or (chrom, start) != (buf[0], buf[1]):
+                if buf[0] != None:
+                    sys.stdout.write(buf[3])
+                    buf = None, None, None, None
+
+            # update buffer
+            if qual >= cutoff and (buf[2] == None or qual > buf[2]):
+                buf = chrom, start, qual, line
+
+    # write buffer
+    if buf[0] != None:
+        sys.stdout.write(buf[3])
 
     if options.in_vcf != "-":
         vcf_file.close()
