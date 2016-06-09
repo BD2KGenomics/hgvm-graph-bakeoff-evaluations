@@ -458,6 +458,20 @@ def happy_dist_fn(graph1, graph2, options):
                  total[prec_idx],
                  total[rec_idx]]]
 
+def save_vcfeval_stats(out_path, fns, fni, fno, fps, fpi, fpo, tps, tpi, tpo):
+    """ write some summary counts from the vceval vcf output """
+    with open(os.path.join(out_path, "comp_counts.tsv"), "w") as f:
+        f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+            fns, fni, fno,
+            fps, fpi, fpo,
+            tps, tpi, tpo))
+
+def load_vcfeval_stats(out_path):
+    """ read the counts back from file as list """
+    with open(os.path.join(out_path, "comp_counts.tsv")) as f:
+        toks = f.readline().split("\t")
+        return [float(x) for x in toks[0:9]]
+                
 def vcf_num_records(vcf_path, bed_path = None):
     """ use bcftools stats to get the number of snps indels other in vcf """
     if not os.path.exists(vcf_path):
@@ -516,16 +530,8 @@ def vcfeval_dist_fn(graph1, graph2, options):
     # it's actually better to compute precision and recall from the vcf output
     # because we can do clipping here and it won't break normalization and
     # we can do a snp indel breakdown
-    
-    fn_path = os.path.join(out_dir, "fn.vcf.gz")
-    fp_path = os.path.join(out_dir, "fp.vcf.gz")
-    tp_path = os.path.join(out_dir, "tp.vcf.gz")
 
-    # count variants
-    assert options.clip is None or options.clip_fp is None
-    fns, fni, fno = vcf_num_records(fn_path, options.clip)
-    fps, fpi, fpo = vcf_num_records(fp_path, options.clip_fp if options.clip_fp else options.clip)
-    tps, tpi, tpo = vcf_num_records(tp_path, options.clip)
+    fns, fni, fno, fps, fpi, fpo, tps, tpi, tpo = load_vcfeval_stats(out_dir) 
     fnt = fns + fni + fno
     fpt = fps + fpi + fpo
     tpt = tps + tpi + tpo
@@ -884,7 +890,7 @@ def preprocess_vcf(job, graph, options):
         filter_opts = ""
         if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
             #filter_opts += " --info DP"
-            filter_opts += " --xaad"
+            filter_opts += " --xaad --dedupe"
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
@@ -1007,6 +1013,19 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             run("rtg vcfeval -b {}.gz -c {}.gz --all-records --ref-overlap -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
                                                                                          options.chrom_sdf_path, ve_opts,
                                                                                          out_path))
+            # count up output
+            fn_path = os.path.join(out_path, "fn.vcf.gz")
+            fp_path = os.path.join(out_path, "fp.vcf.gz")
+            tp_path = os.path.join(out_path, "tp.vcf.gz")
+
+            try:
+                fns, fni, fno = vcf_num_records(fn_path, options.clip)
+                fps, fpi, fpo = vcf_num_records(fp_path, options.clip_fp if options.clip_fp else options.clip)
+                tps, tpi, tpo = vcf_num_records(tp_path, options.clip)
+                save_vcfeval_stats(out_path, fns, fni, fno, fps, fpi, fpo, tps, tpi, tpo)
+            except:
+                pass
+            
         
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
