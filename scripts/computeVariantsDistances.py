@@ -96,6 +96,8 @@ def parse_args(args):
                         help="baseline to use (platvcf or g1kvcf) for vcf comparisons")
     parser.add_argument("--gt", action="store_true",
                         help="take into account genotype information (sompy or vcfeval)")
+    parser.add_argument("--new", action="store_true",
+                        help="use new caller (vg genotype)")
                             
     args = args[1:]
 
@@ -890,7 +892,7 @@ def preprocess_vcf(job, graph, options):
         filter_opts = ""
         if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
             #filter_opts += " --info DP"
-            filter_opts += " --xaad --dedupe"
+            filter_opts += " --xaad --dedupe" if not options.new else " --ad --dedupe"
         run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
                                                                      filter_opts,
                                                                      output_vcf + ".qpct"))
