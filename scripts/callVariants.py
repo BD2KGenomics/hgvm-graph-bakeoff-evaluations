@@ -81,6 +81,8 @@ def parse_args(args):
                         help="dont make vg sample graphs from g1k and platinum vcfs")
     parser.add_argument("--sample", action="store_true",
                         help="write sample vg graphs in addition to augmented graphs")
+    parser.add_argument("--genotype", action="store_true",
+                        help="use vg genotype instead of vg call")
 
     args = args[1:]
         
@@ -163,6 +165,20 @@ def pileup_path(alignment_path, options, tag=""):
     """
     name = os.path.splitext(os.path.basename(alignment_path))[0]
     name += "{}.vgpu".format(tag)
+    return os.path.join(out_dir(alignment_path, options), name)
+
+def gam_index_path(alignment_path, options, tag=""):
+    """ get output gam name from input gam
+    """
+    name = os.path.splitext(os.path.basename(alignment_path))[0]
+    name += "{}.gam.index".format(tag)
+    return os.path.join(out_dir(alignment_path, options), name)
+
+def gam_filter_path(alignment_path, options, tag=""):
+    """ get output gam name from input gam
+    """
+    name = os.path.splitext(os.path.basename(alignment_path))[0]
+    name += "{}.gam.filter".format(tag)
     return os.path.join(out_dir(alignment_path, options), name)
 
 def sample_vg_path(alignment_path, options, tag=""):
@@ -339,12 +355,35 @@ def compute_vg_variants(job, input_gam, options):
     input_graph_path = graph_path(input_gam, options)
     out_pileup_path = pileup_path(input_gam, options)
     out_sample_vg_path = sample_vg_path(input_gam, options)
+    out_sample_vcf_path = out_sample_vg_path.replace(".vg", ".vcf")
     out_sample_txt_path = sample_txt_path(input_gam, options)    
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
-    do_pu = options.overwrite or not os.path.isfile(out_pileup_path)
-    do_call = do_pu or not os.path.isfile(out_augmented_vg_path)
-    do_sample = options.sample and (do_pu or not os.path.isfile(out_sample_vg_path))
-    do_vcf = do_call or not os.path.isfile(out_sample_vg_path.replace(".vg", ".vcf"))
+    out_gam_filter_path = gam_filter_path(input_gam, options)
+    out_gam_index_path = gam_index_path(input_gam, options)
+    do_genotype = options.genotype and (options.overwrite or not os.path.isfile(out_sample_vg_path))
+    do_gam_filter= do_genotype and (options.overwrite or not os.path.isfile(out_gam_filter_path))
+    do_gam_index = do_genotype and (do_gam_filter or options.overwrite or not os.path.isdir(out_gam_index_path))
+    do_pu = not options.genotype and (options.overwrite or not os.path.isfile(out_pileup_path))
+    do_call = not options.genotype and (do_pu or not os.path.isfile(out_augmented_vg_path))
+    do_sample = not options.genotype and (options.sample and (do_pu or not os.path.isfile(out_sample_vg_path)))
+    do_vcf = not options.genotype and (do_call or not os.path.isfile(out_sample_vcf_path))
+
+    if do_gam_filter:
+        RealTimeLogger.get().info("Computing GAM Filter for {} {}".format(
+            input_graph_path,
+            input_gam))
+        robust_makedirs(os.path.dirname(out_pileup_path))
+        run("vg filter {} {} {} > {}".format(input_gam, options.filter_opts, input_graph_path,
+                                          out_gam_filter_path),
+            fail_hard = True)
+
+    if do_gam_index:
+        RealTimeLogger.get().info("Computing GAM INDEX for {} {}".format(
+            input_graph_path,
+            input_gam))
+        robust_makedirs(os.path.dirname(out_pileup_path))
+        run("rm -rf {} ; vg index {} -N -d {}".format(out_gam_index_path, out_gam_filter_path, out_gam_index_path),
+            fail_hard = True)        
 
     if do_pu:
         RealTimeLogger.get().info("Computing Variants for {} {}".format(
@@ -369,7 +408,7 @@ def compute_vg_variants(job, input_gam, options):
                                                           out_augmented_vg_path),
             fail_hard = True)
 
-    if do_vcf:
+    if do_vcf or do_genotype:
         region = alignment_region_tag(input_gam, options)
         g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")            
         with open(g1kbed_path) as f:
@@ -388,17 +427,28 @@ def compute_vg_variants(job, input_gam, options):
         run("rm {}".format(res_path))
                 
         if ref is not None:
-            tasks = []
-            run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(out_augmented_vg_path,
-                                                                                  out_sample_txt_path,
-                                                                                  offset,
-                                                                                  ref,
-                                                                                  contig,
-                                                                                  alignment_sample_tag(input_gam, options),
-                                                                                  options.g2v_opts,
-                                                                                  out_sample_vg_path.replace(".vg", ".vcf"),
-                                                                                  out_sample_vg_path.replace(".vg", ".vcf.stderr")),
-                fail_hard = True)
+            if do_genotype:
+                run("vg genotype {} {} -o {} -r {} -c {} -s {} -v -t {} > {} 2> {}".format(input_graph_path,
+                                                                                          out_gam_index_path,
+                                                                                          offset,
+                                                                                          ref,
+                                                                                          contig,
+                                                                                          alignment_sample_tag(input_gam, options),
+                                                                                          options.vg_cores,
+                                                                                          out_sample_vcf_path,
+                                                                                          out_sample_vcf_path.replace(".vcf", ".vcf.stderr")),
+                    fail_hard = True)
+            else:
+                run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} > {} 2> {}".format(out_augmented_vg_path,
+                                                                                   out_sample_txt_path,
+                                                                                   offset,
+                                                                                   ref,
+                                                                                   contig,
+                                                                                   alignment_sample_tag(input_gam, options),
+                                                                                   options.g2v_opts,
+                                                                                   out_sample_vg_path.replace(".vg", ".vcf"),
+                                                                                   out_sample_vg_path.replace(".vg", ".vcf.stderr")),
+                    fail_hard = True)
 
     if do_sample:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))
