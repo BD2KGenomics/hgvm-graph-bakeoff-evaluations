@@ -754,7 +754,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-M2", "-a", "-u", "0", "-U", "-t", str(job.cores), graph_file]
+            "-i", "-M2", "-a", "-W", "300", "-u", "0", "-U", "-t", str(job.cores), graph_file]
             
         if options.index_mode == "rocksdb":
             vg_parts += ["-d", graph_file + ".index", "-n3", "-k",
