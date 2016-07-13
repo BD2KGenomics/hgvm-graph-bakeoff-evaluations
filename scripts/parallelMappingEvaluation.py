@@ -12,6 +12,7 @@ import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
 import string
 import urlparse
+import fnmatch
 
 import dateutil.parser
 
@@ -49,6 +50,8 @@ def parse_args(args):
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
+    parser.add_argument("--sample_pattern", default="NA*", 
+        help="fnmatch-style pattern for sample names")
     parser.add_argument("--sample_limit", type=int, default=float("inf"), 
         help="number of samples to use")
     parser.add_argument("--edge_max", type=int, default=0, 
@@ -221,7 +224,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     region_dir = region.upper()
     
     # What samples do we do? List input sample names up to the given limit.
-    input_samples = list(sample_store.list_input_directory(region_dir))
+    input_samples = [n for n in sample_store.list_input_directory(region_dir) \
+        if fnmatch.fnmatchcase(n, options.sample_pattern)]
     if len(input_samples) > options.sample_limit:
         input_samples = input_samples[:options.sample_limit]
     
