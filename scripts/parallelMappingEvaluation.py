@@ -50,7 +50,7 @@ def parse_args(args):
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
-    parser.add_argument("--sample_pattern", default="NA*", 
+    parser.add_argument("--sample_pattern", default="*", 
         help="fnmatch-style pattern for sample names")
     parser.add_argument("--sample_limit", type=int, default=float("inf"), 
         help="number of samples to use")
