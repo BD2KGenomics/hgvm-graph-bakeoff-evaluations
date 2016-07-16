@@ -373,8 +373,10 @@ def compute_vg_variants(job, input_gam, options):
             input_graph_path,
             input_gam))
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter {} {} {} > {}".format(input_gam, options.filter_opts, input_graph_path,
-                                          out_gam_filter_path),
+        #run("vg filter {} {} {} > {}".format(input_gam, options.filter_opts, input_graph_path,
+        #                                  out_gam_filter_path),
+        # bug causes vg filter not to work with vg genotype -- something about phred transform
+        run("vg view -aj {} | jq -c \'select(.is_secondary | not)\' | vg view -JGa - > {}".format(input_gam, out_gam_filter_path),
             fail_hard = True)
 
     if do_gam_index:
@@ -428,13 +430,12 @@ def compute_vg_variants(job, input_gam, options):
                 
         if ref is not None:
             if do_genotype:
-                run("vg genotype {} {} -o {} -r {} -c {} -s {} -v -t {} > {} 2> {}".format(input_graph_path,
+                run("vg genotype {} {} -pv -q -i -C -o {} -r {} -c {} -s {}  > {} 2> {}".format(input_graph_path,
                                                                                           out_gam_index_path,
                                                                                           offset,
                                                                                           ref,
                                                                                           contig,
                                                                                           alignment_sample_tag(input_gam, options),
-                                                                                          options.vg_cores,
                                                                                           out_sample_vcf_path,
                                                                                           out_sample_vcf_path.replace(".vcf", ".vcf.stderr")),
                     fail_hard = True)
@@ -449,6 +450,18 @@ def compute_vg_variants(job, input_gam, options):
                                                                                    out_sample_vg_path.replace(".vg", ".vcf"),
                                                                                    out_sample_vg_path.replace(".vg", ".vcf.stderr")),
                     fail_hard = True)
+                run("glenn2vcf {} {} -o {} -r {} -c {} -s {} {} -p {} > {} 2> {}".format(out_augmented_vg_path,
+                                                                                   out_sample_txt_path,
+                                                                                   offset,
+                                                                                   ref,
+                                                                                   contig,
+                                                                                   alignment_sample_tag(input_gam, options),
+                                                                                   options.g2v_opts,
+                                                                                         out_pileup_path,
+                                                                                   out_sample_vg_path.replace(".vg", ".vcf.debug"),
+                                                                                   out_sample_vg_path.replace(".vg", ".vcf.debug.stderr")),
+                    fail_hard = True)
+
 
     if do_sample:
         robust_makedirs(os.path.dirname(out_augmented_vg_path))

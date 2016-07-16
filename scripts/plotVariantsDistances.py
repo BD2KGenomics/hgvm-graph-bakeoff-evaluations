@@ -50,6 +50,16 @@ PLOT_PARAMS = [
     "g1kvcf",
     "freebayes",
     "samtools",
+    "snp1kg_af001",
+    "snp1kg_af010",
+    "snp1kg_af100",
+    "snp1kg_kp",
+    "haplo1kg30_af001",
+    "haplo1kg30_af010",
+    "haplo1kg30_af100",
+    "haplo1kg50_af001",
+    "haplo1kg50_af010",
+    "haplo1kg50_af100",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -76,6 +86,16 @@ PLOT_PARAMS = [
     "\"1000 Genomes\"",
     "FreeBayes",
     "Samtools",
+    "\"1KG MAF=0.001\"",
+    "\"1KG MAF=0.010\"",
+    "\"1KG MAF=0.100\"",
+    "\"1KG (inc. NA12878)\"",
+    "\"1KG Haplo 30 MAF=0.001\"",
+    "\"1KG Haplo 30 MAF=0.010\"",
+    "\"1KG Haplo 30 MAF=0.100\"",
+    "\"1KG Haplo 50 MAF=0.001\"",
+    "\"1KG Haplo 50 MAF=0.010\"",
+    "\"1KG Haplo 50 MAF=0.100\"",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -102,6 +122,16 @@ PLOT_PARAMS = [
     "\"#cab2d6\"",
     "\"#FF00FF\"",
     "\"#2F4F4F\"",
+    "\"#C71585\"",
+    "\"#663399\"",
+    "\"#F4A460\"",
+    "\"#FA8072\"",
+    "\"#556B2F\"",
+    "\"#DEB887\"",
+    "\"#800000\"",
+    "\"#6A5ACD\"",
+    "\"#C71585\"",
+    "\"#FF6347\"",
     "--font_size 20 --dpi 90"]
 
 def name_map():
@@ -133,6 +163,10 @@ def parse_args(args):
                         help="directory of comparison output written by computeVariantsDistances.py")
     parser.add_argument("--skip", type=str, default=None,
                         help="comma separated list of skip words to pass to plotHeatMap.py")
+
+    parser.add_argument("--top", action="store_true",
+                        help="print some zoom-ins too")
+
                             
     args = args[1:]
 
@@ -206,18 +240,19 @@ def plot_vcf_comp(tsv_path, options):
         cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
-        # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.798 --max_x 1.002 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
-        print cmd
-        os.system(cmd)
-        # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.796 --max_x 1.004 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
-        print cmd
-        os.system(cmd)        
-        # top 40
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
-        print cmd
-        os.system(cmd)
+        if options.top is True:
+            # top 20
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.798 --max_x 1.002 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+            print cmd
+            os.system(cmd)
+            # top 20
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.796 --max_x 1.004 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
+            print cmd
+            os.system(cmd)        
+            # top 40
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+            print cmd
+            os.system(cmd)
 
 def plot_heatmap(tsv, options):
     """ make a heatmap """

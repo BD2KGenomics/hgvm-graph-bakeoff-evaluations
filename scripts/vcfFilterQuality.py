@@ -6,7 +6,7 @@ Quality assumed to be 6th column
 """
 
 
-import argparse, sys, os, os.path, random, subprocess, shutil, itertools
+import argparse, sys, os, os.path, random, subprocess, shutil, itertools, math
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -23,14 +23,43 @@ def parse_args(args):
     parser.add_argument("--ad", action="store_true",
                         help="Use minimum AD from genotype")
     parser.add_argument("--xaad", action="store_true",
-                        help="Use XAAD file")
+                        help="Use XAAD field")
+    parser.add_argument("--al", action="store_true",
+                        help="Use minimum AL from genotype")
+    parser.add_argument("--gq", action="store_true",
+                        help="Use GQ from genotype")    
+    parser.add_argument("--xl", action="store_true",
+                        help="Use AL * XAAD field")
     parser.add_argument("--dedupe", action="store_true",
                         help="Filter entries with same coordinate, choosing one with higest quality")
+    parser.add_argument("--max_depth", type=int, default=None,
+                        help="Filter entries with DEPTH > MAX_DEPTH - CUTOFF (also applied with --ad, --xaad)")
+    parser.add_argument("--qual", action="store_true",
+                        help="Use Quality field (default)")
+    parser.add_argument("--keep_trivial", action="store_true",
+                        help="Dont ignore 0/0 and ./. genotypes")
+    parser.add_argument("--set_qual", action="store_true",
+                        help="Write whatever is used as quality in the quality field")
                         
     args = args[1:]
     options = parser.parse_args(args)
     return options
 
+def trivial_gt(line, options):
+    if options.keep_trivial is True:
+        return False
+    # filter out ./. and 0/0
+    toks = line.split("\t")
+    gth = toks[-2].split(":")
+    gts = toks[-1].split(":")
+    gt_idx = gth.index("GT")
+    gt = gts[gt_idx]
+    gt = gt.split("/") if "/" in gt else gt.split("|")
+    for g in gt:
+        if g not in ["0", "."]:
+            return False
+    return True
+    
 def get_qual_from_line(line, options):
     # note should switch to vcf api...
     if options.info is not None:
@@ -59,7 +88,7 @@ def get_qual_from_line(line, options):
         for i, g in enumerate(gt):
             g = i if g == "." else int(g)
             min_ad = min(min_ad, ads[g])
-        return float(min_ad)
+        return 0. if all(g == '0' for g in gt) else float(min_ad)
     elif options.xaad is True:
         toks = line.split("\t")
         gth = toks[-2].split(":")
@@ -67,47 +96,94 @@ def get_qual_from_line(line, options):
         xaad_idx = gth.index("XAAD")
         xaad = int(gts[xaad_idx])
         return float(xaad)
+    elif options.gq is True:
+        toks = line.split("\t")
+        gth = toks[-2].split(":")
+        gts = toks[-1].split(":")
+        gq_idx = gth.index("GQ")
+        gq = int(gts[gq_idx])
+        return float(gq)
+    elif options.al is True:
+        toks = line.split("\t")
+        gth = toks[-2].split(":")
+        gts = toks[-1].split(":")
+        gt_idx = gth.index("GT")
+        gt = gts[gt_idx]
+        gt = gt.split("/") if "/" in gt else gt.split("|")
+        al_idx = gth.index("AL")
+        als = gts[al_idx]
+        als = als.split(",")
+        als = [float(x) for x in als]
+        assert len(gt) <= len(als)
+        min_al = float(sys.maxint)
+        for i, g in enumerate(gt):
+            g = i if g == "." else int(g)
+            min_al = min(min_al, als[g])
+        return 0. if all(g == '0' for g in gt) else float(min_al)
+    elif options.xl is True:
+        toks = line.split("\t")
+        gth = toks[-2].split(":")
+        gts = toks[-1].split(":")
+        ll_idx = gth.index("AL")
+        lls = gts[ll_idx].split(",")
+        ll = float(lls[1])
+        xaad_idx = gth.index("XAAD")
+        xaad = float(gts[xaad_idx])
+        return ll * xaad
     else:
         # quality 
         return float(line.split("\t")[5])
         
 
-def compute_cutoff(options):
+def compute_cutoff(vcf_file, options):
     if options.pct is False:
         return options.min_qual
     else:
         assert options.min_qual >= 0. and options.min_qual <= 1.
-        if options.in_vcf == "-":
-            vcf_file = sys.stdin
-        else:
-            vcf_file = open(options.in_vcf)
-        quals = []
+        quals = [] 
         for line in vcf_file:
-            if line[0] != "#":
+            if line[0] != "#" and not trivial_gt(line, options):
                 quals.append(get_qual_from_line(line, options))
-        if options.in_vcf != "-":
-            vcf_file.close()
+
+        # do our percentile on unique values
+        quals = list(set(quals))
+                
         return sorted(quals)[int(options.min_qual * len(quals))]
         
-
 def main(args):
     options = parse_args(args)
 
-    cutoff = compute_cutoff(options)
-
     if options.in_vcf == "-":
-        vcf_file = sys.stdin
+        vcf_file = [line for line in sys.stdin]
     else:
-        vcf_file = open(options.in_vcf)
+        with open(options.in_vcf) as f:
+            vcf_file = [line for line in f]
+    
+    cutoff = compute_cutoff(vcf_file, options)
+    max_cutoff = sys.maxint if options.max_depth is None else options.max_depth - cutoff
+    sys.stderr.write("Cutoff = ({}, {})\n".format(cutoff, max_cutoff))
 
     buf = None, None, None, None # chrom , start, qual ,line
     for line in vcf_file:
         if line[0] == "#":
             sys.stdout.write(line)
-        else:
+        elif not trivial_gt(line, options):
             toks = line.split("\t")
             chrom, start = toks[0], int(toks[1])
             qual = get_qual_from_line(line, options)
+
+            if options.set_qual is True:
+                line = "\t".join(toks[:5] + [str(qual)] + toks[6:])
+
+            # get depth
+            if options.max_depth is not None:
+                gth = toks[-2].split(":")
+                gts = toks[-1].split(":")
+                dp_idx = gth.index("DP")
+                depth = float(gts[dp_idx])
+            else:
+                depth = -1
+
             # new coordinate, write and clear buffer
             if not options.dedupe or (chrom, start) != (buf[0], buf[1]):
                 if buf[0] != None:
@@ -115,15 +191,14 @@ def main(args):
                     buf = None, None, None, None
 
             # update buffer
-            if qual >= cutoff and (buf[2] == None or qual > buf[2]):
+            if qual >= cutoff and depth <= max_cutoff and (buf[2] == None or qual > buf[2]):
+                if buf[3] is not None:
+                    sys.stderr.write("favouring {} over\n{}\n\n".format(str([chrom, start, qual, line]), str(buf)))
                 buf = chrom, start, qual, line
 
     # write buffer
     if buf[0] != None:
         sys.stdout.write(buf[3])
-
-    if options.in_vcf != "-":
-        vcf_file.close()
 	 
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))
