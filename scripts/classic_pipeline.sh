@@ -25,6 +25,7 @@ REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
 
 #REGIONS=( "LRC_KIR" )
 SAMPLES=( "NA12878" )
+SAMPLES=( "CHM1" )
 
 PLATYPUS_OPTS=" --mergeClusteredVariants=1"
 FREEBAYES_OPTS=" --strict-vcf"

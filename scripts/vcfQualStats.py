@@ -79,14 +79,10 @@ def balance_tables(fn_table, fp_table, tp_table):
 
     # total truth (for inferring false negatives)
     # take sum of last lines of tp and fn
-    print "TP-1" , tp_table[-1]
-    print "FN-1" , fn_table[-1]
     total = tp_table[-1][1:] if len(tp_table) > 1 else [0, 0, 0]
     if len(fn_table) > 0:
         total = [x + y for x,y in zip(total, fn_table[-1][1:])]
 
-    print "TOTAL" , total
-        
     # all quality values
     quals = set(x[0] for x in fp_table + tp_table)
     
@@ -117,7 +113,6 @@ def balance_tables(fn_table, fp_table, tp_table):
         tp_row = tp_table[i]
         assert fp_row[0] == tp_row[0]
         fn_table.append([tp_row[0], total[0] - tp_row[1], total[1] - tp_row[2], total[2] - tp_row[3]])
-    print fn_table
     if len(fn_table) > 0:
         assert all(x >= 0 for x in fn_table[-1][1:])
 
