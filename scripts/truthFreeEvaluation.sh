@@ -51,6 +51,7 @@ PLOT_PARAMS=(
     haplo1kg30
     haplo1kg50
     shifted1kg
+    _truth_
     --category_labels 
     1KG
     1KG
@@ -71,6 +72,7 @@ PLOT_PARAMS=(
     "1KG Haplo 30"
     "1KG Haplo 50"
     Scrambled
+    "'Truth'"
     --colors
     "#fb9a99"
     "#fb9a99"
@@ -91,10 +93,9 @@ PLOT_PARAMS=(
     "#00FF00"
     "#0000FF"
     "#FF0000"
+    "#fdbf6f"
     --dpi 90 --no_n
 )
-
-# Color "#fdbf6f" from haplo1kg is free.
 
 # Extract the graphs
 EXTRACTED_DIR="${INPUT_DIR}/evals/truthfree/extracted"
@@ -121,14 +122,17 @@ for REGION in brca2; do
     # Make a file to put per-graph stats in
     mkdir -p "${STATS_ROOT_DIR}/${REGION}"
     REGION_STATS_FILE="${STATS_ROOT_DIR}/${REGION}/stats.tsv"
-    true > ${REGION_STATS_FILE}
+    # Don't clear out the stats because we only want to run each graph once.
+    #true > ${REGION_STATS_FILE}
     
     
     for SAMPLE in NA12878; do
         # Go through all the samples (TODO: hardcoded for now)
     
-        for GRAPH in _truth_ snp1kg refonly shifted1kg cactus prg sbg; do
+        for GRAPH in snp1kg refonly cactus prg sbg camel _truth_; do
             # Go through all the graphs (TODO: hardcoded for now)
+    
+            # TODO: shifted1kg fails due to not having any alt paths in its graph somehow.
         
             # We need a directory for the .vcf to live in
             VCF_DIR="${INPUT_DIR}/evals/truthfree/stats/${REGION}/${GRAPH}/${SAMPLE}"
@@ -159,9 +163,8 @@ for REGION in brca2; do
                     exit
                 fi
                 
-                # TODO: filter out filtered variants somehow?
-                
-                cat "data/platinum/${SAMPLE}/${REGION^^}.vcf" | grep -v "^#" | awk -v offset="${OFFSET}" -F $'\t' 'BEGIN {OFS = FS} { $1 = "ref"; $2 -= offset; print $0 }' >> "${VCF_DIR}/unsorted.vcf"
+                # Adjust positions and only take passing variants                
+                cat "data/platinum/${SAMPLE}/${REGION^^}.vcf" | grep -v "^#" | awk -v offset="${OFFSET}" -F $'\t' 'BEGIN {OFS = FS} { $1 = "ref"; $2 -= offset; print $0 }' | grep "PASS"  >> "${VCF_DIR}/unsorted.vcf"
                 
                 cat "${VCF_DIR}/unsorted.vcf" | sort -n -k2 > "${VCF_DIR}/sorted.vcf"
                 
@@ -228,9 +231,10 @@ for REGION in brca2; do
     # Now make the plot for the region
     ./scripts/scatter.py "${STATS_ROOT_DIR}/${REGION}/stats.tsv" \
         --save "${PLOTS_ROOT_DIR}/${REGION}.png" \
-        --x_label "Portion Biased (%)" \
-        --y_label "Mean Score (points)" \
+        --x_label "Significantly Allele-Biased Hets (%)" \
+        --y_label "Mean Read Alignment Score (points)" \
         --title "$(printf "Mean read score vs.\nsite bias in ${REGION}")" \
+        --legend_overlay best \
         "${PLOT_PARAMS[@]}"
     
 done
