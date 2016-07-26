@@ -87,8 +87,11 @@ for REGION in brca1 brca2 sma lrc_kir; do
     
     # Clear out old stats
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv"
+    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv"
+    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv"
+    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
 
     for GRAPH in snp1kg refonly shifted1kg; do

@@ -12,13 +12,21 @@ then
     exit 1
 fi
 
-rm -R "${INPUT_DIR}/extracted"
-./scripts/extractGraphs.py "${INPUT_DIR}/indexes/*/*/*.tar.gz" "${INPUT_DIR}/extracted"
+# Get the absloute path so we can use the extract script, which apparently gets
+# upset if used with arbitrary input paths
+ABSOLUTE_INPUT_DIR="$(cd ${INPUT_DIR} && pwd)"
+LOCAL_INPUT_DIR="$(basename ${INPUT_DIR})"
+
+rm "${INPUT_DIR}"/extracted/*.vg || true
+mkdir -p "${INPUT_DIR}/extracted"
+# Make sure the glob actually activates.
+./scripts/extractGraphs.py "${INPUT_DIR}"/indexes/*/*/*.tar.gz "${INPUT_DIR}/extracted"
 
 
 for REGION in brca1 brca2; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
     ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
+    SAMPLE="CHM1"
         
     RTEMP=`mktemp -d`
         
@@ -26,26 +34,50 @@ for REGION in brca1 brca2; do
     bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/CHM1/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
     cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase > "${RTEMP}/reads.txt"
 
-    for GRAPH in snp1kg refonly shifted1kg; do
+    for GRAPH in empty snp1kg refonly shifted1kg freebayes; do
 
         TEMP=`mktemp -d`
 
-        VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
-        GAM="mole_alignments_updated/alignments/${REGION}/${GRAPH}/CHM1.gam"
+        if [[ "${GRAPH}" == "freebayes" ]]; then
+            # Grab the Freebayes calls for this region
+            
+            cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+            rm -f "${TEMP}/on_ref.vcf.gz"
+            bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+            tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+            vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+            vg validate "${TEMP}/reconstructed.vg"
+            vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+        
+        elif [[ "${GRAPH}" == "empty" ]]; then
+            # Don't use a vcf, just vg construct
+            # We can't actually tabix index an empty VCF I think
+            
+            vg construct -r "${REF_FASTA}" -a -f > "${TEMP}/sample.vg"
+            
+        else
+            # Do the genotyping since this is a real graph
+
+            VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
+            GAM="mole_alignments_updated/alignments/${REGION}/${GRAPH}/CHM1.gam"
+            
+            
+            vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
+            vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+            vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
+            glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
+            cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+        
+            rm -f "${TEMP}/on_ref.vcf.gz"
+            bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+            tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+            vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+            vg validate "${TEMP}/reconstructed.vg"
+            vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+        
+        fi
         
         
-        vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
-        vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
-        vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
-        glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
-        
-        cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq > "${TEMP}/on_ref_sorted.vcf"
-        rm -f "${TEMP}/on_ref.vcf.gz"
-        bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-        tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-        vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-        vg validate "${TEMP}/reconstructed.vg"
-        vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
         vg validate "${TEMP}/sample.vg"
         
         vg index -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -k 16 "${TEMP}/sample.vg"
