@@ -17,7 +17,8 @@ def parse_args(args):
                         help="Input vcf file (- for stdin)")
     parser.add_argument("--bed", type=str, default=None,
                         help="Input bed regions")
-
+    parser.add_argument("--balance", type=str, default=None,
+                        help="comma separated list of fn,fp,tp tables to balance [debugging]")
 
                         
     args = args[1:]
@@ -79,14 +80,15 @@ def balance_tables(fn_table, fp_table, tp_table):
 
     # total truth (for inferring false negatives)
     # take sum of last lines of tp and fn
-    total = tp_table[-1][1:] if len(tp_table) > 1 else [0, 0, 0]
+    total = tp_table[-1][1:] if len(tp_table) > 0 else [0, 0, 0]
     if len(fn_table) > 0:
         total = [x + y for x,y in zip(total, fn_table[-1][1:])]
 
     # all quality values
     quals = set(x[0] for x in fp_table + tp_table)
-    
-    # make sure we have entry for every quality
+
+    # make sure we have entry for every quality, grabbing next value
+    # if not
     def extend_table(table):
         table.reverse() # make bisect easier to write if increasing
         for qual in quals:
@@ -94,17 +96,17 @@ def balance_tables(fn_table, fp_table, tp_table):
             if len(table) == 0:
                 table.append([qual, 0, 0, 0])
             elif pos == len(table):
-                table.append([qual, table[-1][1], table[-1][2], table[-1][3]])
+                table.append([qual, 0, 0, 0])
             elif qual != table[pos][0]:
-                other_row = table[pos + 1] if pos < len(table) - 1 else table[pos - 1]
+                other_row = table[pos]
                 table.insert(pos, [qual, other_row[1], other_row[2], other_row[3]])
         assert table == sorted(table)
         assert len(table) == len(quals)
         table.reverse()
-                
+
     extend_table(fp_table)
     extend_table(tp_table)
-
+ 
     # recompute fn_table (becuase we want it in input-qualities)
     # so, we assume fn = total - tp
     del fn_table[:]
@@ -119,8 +121,27 @@ def balance_tables(fn_table, fp_table, tp_table):
 def main(args):
     options = parse_args(args)
 
+    if options.balance is not None:
+        tables = options.balance.split(",")
+        assert len(tables) == 3
+        parsed_tables = []
+        for t in tables:
+            with open(t) as f:
+                pt = []
+                for line in f:
+                    toks = line.split("\t")
+                    pt.append([float(x) for x in toks])
+                parsed_tables.append(pt)
+
+        balance_tables(parsed_tables[0], parsed_tables[1], parsed_tables[2])
+        for i in range(len(tables)):
+            with open(tables[i] + ".balanced", "w") as f:
+                for line in parsed_tables[i]:
+                    f.write("\t".join([str(x) for x in line]) + "\n")
+        return 0;
+
     table = vcf_qual_stats(options.in_vcf, options.bed)
-    
+
     # dump to stdout
     for line in table:
         sys.stdout.write("{}\t{}\t{}\t{}\t\n".format(line[0], line[1], line[2], line[3]))

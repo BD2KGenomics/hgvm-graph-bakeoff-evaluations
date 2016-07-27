@@ -140,7 +140,7 @@ COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.
 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$GLENN2VCF_OPTS" "$ROC_FLAG" $DO_CALL
 
 # scrape together all results into one tsv / region / comp type
-scripts/rocDistances.py ${OUT_DIR}/primary_*_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
+scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
 
 # finally, draw out the tables created above
 scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG}
