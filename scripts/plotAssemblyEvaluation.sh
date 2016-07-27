@@ -93,43 +93,27 @@ for REGION in brca1 brca2 sma lrc_kir; do
     
     # Clear out old stats
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-count.tsv"
     true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-bases.tsv"
 
     for GRAPH in snp1kg refonly shifted1kg freebayes empty; do
     
         # Parse all the counts from the stats files
     
         INSERT_BASES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Insertions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
-        INSERT_COUNT=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Insertions" | sed -E 's/.* ([0-9]+) read.*/\1/g')
         
         DELETE_BASES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Deletions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
-        DELETE_COUNT=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Deletions" | sed -E 's/.* ([0-9]+) read.*/\1/g')
         
         SUBSTITUTE_BASES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Substitutions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
-        SUBSTITUTE_COUNT=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep "Substitutions" | sed -E 's/.* ([0-9]+) read.*/\1/g')
-        
-        UNVISITED_NODES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep Unvisited | sed -E 's/.* ([0-9]+)\/.*/\1/g')
-        TOTAL_NODES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep Unvisited | sed -E 's/.*\/([0-9]+).*/\1/g')
-        UNVISITED_PORTION=$(echo "${UNVISITED_NODES} / ${TOTAL_NODES}" | bc -l)
         
         UNVISITED_BASES=$(cat "${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}.txt" | grep Unvisited | sed -E 's/.* \(([0-9]+) bp\).*/\1/g')
         
         
         printf "${GRAPH}\t${INSERT_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv"
-        printf "${GRAPH}\t${INSERT_COUNT}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-count.tsv"
         printf "${GRAPH}\t${DELETE_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv"
-        printf "${GRAPH}\t${DELETE_COUNT}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-count.tsv"
         printf "${GRAPH}\t${SUBSTITUTE_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv"
-        printf "${GRAPH}\t${SUBSTITUTE_COUNT}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-count.tsv"
-        printf "${GRAPH}\t${UNVISITED_PORTION}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
-        printf "${GRAPH}\t${UNVISITED_NODES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-count.tsv"
-        printf "${GRAPH}\t${UNVISITED_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-bases.tsv"
+        printf "${GRAPH}\t${UNVISITED_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
     
     done
     
@@ -140,25 +124,11 @@ for REGION in brca1 brca2 sma lrc_kir; do
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-count.tsv" \
-        --title "Insertions relative to sample graph" \
-        --x_label "Graph type" \
-        --y_label "Insertions in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-count.${PLOT_FILETYPE}" \
-        "${PLOT_PARAMS[@]}"
-        
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv" \
         --title "Deleted bases relative to sample graph" \
         --x_label "Graph type" \
         --y_label "Deleted bases in assembly re-alignment" \
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.${PLOT_FILETYPE}" \
-        "${PLOT_PARAMS[@]}"
-        
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-count.tsv" \
-        --title "Deletions relative to sample graph" \
-        --x_label "Graph type" \
-        --y_label "Deletions in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-count.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv" \
@@ -168,32 +138,11 @@ for REGION in brca1 brca2 sma lrc_kir; do
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-count.tsv" \
-        --title "Substitutions relative to sample graph" \
-        --x_label "Graph type" \
-        --y_label "Substitutions in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-count.${PLOT_FILETYPE}" \
-        "${PLOT_PARAMS[@]}"
-        
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv" \
-        --title "Unvisited portion of sample graph" \
-        --x_label "Graph type" \
-        --y_label "Portion of sample graph not visited by assembly" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.${PLOT_FILETYPE}" \
-        "${PLOT_PARAMS[@]}"
-        
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-count.tsv" \
-        --title "Unvisited nodes in sample graph" \
-        --x_label "Graph type" \
-        --y_label "Nodes in sample graph not visited by assembly" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-count.${PLOT_FILETYPE}" \
-        "${PLOT_PARAMS[@]}"
-        
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-bases.tsv" \
         --title "Unvisited node length in sample graph" \
         --x_label "Graph type" \
         --y_label "Total length of sample graph nodes not visited by assembly" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-bases.${PLOT_FILETYPE}" \
+        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
     
 done
