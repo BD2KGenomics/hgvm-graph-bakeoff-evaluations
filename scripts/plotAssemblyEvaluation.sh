@@ -123,28 +123,28 @@ for REGION in brca1 brca2 sma lrc_kir; do
     done
     
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv" \
-        --title "Inserted bases relative to sample graph (${PARAM_SET})" \
+        --title "Inserted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Inserted bases in assembly re-alignment" \
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv" \
-        --title "Deleted bases relative to sample graph (${PARAM_SET})" \
+        --title "Deleted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Deleted bases in assembly re-alignment" \
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv" \
-        --title "Substituted bases relative to sample graph (${PARAM_SET})" \
+        --title "Substituted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Substituted bases in assembly re-alignment" \
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv" \
-        --title "Unvisited node length in sample graph (${PARAM_SET})" \
+        --title "Unvisited node length in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Total length of sample graph nodes not visited by assembly" \
         --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
