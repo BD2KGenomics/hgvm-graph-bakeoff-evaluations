@@ -495,10 +495,13 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     stdout=kmers_file))
                     
                 # Did we make it through all the tasks OK?
+                task_number = 0
                 for task in tasks:
                     if task.wait() != 0:
-                        raise RuntimeError("Pipeline step returned {}".format(
-                            task.returncode))
+                        raise RuntimeError(
+                            "Pipeline step {} returned {}".format(
+                            task_number, task.returncode))
+                    task_number += 1
                             
                 # Wait to make sure no weird file-not-being-full bugs happen
                 # TODO: how do I wait on child process output?

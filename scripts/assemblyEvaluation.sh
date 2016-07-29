@@ -23,10 +23,10 @@ mkdir -p "${INPUT_DIR}/extracted"
 ./scripts/extractGraphs.py "${INPUT_DIR}"/indexes/*/*/*.tar.gz "${INPUT_DIR}/extracted"
 
 # Set to "old" or "new" to get different calling params.
-PARAM_SET="old"
+PARAM_SET="new"
 
 
-for REGION in lrc_kir sma; do
+for REGION in brca1 brca2 lrc_kir sma; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
     ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
     SAMPLE="CHM1"
