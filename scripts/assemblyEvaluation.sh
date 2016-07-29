@@ -25,24 +25,50 @@ mkdir -p "${INPUT_DIR}/extracted"
 # Set to "old" or "new" to get different calling params.
 PARAM_SET="new"
 
+# What evaluation are we?
+EVAL="assembly_sd"
+
+# What samples do we use for our synthetic diploid
+SAMPLES=(
+    "CHM1"
+    "CHM13"
+)
 
 for REGION in brca1 brca2 lrc_kir sma; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
-    ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
-    SAMPLE="CHM1"
+    
+    
         
-    RTEMP=`mktemp -d`
+    # This holds all the region-level data that is constant across graphs
+    RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/region/${REGION}"
         
     # We need to grab the relevant parts of the assembly from the FASTA
-    bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/CHM1/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
-    cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase > "${RTEMP}/reads.txt"
+    true > "${RTEMP}/reads.txt"
+    for SAMPLE in "${SAMPLES[@]}"; do
+        # Get the relevant assembly regions from each sample.
+        
+        # Look up assembly by sample
+        if [[ "${SAMPLE}" == "CHM1" ]]; then
+            ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
+        elif [[ "${SAMPLE}" == "CHM13" ]]; then
+            ASSEMBLY_FASTA="mole_assembly/GCA_000983455.2_CHM13_Draft_Assembly_genomic.fna"
+        else
+            echo "Unknown sample assembly ${SAMPLE}"
+            exit 1
+        fi
+        
+        bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/CHM1/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
+        cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
+    done
 
-    for GRAPH in empty snp1kg refonly shifted1kg freebayes; do
+    for GRAPH in empty snp1kg refonly shifted1kg; do
 
-        TEMP=`mktemp -d`
+        # This holds all the temporary files for this graph for this region.
+        TEMP="${RTEMP}/graph/${GRAPH}"
 
         if [[ "${GRAPH}" == "freebayes" ]]; then
             # Grab the Freebayes calls for this region
+            # TODO: replace these with pooled CHM1/CHM13 freebayes calls
             
             cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
             rm -f "${TEMP}/on_ref.vcf.gz"
@@ -62,8 +88,17 @@ for REGION in brca1 brca2 lrc_kir sma; do
             # Do the genotyping since this is a real graph
 
             VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
-            GAM="mole_alignments_updated/alignments/${REGION}/${GRAPH}/CHM1.gam"
             
+            # Make a combined GAM
+            GAM="${TEMP}/combined.gam"
+            true > "${GAM}"
+            
+            for SAMPLE in "${SAMPLES[@]}"; do
+                SAMPLE_GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
+                # Concatenate all the sample GAMs together.
+                # TODO: balance read counts or something
+                cat "${SAMPLE_GAM}" >> "${GAM}"
+            done
             
             if [[ "${PARAM_SET}" == "old" ]]; then
                 
@@ -97,17 +132,14 @@ for REGION in brca1 brca2 lrc_kir sma; do
         
         vg validate "${TEMP}/sample.vg"
         
+        # Index the sample graph and align the assembly contigs
         vg index -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -k 16 "${TEMP}/sample.vg"
         vg map -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -r "${RTEMP}/reads.txt" > "${TEMP}/assembly_aligned.gam"
         
-        mkdir -p "mole_alignments_updated/evals/assembly/stats/${REGION}"
+        mkdir -p "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}"
         
-        vg stats "${TEMP}/sample.vg" -v -a "${TEMP}/assembly_aligned.gam" > "mole_alignments_updated/evals/assembly/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt" 2>&1
+        vg stats "${TEMP}/sample.vg" -v -a "${TEMP}/assembly_aligned.gam" > "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt" 2>&1
         
-        rm -R "${TEMP}"
-    
     done
     
-    rm -R "${RTEMP}"
-
 done
