@@ -23,7 +23,8 @@ mkdir -p "${INPUT_DIR}/extracted"
 ./scripts/extractGraphs.py "${INPUT_DIR}"/indexes/*/*/*.tar.gz "${INPUT_DIR}/extracted"
 
 # Set to "old" or "new" to get different calling params.
-PARAM_SET="new"
+# Can also be set to "genotype" to use vg genotype.
+PARAM_SET="genotype"
 
 # What evaluation are we?
 EVAL="assembly_sd"
@@ -34,13 +35,14 @@ SAMPLES=(
     "CHM13"
 )
 
-for REGION in brca1 brca2 lrc_kir sma; do
+for REGION in brca1 brca2; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
     
     
         
     # This holds all the region-level data that is constant across graphs
     RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/region/${REGION}"
+    mkdir -p "${RTEMP}"
         
     # We need to grab the relevant parts of the assembly from the FASTA
     true > "${RTEMP}/reads.txt"
@@ -57,7 +59,7 @@ for REGION in brca1 brca2 lrc_kir sma; do
             exit 1
         fi
         
-        bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/CHM1/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
+        bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/${SAMPLE}/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
         cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
     done
 
@@ -65,6 +67,7 @@ for REGION in brca1 brca2 lrc_kir sma; do
 
         # This holds all the temporary files for this graph for this region.
         TEMP="${RTEMP}/graph/${GRAPH}"
+        mkdir -p "${TEMP}"
 
         if [[ "${GRAPH}" == "freebayes" ]]; then
             # Grab the Freebayes calls for this region
@@ -108,13 +111,31 @@ for REGION in brca1 brca2 lrc_kir sma; do
                 glenn2vcf --depth 10 --max_het_bias 4.2 --min_count 6 --min_fraction 0.15 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
                 cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
             
-            else
+            elif [[ "${PARAM_SET}" == "new" ]]; then
                 
                 vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
                 vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                 vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
                 glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
                 cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+            
+            elif [[ "${PARAM_SET}" == "genotype" ]]; then
+            
+                # Use vg genotype
+                
+                # Make sure to drop all secondaries
+                # TODO: can't vg filter just do that?
+                vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" | vg view -aj - | jq 'select(.is_secondary | not)' | vg view -JGa - > "${TEMP}/filtered.gam"
+            
+                rm -Rf "${TEMP}/reads.index"
+                vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
+                vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref > "${TEMP}/calls.vcf"
+                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+            
+            else
+            
+                echo "Unknown parameter set ${PARAM_SET}"
+                exit 1
             
             fi
             

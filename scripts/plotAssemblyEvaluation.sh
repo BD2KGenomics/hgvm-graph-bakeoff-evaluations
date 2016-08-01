@@ -16,7 +16,11 @@ then
 fi
 
 # Set to "old" or "new" for comparison experiment
-PARAM_SET="new"
+# Can also be "genotype"
+PARAM_SET="genotype"
+
+# What evaluation are we?
+EVAL="assembly_sd"
 
 # Set up the plot parameters
 # Include both versions of the 1kg SNPs graph name
@@ -92,19 +96,19 @@ PLOT_PARAMS=(
 
 for REGION in brca1 brca2 sma lrc_kir; do
         
-    mkdir -p "${INPUT_DIR}/evals/assembly/plots"
+    mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots"
     
     # Clear out old stats
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv"
-    true > "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-insertions.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-deletions.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-substitutions.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited.tsv"
 
     for GRAPH in snp1kg refonly shifted1kg freebayes empty; do
     
         # Parse all the counts from the stats files
         
-        GRAPH_STATS="${INPUT_DIR}/evals/assembly/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt"
+        GRAPH_STATS="${INPUT_DIR}/evals/${EVAL}/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt"
     
         INSERT_BASES=$(cat "${GRAPH_STATS}" | grep "Insertions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
         
@@ -115,39 +119,39 @@ for REGION in brca1 brca2 sma lrc_kir; do
         UNVISITED_BASES=$(cat "${GRAPH_STATS}" | grep Unvisited | sed -E 's/.* \(([0-9]+) bp\).*/\1/g')
         
         
-        printf "${GRAPH}\t${INSERT_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv"
-        printf "${GRAPH}\t${DELETE_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv"
-        printf "${GRAPH}\t${SUBSTITUTE_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv"
-        printf "${GRAPH}\t${UNVISITED_BASES}\n" >> "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv"
+        printf "${GRAPH}\t${INSERT_BASES}\n" >> "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-insertions.tsv"
+        printf "${GRAPH}\t${DELETE_BASES}\n" >> "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-deletions.tsv"
+        printf "${GRAPH}\t${SUBSTITUTE_BASES}\n" >> "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-substitutions.tsv"
+        printf "${GRAPH}\t${UNVISITED_BASES}\n" >> "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited.tsv"
     
     done
     
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions.tsv" \
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-insertions.tsv" \
         --title "Inserted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Inserted bases in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions.tsv" \
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-deletions.tsv" \
         --title "Deleted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Deleted bases in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions.tsv" \
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-substitutions.tsv" \
         --title "Substituted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Substituted bases in assembly re-alignment" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/barchart.py "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited.tsv" \
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited.tsv" \
         --title "Unvisited node length in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Total length of sample graph nodes not visited by assembly" \
-        --save "${INPUT_DIR}/evals/assembly/plots/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
     
 done
