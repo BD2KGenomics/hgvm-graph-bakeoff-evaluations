@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -17,7 +17,7 @@ fi
 
 # Set to "old" or "new" for comparison experiment
 # Can also be "genotype"
-PARAM_SET="genotype"
+PARAM_SET="new"
 
 # What evaluation are we?
 EVAL="assembly_sd"
@@ -91,7 +91,7 @@ PLOT_PARAMS=(
     "#FF0000"
     "#FF00FF"
     "#FFFF00"
-    --dpi 90
+    --dpi 90 --font_size 16 --no_n
 )
 
 for REGION in brca1 brca2 sma lrc_kir; do
@@ -150,7 +150,7 @@ for REGION in brca1 brca2 sma lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited.tsv" \
         --title "Unvisited node length in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Total length of sample graph nodes not visited by assembly" \
+        --y_label "Length of unvisited called nodes" \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
     

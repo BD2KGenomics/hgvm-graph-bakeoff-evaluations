@@ -83,6 +83,8 @@ def parse_args(args):
         help="labels for all categories, in order")
     parser.add_argument("--colors", nargs="+", default=None,
         help="colors for all categories, in order")
+    parser.add_argument("--no_n", dest="show_n", action="store_false",
+        help="don't add n value to title")
         
     return parser.parse_args(args)
     
@@ -208,8 +210,11 @@ def main(args):
     # StackOverflow provides us with font sizing
     # http://stackoverflow.com/questions/3899980/how-to-change-the-font-size-on-a-matplotlib-plot
     matplotlib.rcParams.update({"font.size": options.font_size})
-    pyplot.title("{} (n = {})".format(options.title, len(category_order)))
-        
+    if options.show_n:
+        # Add an n value to the title
+        options.title += " (n = {})".format(len(category_order))
+    pyplot.title(options.title)
+    
     pyplot.xlabel(options.x_label)
     
     # Label the columns with the appropriate text. Account for 1-based ticks.

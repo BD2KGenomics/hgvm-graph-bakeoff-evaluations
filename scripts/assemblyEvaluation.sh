@@ -24,7 +24,7 @@ mkdir -p "${INPUT_DIR}/extracted"
 
 # Set to "old" or "new" to get different calling params.
 # Can also be set to "genotype" to use vg genotype.
-PARAM_SET="genotype"
+PARAM_SET="filter"
 
 # What evaluation are we?
 EVAL="assembly_sd"
@@ -35,7 +35,7 @@ SAMPLES=(
     "CHM13"
 )
 
-for REGION in brca1 brca2; do
+for REGION in brca1 brca2 lrc_kir sma; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
     
     
@@ -117,6 +117,14 @@ for REGION in brca1 brca2; do
                 vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                 vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
                 glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
+                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+                
+            elif [[ "${PARAM_SET}" == "filter" ]]; then
+                
+                vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
+                vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+                vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
+                glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --no_overlap --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
                 cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
             
             elif [[ "${PARAM_SET}" == "genotype" ]]; then
