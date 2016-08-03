@@ -358,7 +358,8 @@ def vcf_dist_fn(graph1, graph2, options):
                 j["Alts"]["INDEL"]["Precision"],
                 j["Alts"]["INDEL"]["Recall"],
                 j["Alts"]["TOTAL"]["Precision"],
-                j["Alts"]["TOTAL"]["Recall"]]]
+                 j["Alts"]["TOTAL"]["Recall"],
+                 0]]
 
 def vcf_dist_header(options):
     """ header"""
@@ -369,7 +370,8 @@ def vcf_dist_header(options):
             "INDEL-Precision",
             "INDEL-Recall",
             "TOT-Precision",
-            "TOT-Recall"]
+            "TOT-Recall",
+            "QUAL"]
 
 def sompy_dist_fn(graph1, graph2, options):
     jpath = comp_path_sompy(graph1, graph2, options)
@@ -408,7 +410,8 @@ def sompy_dist_fn(graph1, graph2, options):
             indels[prec_idx],
             indels[rec_idx],
             total[prec_idx],
-            total[rec_idx]]]
+            total[rec_idx],
+             0]]
 
 def happy_dist_fn(graph1, graph2, options):
     jpath = comp_path_happy(graph1, graph2, options)
@@ -467,7 +470,8 @@ def happy_dist_fn(graph1, graph2, options):
                  indels[prec_idx],
                  indels[rec_idx],
                  total[prec_idx],
-                 total[rec_idx]]]
+                 total[rec_idx],
+                 0]]
 
 def save_vcfeval_stats(out_path, fn_table, fp_table, tp_table):
     """ write some summary counts from the vceval vcf output """
@@ -563,7 +567,7 @@ def vcfeval_dist_fn(graph1, graph2, options):
                 if line[0] != "#" and len(line) > 0:
                     toks = line.split("\t")
                     precision, sensitivity = float(toks[4]), float(toks[5])
-                    ret += [[0, 0, 0, 0, 0, 0, precision, sensitivity]]
+                    ret += [[0, 0, 0, 0, 0, 0, precision, sensitivity, toks[0]]]
         return ret
 
     # it's actually better to compute precision and recall from the vcf output
@@ -597,13 +601,17 @@ def vcfeval_dist_fn(graph1, graph2, options):
         prect = 0. if tpt + fpt == 0 else float(tpt) / float(tpt + fpt)
         rect = 0. if tpt + fnt  == 0 else float(tpt) / float(tpt + fnt)
 
+        qual = fn_table[rownum][0]
+        assert qual == fp_table[rownum][0]
+        assert qual == tp_table[rownum][0]
+
         if options.clip is None and options.clip_fp is None and rownum == rows[1] - 1:
             # keep old way of computing as sanity check
             #assert abs(rect - total_recall) < 0.05 and abs(prect - total_precision) < 0.05
             pass
         
-        # shoehorn into vcfCompre style output (todo, revise this)
-        ret += [[precs, recs, 0, 0, preci, reci, prect, rect]]
+        # shoehorn into vcfCompre style output (todo, revise this) + qual
+        ret += [[precs, recs, 0, 0, preci, reci, prect, rect, qual]]
 
     return ret
     
@@ -669,11 +677,11 @@ def make_tsvs(options):
                         for graph in options.sample_graphs[region][sample]:
                             rows = []
                             for d in dist_fns:
-                                #try:
-                                dist_res = d(graph, truth, options)
-                                #except Exception as e:
-                                #    RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph, truth, e))
-                                #    dist_res = [[None] * len(header)]
+                                try:
+                                    dist_res = d(graph, truth, options)
+                                except Exception as e:
+                                    RealTimeLogger.get().warning("Unable to retrieve distance between {} and {} because {}".format(graph, truth, e))
+                                    dist_res = [[None] * len(header)]
                                 for ri, r in enumerate(dist_res):
                                     if d == dist_fns[0]:
                                         rows.append(r)
