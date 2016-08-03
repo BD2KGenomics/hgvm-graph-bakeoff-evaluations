@@ -35,7 +35,7 @@ GLOBIGNORE="*trivial*:${GLOBIGNORE}"
 GLOBIGNORE=$GLOBIGNORE
 
 # leave gatk3 out of comparison because it's misleading
-GLOBIGNORE_COMP="*gatk*"
+GLOBIGNORE_COMP="*gatk*:*simons*:*af*"
 
 
 #temp leave out prg because happy takes forever on it
@@ -68,6 +68,8 @@ REGIONS=( "brca2" "mhc" "brca1" "sma" "lrc_kir" )
 #OPTS="--maxCores 8 --vg_cores 4 --vg_only --skipBaseline --genotype"
 OPTS="--maxCores 30 --vg_cores 4 --vg_only --skipBaseline"
 
+#hack in truth alignments as test
+TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
 # Comparison parameters
 
 
@@ -82,11 +84,11 @@ COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/fr
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
-COMP_TAG=comp.gt.${QF_TYPE}.norm.myroc.01
+COMP_TAG=comp.gt.${QF_TYPE}.norm.myroc.truth2
 
 if [ "$CLIP" = 1 ]; then
 	 COMP_OPTS="$COMP_OPTS --clip data/filters/platinum.bed"
-	 COMP_TAG=${COMP_TAG}.clip.
+	 COMP_TAG=${COMP_TAG}.clip
 fi
 
 # call variants, compute and plot baseline comparison
@@ -97,23 +99,22 @@ function run_pipeline {
 	 local CALL_OPTS=$3
 	 local PILEUP_OPTS=$4
 	 local FILTER_OPTS=$5
-	 local G2V_OPTS=$6
-	 local ROC=$7
-	 local RUN_CALLER=$8
+	 local ROC=$6
+	 local RUN_CALLER=$7
 	 	 
 	 for i in "${REGIONS[@]}"
 	 do
 		  if [ "$RUN_CALLER" = true ]; then
 				GLOBIGNORE=$GLOBIGNORE_CALL
 				mkdir ${VARIANTS_OUT_DIR}				
-				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" --g2v_opts "${G2V_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
 		  for j in "${COMPS[@]}"
 		  do
 				GLOBIGNORE=$GLOBIGNORE_COMP				
 				# compute distances
 				mkdir ${COMP_OUT_DIR}
-				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
+				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
 				GLOBIGNORE=$GLOBIGNORE_CALL
 		  done
 
@@ -122,7 +123,6 @@ function run_pipeline {
 
 # 1000 Genomes-like options fixed here for pileups
 PILEUP_OPTS=" -w 40 -m 10 -q 10 -a"
-GLENN2VCF_OPTS="--depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2"
 #GLENN2VCF_OPTS="--depth 10 --max_het_bias 3 --min_count 1 -C 50"
 #GLENN2VCF_OPTS="--max_het_bias 3"
 # filter options (no secondary, primary must have > 90% identity and > 5% improvement over secondary)
@@ -133,11 +133,11 @@ secscore=10000
 
 ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
-CALL_OPTS="-r 0.0001 -b 5 -s 1 -d 1 -f 0"
+CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2"
 FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0"
 VAR_OUT_DIR=${OUT_DIR}/primary_call_i_${ident}_delt_${delta}_ss_${secscore}
 COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG}
-run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$GLENN2VCF_OPTS" "$ROC_FLAG" $DO_CALL
+run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$ROC_FLAG" $DO_CALL
 
 # scrape together all results into one tsv / region / comp type
 scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
