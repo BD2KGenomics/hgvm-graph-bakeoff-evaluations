@@ -22,10 +22,6 @@ mkdir -p "${INPUT_DIR}/extracted"
 # Make sure the glob actually activates.
 ./scripts/extractGraphs.py "${INPUT_DIR}"/indexes/*/*/*.tar.gz "${INPUT_DIR}/extracted"
 
-# Set to "old" or "new" to get different calling params.
-# Can also be set to "genotype" to use vg genotype.
-PARAM_SET="genotype"
-
 # What evaluation are we?
 EVAL="assembly_sd"
 
@@ -35,139 +31,130 @@ SAMPLES=(
     "CHM13"
 )
 
-for REGION in brca1 brca2 sma lrc_kir mhc; do
-    REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
-    
-    
-        
-    # This holds all the region-level data that is constant across graphs
-    RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/region/${REGION}"
-    mkdir -p "${RTEMP}"
-        
-    # We need to grab the relevant parts of the assembly from the FASTA
-    true > "${RTEMP}/reads.txt"
-    for SAMPLE in "${SAMPLES[@]}"; do
-        # Get the relevant assembly regions from each sample.
-        
-        # Look up assembly by sample
-        if [[ "${SAMPLE}" == "CHM1" ]]; then
-            ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
-        elif [[ "${SAMPLE}" == "CHM13" ]]; then
-            ASSEMBLY_FASTA="mole_assembly/GCA_000983455.2_CHM13_Draft_Assembly_genomic.fna"
-        else
-            echo "Unknown sample assembly ${SAMPLE}"
-            exit 1
-        fi
-        
-        bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/${SAMPLE}/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
-        cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
-    done
+for PARAM_SET in call genotype; do
 
-    for GRAPH in empty snp1kg refonly shifted1kg; do
-
-        # This holds all the temporary files for this graph for this region.
-        TEMP="${RTEMP}/graph/${GRAPH}"
-        mkdir -p "${TEMP}"
-
-        if [[ "${GRAPH}" == "freebayes" ]]; then
-            # Grab the Freebayes calls for this region
-            # TODO: replace these with pooled CHM1/CHM13 freebayes calls
-            
-            cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
-            rm -f "${TEMP}/on_ref.vcf.gz"
-            bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-            tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-            vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-            vg validate "${TEMP}/reconstructed.vg"
-            vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+    for REGION in brca1 brca2 sma lrc_kir mhc; do
+        REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
         
-        elif [[ "${GRAPH}" == "empty" ]]; then
-            # Don't use a vcf, just vg construct
-            # We can't actually tabix index an empty VCF I think
+        
             
-            vg construct -r "${REF_FASTA}" -a -f > "${TEMP}/sample.vg"
+        # This holds all the region-level data that is constant across graphs
+        RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/${PARAM_SET}/${REGION}"
+        mkdir -p "${RTEMP}"
             
-        else
-            # Do the genotyping since this is a real graph
-
-            VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
+        # We need to grab the relevant parts of the assembly from the FASTA
+        true > "${RTEMP}/reads.txt"
+        for SAMPLE in "${SAMPLES[@]}"; do
+            # Get the relevant assembly regions from each sample.
             
-            # Make a combined GAM
-            GAM="${TEMP}/combined.gam"
-            true > "${GAM}"
-            
-            for SAMPLE in "${SAMPLES[@]}"; do
-                SAMPLE_GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
-                # Concatenate all the sample GAMs together.
-                # TODO: balance read counts or something
-                cat "${SAMPLE_GAM}" >> "${GAM}"
-            done
-            
-            if [[ "${PARAM_SET}" == "old" ]]; then
-                
-                vg filter -a -d 0 -e 0 -f -o 0 -r 0.97 -s 2 -u "${GAM}" > "${TEMP}/filtered.gam"
-                vg pileup -m 2 -q 10 -w 40 "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
-                vg call -b 1.0 -d 4 -f 0.05 -r 0.0001 "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
-                glenn2vcf --depth 10 --max_het_bias 4.2 --min_count 6 --min_fraction 0.15 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
-                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-            
-            elif [[ "${PARAM_SET}" == "new" ]]; then
-                
-                vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
-                vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
-                vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
-                glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
-                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-                
-            elif [[ "${PARAM_SET}" == "filter" ]]; then
-                
-                vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
-                vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
-                vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0 -l "${VGFILE}" "${TEMP}/pileup.vgpu" --calls "${TEMP}/calls.tsv" -l > "${TEMP}/augmented.vg"
-                glenn2vcf --depth 10 --max_het_bias 3 --min_count 1 --min_fraction 0.2 --no_overlap --contig ref "${TEMP}/augmented.vg" "${TEMP}/calls.tsv" > "${TEMP}/calls.vcf"
-                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-            
-            elif [[ "${PARAM_SET}" == "genotype" ]]; then
-            
-                # Use vg genotype
-                
-                # Make sure to drop all secondaries
-                # TODO: can't vg filter just do that?
-                vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" | vg view -aj - | jq 'select(.is_secondary | not)' | vg view -JGa - > "${TEMP}/filtered.gam"
-            
-                rm -Rf "${TEMP}/reads.index"
-                vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
-                vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref > "${TEMP}/calls.vcf"
-                cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-            
+            # Look up assembly by sample
+            if [[ "${SAMPLE}" == "CHM1" ]]; then
+                ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
+            elif [[ "${SAMPLE}" == "CHM13" ]]; then
+                ASSEMBLY_FASTA="mole_assembly/GCA_000983455.2_CHM13_Draft_Assembly_genomic.fna"
             else
-            
-                echo "Unknown parameter set ${PARAM_SET}"
+                echo "Unknown sample assembly ${SAMPLE}"
                 exit 1
+            fi
+            
+            bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/${SAMPLE}/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
+            cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
+        done
+
+        for GRAPH in empty snp1kg refonly shifted1kg; do
+
+            # This holds all the temporary files for this graph for this region.
+            TEMP="${RTEMP}/graph/${GRAPH}"
+            mkdir -p "${TEMP}"
+
+            if [[ "${GRAPH}" == "freebayes" ]]; then
+                # Grab the Freebayes calls for this region
+                # TODO: replace these with pooled CHM1/CHM13 freebayes calls
+                
+                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+                rm -f "${TEMP}/on_ref.vcf.gz"
+                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+                vg validate "${TEMP}/reconstructed.vg"
+                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+            
+            elif [[ "${GRAPH}" == "empty" ]]; then
+                # Don't use a vcf, just vg construct
+                # We can't actually tabix index an empty VCF I think
+                
+                vg construct -r "${REF_FASTA}" -a -f > "${TEMP}/sample.vg"
+                
+            else
+                # Do the genotyping since this is a real graph
+
+                VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
+                
+                # Make a combined GAM
+                GAM="${TEMP}/combined.gam"
+                true > "${GAM}"
+                
+                for SAMPLE in "${SAMPLES[@]}"; do
+                    SAMPLE_GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
+                    # Concatenate all the sample GAMs together.
+                    # TODO: balance read counts or something
+                    cat "${SAMPLE_GAM}" >> "${GAM}"
+                done
+                
+                if [[ "${PARAM_SET}" == "call" ]]; then
+                    
+                    vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
+                    vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+                    
+                    # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
+                    REF_PATH="$(vg view -j mole_graphs_extracted/snp1kg-brca1.vg | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
+                    
+                    vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0  --depth 10 --max_het_bias 3 --min_count 1 --min_frac 0.2 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+                    
+                elif [[ "${PARAM_SET}" == "genotype" ]]; then
+                
+                    # Use vg genotype
+                    
+                    # Make sure to drop all secondaries
+                    # TODO: can't vg filter just do that?
+                    vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" | vg view -aj - | jq 'select(.is_secondary | not)' | vg view -JGa - > "${TEMP}/filtered.gam"
+                
+                    rm -Rf "${TEMP}/reads.index"
+                    vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
+                    vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref > "${TEMP}/calls.vcf" 2>"${TEMP}/log.txt"
+                    cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+                
+                else
+                
+                    echo "Unknown parameter set ${PARAM_SET}"
+                    exit 1
+                
+                fi
+                
+                
+            
+                rm -f "${TEMP}/on_ref.vcf.gz"
+                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+                vg validate "${TEMP}/reconstructed.vg"
+                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
             
             fi
             
             
-        
-            rm -f "${TEMP}/on_ref.vcf.gz"
-            bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-            tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-            vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-            vg validate "${TEMP}/reconstructed.vg"
-            vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
-        
-        fi
-        
-        
-        vg validate "${TEMP}/sample.vg"
-        
-        # Index the sample graph and align the assembly contigs
-        vg index -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -k 16 "${TEMP}/sample.vg"
-        vg map -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -r "${RTEMP}/reads.txt" > "${TEMP}/assembly_aligned.gam"
-        
-        mkdir -p "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}"
-        
-        vg stats "${TEMP}/sample.vg" -v -a "${TEMP}/assembly_aligned.gam" > "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt" 2>&1
+            vg validate "${TEMP}/sample.vg"
+            
+            # Index the sample graph and align the assembly contigs
+            vg index -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -k 16 "${TEMP}/sample.vg"
+            vg map -x "${TEMP}/sample.xg" -g "${TEMP}/sample.gcsa" -r "${RTEMP}/reads.txt" > "${TEMP}/assembly_aligned.gam"
+            
+            mkdir -p "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}"
+            
+            vg stats "${TEMP}/sample.vg" -v -a "${TEMP}/assembly_aligned.gam" > "${INPUT_DIR}/evals/${EVAL}/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt" 2>&1
+            
+        done
         
     done
     

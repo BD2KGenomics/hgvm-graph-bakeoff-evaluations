@@ -475,6 +475,11 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # Now we have the combined to-index graph in one vg file. We'll load
             # it (which deduplicates nodes/edges) and then find kmers.
                 
+            # Save the problematic file
+            out_store.write_output_file(to_index_filename,
+                "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
+                options.kmer_size, options.edge_max, region, graph_name))
+                
             with open(kmers_filename, "w") as kmers_file:
             
                 tasks = []
