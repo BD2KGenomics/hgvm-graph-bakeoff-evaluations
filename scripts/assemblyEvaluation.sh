@@ -24,7 +24,7 @@ mkdir -p "${INPUT_DIR}/extracted"
 
 # Set to "old" or "new" to get different calling params.
 # Can also be set to "genotype" to use vg genotype.
-PARAM_SET="filter"
+PARAM_SET="genotype"
 
 # What evaluation are we?
 EVAL="assembly_sd"
@@ -35,7 +35,7 @@ SAMPLES=(
     "CHM13"
 )
 
-for REGION in brca1 brca2 lrc_kir sma; do
+for REGION in brca1 brca2 sma lrc_kir mhc; do
     REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
     
     

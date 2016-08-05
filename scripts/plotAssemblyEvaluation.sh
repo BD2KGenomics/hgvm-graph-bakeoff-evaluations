@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -17,7 +17,7 @@ fi
 
 # Set to "old" or "new" for comparison experiment
 # Can also be "genotype"
-PARAM_SET="new"
+PARAM_SET="genotype"
 
 # What evaluation are we?
 EVAL="assembly_sd"
