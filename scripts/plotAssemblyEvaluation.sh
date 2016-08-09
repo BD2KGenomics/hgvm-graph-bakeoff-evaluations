@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -15,8 +15,7 @@ then
     exit 1
 fi
 
-# Set to "old" or "new" for comparison experiment
-# Can also be "genotype"
+# Set to "call" or "genotype" for comparison experiment
 PARAM_SET="genotype"
 
 # What evaluation are we?
@@ -91,10 +90,10 @@ PLOT_PARAMS=(
     "#FF0000"
     "#FF00FF"
     "#FFFF00"
-    --dpi 90 --font_size 16 --no_n
+    --dpi 90 --font_size 14 --no_n
 )
 
-for REGION in brca1 brca2 sma lrc_kir; do
+for REGION in brca1 brca2 sma lrc_kir mhc; do
         
     mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots"
     

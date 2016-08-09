@@ -88,7 +88,7 @@ for PARAM_SET in call genotype; do
             else
                 # Do the genotyping since this is a real graph
 
-                VGFILE="mole_graphs_extracted/${GRAPH}-${REGION}.vg"
+                VGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.vg"
                 
                 # Make a combined GAM
                 GAM="${TEMP}/combined.gam"
@@ -107,7 +107,7 @@ for PARAM_SET in call genotype; do
                     vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                     
                     # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
-                    REF_PATH="$(vg view -j mole_graphs_extracted/snp1kg-brca1.vg | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
+                    REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
                     
                     vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0  --depth 10 --max_het_bias 3 --min_count 1 --min_frac 0.2 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
@@ -122,7 +122,7 @@ for PARAM_SET in call genotype; do
                 
                     rm -Rf "${TEMP}/reads.index"
                     vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
-                    vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref > "${TEMP}/calls.vcf" 2>"${TEMP}/log.txt"
+                    vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref --min_per_strand 1 --het_prior_denom 10 > "${TEMP}/calls.vcf" 2>"${TEMP}/log.txt"
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                 
                 else
