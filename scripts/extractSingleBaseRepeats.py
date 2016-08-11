@@ -52,6 +52,8 @@ def main(argv=None):
     parser.add_argument("--nuc", help="Commas-separated list of nucleotides "
                         " to consider",
                         default="N")
+    parser.add_argument("--pad", type=int, default=0,
+                        help="add this much padding to each side of returned intervals")
     
     args = parser.parse_args()
     assert os.path.isfile(args.inputFa)
@@ -93,8 +95,8 @@ def printInterval(ofile, curInterval, args):
     if l >= args.minLength:
         ofile.write("%s\t%d\t%d\t%s\t%d\n" % (
             curInterval[0],
-            curInterval[1],
-            curInterval[2],
+            max(0, int(curInterval[1]) - args.pad),
+            int(curInterval[2]) + args.pad,
             curInterval[3],
             l))
     

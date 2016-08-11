@@ -35,7 +35,7 @@ GLOBIGNORE="*trivial*:${GLOBIGNORE}"
 GLOBIGNORE=$GLOBIGNORE
 
 # leave gatk3 out of comparison because it's misleading
-GLOBIGNORE_COMP="*gatk*:*simons*:*af*"
+GLOBIGNORE_COMP="*gatk*:*simons*"
 
 
 #temp leave out prg because happy takes forever on it
@@ -60,18 +60,23 @@ COMPS=( "vcfeval" )
 INDEX_OPTS="--kmer 20 --edge_max 5 --timeout 5000"
 
 # Calling parameters
-REGIONS=( "brca2" "mhc" "brca1" "sma" "lrc_kir" )
+REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
 #REGIONS=( "brca2" "brca1" "sma" "lrc_kir" )
 #REGIONS=( "brca2" "sma" "lrc_kir" )
-#REGIONS=( "brca2" "lrc_kir" )
+#REGIONS=( "lrc_kir" )
 
 #OPTS="--maxCores 8 --vg_cores 4 --vg_only --skipBaseline --genotype"
-OPTS="--maxCores 30 --vg_cores 4 --vg_only --skipBaseline"
+OPTS="--maxCores 36 --vg_cores 6 --vg_only --skipBaseline"
 
 #hack in truth alignments as test
-TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
+#TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
+TA_PATH="platinum_truth_alignments"
 # Comparison parameters
 
+#CLIP_PATH="data/filters/platinum2016.bed"
+CLIP_PATH="data/filters/platinum.bed"
+#CLIP_PATH="data/filters/homo/homo_44_platinum.bed"
+PLAT_PATH="data/platinum"
 
 # Normalization (requires vt, recommended for som.py and vcf comparison)
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30"
@@ -79,15 +84,15 @@ TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutation
 # this controls what part of vg-call vcf's get used for the roc.  will get passed as --${QF_TYPE} to vcfFilterQuality.py (which has really hacky hardcoded support for a few fields i've tried)
 QF_TYPE="ad"
 # see also --dedupe --genotype --vroc --clip 
-COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/freebayes --platypus_path platinum_classic3/platypus --samtools_path platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize"
+COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/freebayes --platypus_path platinum_classic3/platypus --samtools_path platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
 
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
-COMP_TAG=comp.gt.${QF_TYPE}.norm.myroc.truth2
+COMP_TAG=comp.gt.${QF_TYPE}.norms.myroc.truth3.rtg
 
 if [ "$CLIP" = 1 ]; then
-	 COMP_OPTS="$COMP_OPTS --clip data/filters/platinum.bed"
+	 COMP_OPTS="$COMP_OPTS --clip ${CLIP_PATH}"
 	 COMP_TAG=${COMP_TAG}.clip
 fi
 
@@ -107,7 +112,8 @@ function run_pipeline {
 		  if [ "$RUN_CALLER" = true ]; then
 				GLOBIGNORE=$GLOBIGNORE_CALL
 				mkdir ${VARIANTS_OUT_DIR}				
-				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				#rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/refonly/${SAMPLE}.gam ${ALIGNMENTS}/${i}/snp1kg/${SAMPLE}.gam ${ALIGNMENTS}/${i}/cactus/${SAMPLE}.gam  ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
 		  for j in "${COMPS[@]}"
 		  do
@@ -127,14 +133,15 @@ PILEUP_OPTS=" -w 40 -m 10 -q 10 -a"
 #GLENN2VCF_OPTS="--max_het_bias 3"
 # filter options (no secondary, primary must have > 90% identity and > 5% improvement over secondary)
 mkdir ${OUT_DIR}
-ident=0.9
+ident=0.90
 delta=0.00
 secscore=10000
 
 ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
-CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2"
-FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0"
+CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4"
+#CALL_OPTS="-d 0 -e 5000 -s 3 -D 20 -n 0 -F 0.2 -B 250 -H 3 -R 4"
+FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0 -E 4"
 VAR_OUT_DIR=${OUT_DIR}/primary_call_i_${ident}_delt_${delta}_ss_${secscore}
 COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG}
 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$ROC_FLAG" $DO_CALL
