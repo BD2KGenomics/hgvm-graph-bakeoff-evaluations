@@ -31,7 +31,7 @@ SAMPLES=(
     "CHM13"
 )
 
-for PARAM_SET in call genotype; do
+for PARAM_SET in call; do
 
     for REGION in brca1 brca2 sma lrc_kir mhc; do
         REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
@@ -103,13 +103,13 @@ for PARAM_SET in call genotype; do
                 
                 if [[ "${PARAM_SET}" == "call" ]]; then
                     
-                    vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" > "${TEMP}/filtered.gam"
+                    vg filter -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 "${GAM}" > "${TEMP}/filtered.gam"
                     vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                     
                     # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
                     REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
                     
-                    vg call -r 0.0001 -b 5 -s 1 -d 1 -f 0  --depth 10 --max_het_bias 3 --min_count 1 --min_frac 0.2 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                     
                 elif [[ "${PARAM_SET}" == "genotype" ]]; then
