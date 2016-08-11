@@ -14,6 +14,8 @@ def parse_args(args):
 
     parser.add_argument("in_vcf", type=str,
                         help="Input vcf file (- for stdin)")
+    parser.add_argument("--merge", action="store_true",
+                        help="Undo split my merging pairs of lines with 1/1 genotypes (and same coord) into multiallic site")
                         
     args = args[1:]
     options = parser.parse_args(args)
@@ -50,6 +52,37 @@ def fix_gt(toks, options):
     new_gts = ":".join(gts[: gt_idx] + [new_gt] + gts[gt_idx + 1:]) + "\n"
     return "\t".join(toks[:-1] + [new_gts])
 
+def merge_multi(vcf_file, options):
+    """ merge consecutive lines into single multiallele site if they were split
+    previously (remember: we can't do this when splitting since the vt decompose_blocksub
+    needs to get run in between) """
+    i = 0
+    while i < len(vcf_file):
+        line = vcf_file[i]
+        if i < len(vcf_file) - 1 and line[0] != "#":
+            next_line = vcf_file[i+1]
+            toks = line.split("\t")
+            next_toks = next_line.split("\t")
+            gt = get_gt(toks, options)
+            next_gt = get_gt(next_toks, options)
+            if all(toks[x] == next_toks[x] for x in range(4)) and\
+               toks[5] != next_toks[5] and gt == next_gt and gt == ['1','1']:
+                qual = float(toks[5])
+                next_qual = float(next_toks[5])
+                merge_toks = toks
+                if next_qual < qual:
+                    merge_toks[5] = next_toks[5]
+                    merge_toks[7] = next_toks[7]
+                merge_toks[4] = "{},{}".format(toks[4], next_toks[4])
+                merge_toks[8] = "GT"
+                merge_toks[9] = "1/2"
+                sys.stdout.write("\t".join(merge_toks) + "\n")
+                i += 2
+                continue
+        sys.stdout.write(line)
+        i += 1
+    
+
 def main(args):
     options = parse_args(args)
 
@@ -59,6 +92,10 @@ def main(args):
         with open(options.in_vcf) as f:
             vcf_file = [line for line in f]
 
+    if options.merge:
+        # do join instead of split
+        return merge_multi(vcf_file, options)
+    
     # split out all all 1/2 and 2/1 multiallelic variants
                 
     out_base = tempfile.mkdtemp(prefix = "splitMulti_", dir = ".")
@@ -118,6 +155,8 @@ def main(args):
     # 
     # remove temp directory
     os.system("rm -rf {}".format(out_base))
+
+    return 0
 	 
 if __name__ == "__main__" :
     sys.exit(main(sys.argv))

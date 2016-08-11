@@ -61,6 +61,7 @@ PLOT_PARAMS = [
     "haplo1kg50_af010",
     "haplo1kg50_af100",
     "platinum",
+    "freebayes_g",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -98,6 +99,7 @@ PLOT_PARAMS = [
     "\"1KG Hap50 .010\"",
     "\"1KG Hap50 .100\"",
     "Platinum",
+    "\"Freebayes VG\"",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -135,6 +137,7 @@ PLOT_PARAMS = [
     "\"#C71585\"",
     "\"#FF6347\"",
     "\"#119911\"",
+    "\"#b1b300\"",
     "--font_size 20 --dpi 90"]
 
 def name_map():
@@ -235,7 +238,7 @@ def plot_vcf_comp(tsv_path, options):
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
     out_base_path = os.path.join(out_dir, out_name)
     region = out_name.split("-")[-1].upper()
-    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "-f1-" + region)
+    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "--f1-" + region)
 
     params = " ".join(PLOT_PARAMS)
 
@@ -277,8 +280,8 @@ def plot_vcf_comp(tsv_path, options):
         #flatten to max f1 tsv and plot as bars
         f1_tsv = out_base_path_f1 + "_" + label + ".tsv"
         f1_png = out_base_path_f1 + "_" + label + ".png"
-        f1_pr_tsv = out_base_path_f1.replace("-f1-", "-f1-pr-") + "_" + label + ".tsv"
-        f1_pr_png = out_base_path_f1.replace("-f1-", "-f1-pr-") + "_" + label + ".png"
+        f1_pr_tsv = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".tsv"
+        f1_pr_png = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".png"
         f1_qual_tsv = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".tsv"
         f1_qual_png = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".png"
 

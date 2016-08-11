@@ -79,6 +79,8 @@ def parse_args(args):
                         help="dont make vg sample graphs from g1k and platinum vcfs")
     parser.add_argument("--genotype", action="store_true",
                         help="use vg genotype instead of vg call")
+    parser.add_argument("--surject", action="store_true",
+                        help="attempt to make a surjected bam from each gam")
 
     args = args[1:]
         
@@ -356,11 +358,13 @@ def compute_vg_variants(job, input_gam, options):
     out_augmented_vg_path = augmented_vg_path(input_gam, options)
     out_gam_filter_path = gam_filter_path(input_gam, options)
     out_gam_index_path = gam_index_path(input_gam, options)
+    out_bam_path = out_sample_vg_path.replace(".vg", ".bam")
     do_genotype = options.genotype and (options.overwrite or not os.path.isfile(out_sample_vcf_path))
     do_gam_filter= do_genotype and (options.overwrite or not os.path.isfile(out_gam_filter_path))
     do_gam_index = do_genotype and (do_gam_filter or options.overwrite or not os.path.isdir(out_gam_index_path))
     do_pu = not options.genotype and (options.overwrite or not os.path.isfile(out_pileup_path))
     do_call = not options.genotype and (do_pu or not os.path.isfile(out_sample_vcf_path))
+    do_surject = options.surject and (options.overwrite or not os.path.isfile(out_bam_path))
 
     if do_gam_filter:
         robust_makedirs(os.path.dirname(out_pileup_path))
@@ -382,13 +386,15 @@ def compute_vg_variants(job, input_gam, options):
                                                                     options.vg_cores,
                                                                     out_pileup_path),
             fail_hard = True)
-
-    if do_call or do_genotype:
+    ref = None
+    bedLength = -1
+    if do_call or do_genotype or do_surject:
         robust_makedirs(os.path.dirname(out_sample_vcf_path))
         region = alignment_region_tag(input_gam, options)
         g1kbed_path = os.path.join(options.g1kvcf_path, region.upper() + ".bed")            
         with open(g1kbed_path) as f:
-            contig, offset = f.readline().split()[0:2]
+            contig, offset, end = f.readline().split()[0:3]
+            bedLength = int(end) - int(offset)
             
         # make the vcf
         # can only do this if there is a "ref" path in the vg graph
@@ -405,14 +411,14 @@ def compute_vg_variants(job, input_gam, options):
     if ref is not None:
         if do_genotype:
             run("vg genotype {} {} -S -pv -q -i -C -o {} -r {} -c {} -s {} -t {} > {} 2> {}".format(input_graph_path,
-                                                                                                    out_gam_index_path,
-                                                                                                    offset,
-                                                                                                    ref,
-                                                                                                    contig,
-                                                                                                    alignment_sample_tag(input_gam, options),
-                                                                                                    options.vg_cores,
-                                                                                                    out_sample_vcf_path,
-                                                                                                    out_sample_vcf_path.replace(".vcf", ".vcf.stderr")),
+                                                                                                 out_gam_index_path,
+                                                                                                 offset,
+                                                                                                 ref,
+                                                                                                 contig,
+                                                                                                 alignment_sample_tag(input_gam, options),
+                                                                                                 options.vg_cores,
+                                                                                                 out_sample_vcf_path,
+                                                                                                 out_sample_vcf_path.replace(".vcf", ".vcf.stderr")),
                 fail_hard = True)
         if do_call:
             run("vg call {} {} {} -t {} -o {} -r {} -c {} -S {} -A {} > {} 2> {}".format(input_graph_path,
@@ -427,6 +433,42 @@ def compute_vg_variants(job, input_gam, options):
                                                                                          out_sample_vg_path.replace(".vg", ".vcf"),
                                                                                          out_sample_vg_path.replace(".vg", ".vcf.stderr")),
                 fail_hard = True)
+        if do_surject:
+            run("vg index {} -k {} -e {} -s -d {}.index -t {}".format(input_graph_path, 20, 5,
+                                                                         os.path.join(os.path.dirname(out_bam_path), "graph"),
+                                                                         options.vg_cores),
+                fail_hard = True)
+            run("vg surject {} -t {} -p {} -b -d {}.index > {}".format(input_gam, options.vg_cores, ref,
+                                                                       os.path.join(os.path.dirname(out_bam_path), "graph"),
+                                                                       out_bam_path),
+                fail_hard = True)
+            
+            # fix up chromosome coordinates so we can display on browser
+            if contig[0] != "c":
+                contig = "chr{}".format(contig)
+            contigLength = {"chr5": 181538259, "chr6": 170805979, "chr13": 114364328,
+                            "chr17": 83257441, "chr19": 58617616}
+            # in header, change up the contig name and 
+            run("samtools view -H {} | sed -e \"s/{}/{}/\" | sed -e \"s/{}/{}/\" > {}.sam".format(out_bam_path,
+                                                                                                  ref, contig,
+                                                                                                  bedLength, contigLength[contig],
+                                                                                                  out_bam_path),
+                fail_hard = True)
+            # in body, add offset and fix contig, leave in sam for now so we can debug
+            run("samtools view -F 256 {} | awk -v OFS=\'\\t\' \'{{$3=\"{}\"; $4=$4+{}; $5=60; $8=$8+{}; print $0}}\' >> {}.sam".format(out_bam_path,
+                                                                                                                                     contig,
+                                                                                                                                     offset, offset,
+                                                                                                                                     out_bam_path),
+                fail_hard = True)
+            # back to bam
+            run("samtools view {}.sam -b -F 4 | samtools sort - --threads {} -o {}".format(out_bam_path, options.vg_cores, out_bam_path),
+                fail_hard = True)
+
+            # and index
+            run("samtools index -b {}".format(out_bam_path), fail_hard = True)
+            
+                                                                                                                                 
+                                                                              
 
 
 def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):

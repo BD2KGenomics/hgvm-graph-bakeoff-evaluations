@@ -968,9 +968,9 @@ def preprocess_vcf(job, graph, options):
             run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
     
 
-    if options.normalize is True:
+    if options.normalize is True and options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
 #        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vt normalize -r {} - | vcfuniq > {}".format(
-        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vcfuniq > {}".format(
+        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vcfuniq | scripts/vcfSplitMulti.py - --merge > {}".format(
             output_vcf,
 #            options.chrom_fa_path,
             output_vcf + ".vt"))
@@ -1092,7 +1092,7 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             tp_path = os.path.join(out_path, "tp.vcf.gz")
 
             try:
-                fn_table = vcf_qual_stats(fn_path, options.clip)
+                fn_table = vcf_qual_stats(fn_path, options.clip, ignore_keywords = ["OverlapConflict"])
                 fp_table = vcf_qual_stats(fp_path, options.clip_fp if options.clip_fp else options.clip)
                 tp_table = vcf_qual_stats(tp_path, options.clip)
                 save_vcfeval_stats(out_path, fn_table, fp_table, tp_table)

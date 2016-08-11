@@ -30,7 +30,7 @@ def get_qual_from_line(line, options):
     # quality 
     return float(line.split("\t")[5])
 
-def vcf_qual_stats(vcf_path, bed_path = None):
+def vcf_qual_stats(vcf_path, bed_path = None, ignore_keywords = []):
     """ count up snps indels and others for each quality value, and return 
 a table with the cumulative results.  note quality is expected to be a number
 in 5th column of vcf """
@@ -49,7 +49,7 @@ in 5th column of vcf """
     counts = dict()
     
     for line in vcf_file:
-        if len(line) > 1 and line[0] != "#":
+        if len(line) > 1 and line[0] != "#" and all(x not in line for x in ignore_keywords):
             toks = line.split("\t")
             ref = toks[3]
             alts = toks[4].split(",")
