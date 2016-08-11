@@ -1,0 +1,6 @@
+region	url	algorithm	source	contributor	updated_yyyy-mm-dd
+brca1	/cluster/home/hickey/ga4gh/vg/platinum_truth_graphs/platinum-brca1.vg	platinum	GRCh38	glenn.hickey@gmail.com	2016-07-29
+brca2	/cluster/home/hickey/ga4gh/vg/platinum_truth_graphs/platinum-brca2.vg	platinum	GRCh38	glenn.hickey@gmail.com	2016-07-29
+lrc_kir	/cluster/home/hickey/ga4gh/vg/platinum_truth_graphs/platinum-lrc_kir.vg	platinum	GRCh38	glenn.hickey@gmail.com	2016-07-29
+sma	/cluster/home/hickey/ga4gh/vg/platinum_truth_graphs/platinum-sma.vg	platinum	GRCh38	glenn.hickey@gmail.com	2016-07-29
+mhc	/cluster/home/hickey/ga4gh/vg/platinum_truth_graphs/platinum-mhc.vg	platinum	GRCh38	glenn.hickey@gmail.com	2016-07-29

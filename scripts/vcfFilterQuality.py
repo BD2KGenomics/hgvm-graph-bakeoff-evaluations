@@ -54,7 +54,6 @@ def get_qual_from_line(line, options):
         ads = gts[ad_idx]
         ads = ads.split(",")
         ads = [int(x) for x in ads]
-        assert len(gt) == len(ads)
         min_ad = sys.maxint
         for i, g in enumerate(gt):
             g = i if g == "." else int(g)

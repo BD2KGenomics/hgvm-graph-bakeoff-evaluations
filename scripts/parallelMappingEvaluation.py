@@ -12,6 +12,7 @@ import doctest, re, json, collections, time, timeit
 import logging, logging.handlers, SocketServer, struct, socket, threading
 import string
 import urlparse
+import fnmatch
 
 import dateutil.parser
 
@@ -49,6 +50,8 @@ def parse_args(args):
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
+    parser.add_argument("--sample_pattern", default="*", 
+        help="fnmatch-style pattern for sample names")
     parser.add_argument("--sample_limit", type=int, default=float("inf"), 
         help="number of samples to use")
     parser.add_argument("--edge_max", type=int, default=0, 
@@ -221,7 +224,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     region_dir = region.upper()
     
     # What samples do we do? List input sample names up to the given limit.
-    input_samples = list(sample_store.list_input_directory(region_dir))
+    input_samples = [n for n in sample_store.list_input_directory(region_dir) \
+        if fnmatch.fnmatchcase(n, options.sample_pattern)]
     if len(input_samples) > options.sample_limit:
         input_samples = input_samples[:options.sample_limit]
     
@@ -471,6 +475,11 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # Now we have the combined to-index graph in one vg file. We'll load
             # it (which deduplicates nodes/edges) and then find kmers.
                 
+            # Save the problematic file
+            out_store.write_output_file(to_index_filename,
+                "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
+                options.kmer_size, options.edge_max, region, graph_name))
+                
             with open(kmers_filename, "w") as kmers_file:
             
                 tasks = []
@@ -491,10 +500,13 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     stdout=kmers_file))
                     
                 # Did we make it through all the tasks OK?
+                task_number = 0
                 for task in tasks:
                     if task.wait() != 0:
-                        raise RuntimeError("Pipeline step returned {}".format(
-                            task.returncode))
+                        raise RuntimeError(
+                            "Pipeline step {} returned {}".format(
+                            task_number, task.returncode))
+                    task_number += 1
                             
                 # Wait to make sure no weird file-not-being-full bugs happen
                 # TODO: how do I wait on child process output?
@@ -510,8 +522,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             
             # Make the gcsa2 index. Make sure to use 3 doubling steps to work
             # around <https://github.com/vgteam/vg/issues/301>
-            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-i",
-                kmers_filename, "-g", gcsa_filename, "-X", "3"])
+            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+                str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
+                "-X", "3"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
@@ -519,8 +532,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             RealTimeLogger.get().info("XG-indexing {} to {}".format(
                     graph_filename, xg_filename))
                     
-            subprocess.check_call(["vg", "index", "-t", str(job.cores), "-x",
-                xg_filename, graph_filename])
+            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+                str(job.cores), "-x", xg_filename, graph_filename])
         
         else:
             raise RuntimeError("Invalid indexing mode: " + options.index_mode)
@@ -753,7 +766,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-M2", "-a", "-u", "0", "-U", "-t", str(job.cores), graph_file]
+            "-i", "-M2", "-W", "500", "-u", "0", "-U", "-t", str(job.cores), graph_file]
             
         if options.index_mode == "rocksdb":
             vg_parts += ["-d", graph_file + ".index", "-n3", "-k",

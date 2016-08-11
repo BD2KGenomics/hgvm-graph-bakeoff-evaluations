@@ -33,7 +33,7 @@ BCFTOOLS_CALL_OPTS=""
 BWA_OPTS=" -t 20 -p"
 #BWA_OPTS=" -t 20"
 SURJECT_OPTS=" -p ref -b -t 30"
-OVERWRITE=0
+OVERWRITE=1
 
 function primary_graph {
 	 local REGION=$1
@@ -102,7 +102,7 @@ function set_mapq {
 	 samtools view -b $OUT_BAM > $OUT_BAM.temp
 	 mv $OUT_BAM.temp $OUT_BAM
 
-	 samtools sort $OUT_BAM  > ${OUT_BAM}.sort
+	 samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 	 mv ${OUT_BAM}.sort $OUT_BAM
 	 samtools index -b $OUT_BAM
 }
@@ -117,7 +117,7 @@ function remove_pairing {
 	 samtools view -b $OUT_BAM > $OUT_BAM.temp
 	 mv $OUT_BAM.temp $OUT_BAM
 
-	 samtools sort $OUT_BAM > ${OUT_BAM}.sort
+	 samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 	 mv ${OUT_BAM}.sort $OUT_BAM
 	 samtools index -b $OUT_BAM
 }
@@ -147,7 +147,7 @@ function bwa_mem {
 	 then
 		  echo "bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM"
 		  bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM
-		  samtools sort $OUT_BAM > ${OUT_BAM}.sort
+		  samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
 		  samtools index -b $OUT_BAM
 	 fi
@@ -162,7 +162,7 @@ function surject_gam {
 	 if [[ ! -f $OUT_BAM ]] || [[ $OVERWRITE -eq 1 ]]
 	 then
 		  vg surject $SURJECT_OPTS -d $INDEX $GAM > $OUT_BAM
-		  samtools sort $OUT_BAM > ${OUT_BAM}.sort
+		  samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
 		  samtools index -b $OUT_BAM
 	 fi	 
@@ -254,10 +254,12 @@ function align_all {
 				# bwa-mem pipelines
 				bwa_mem $INPUT_REF $FASTQ $OUTPUT_BAM
 
+                echo "Platypus for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/platypus/${SAMPLE} 2> /dev/null
 				local PLAT_OUTPUT=${OUT_DIR}/platypus/${SAMPLE}/${REGION}.vcf
 				platypus $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT
 
+                echo "Freebayes for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/freebayes/${SAMPLE} 2> /dev/null
 				local FREEBAYES_OUTPUT=${OUT_DIR}/freebayes/${SAMPLE}/${REGION}.vcf
 				free_bayes $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT
@@ -270,6 +272,7 @@ function align_all {
 				local MAPQ_BAM=${BASE_DIR}/${SAMPLE}_mapq.bam
 				set_mapq $OUTPUT_BAM 60 $MAPQ_BAM
 				
+				echo "Platypus no MAPQ for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/platypus_mapq/${SAMPLE} 2> /dev/null
 				local PLAT_OUTPUT_MAPQ=${OUT_DIR}/platypus_mapq/${SAMPLE}/${REGION}.vcf
 				platypus $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_MAPQ
