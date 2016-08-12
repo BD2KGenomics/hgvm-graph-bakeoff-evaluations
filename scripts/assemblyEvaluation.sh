@@ -89,6 +89,7 @@ for PARAM_SET in call; do
                 # Do the genotyping since this is a real graph
 
                 VGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.vg"
+                XGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.xg"
                 
                 # Make a combined GAM
                 GAM="${TEMP}/combined.gam"
@@ -103,7 +104,12 @@ for PARAM_SET in call; do
                 
                 if [[ "${PARAM_SET}" == "call" ]]; then
                     
-                    vg filter -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 "${GAM}" > "${TEMP}/filtered.gam"
+                    if [[ (! -e "${XGFILE}")  || ("${VGFILE}" -nt "${XGFILE}") ]]; then
+                        # No XG file, or VG file is newer than it. Index.
+                        vg index -x "${XGFILE}" "${VGFILE}"
+                    fi
+                    
+                    vg filter -x "${XGFILE}" -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 --defray-ends 40 "${GAM}" > "${TEMP}/filtered.gam"
                     vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                     
                     # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
