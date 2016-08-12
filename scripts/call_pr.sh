@@ -71,6 +71,7 @@ OPTS="--maxCores 36 --vg_cores 6 --vg_only --skipBaseline"
 #hack in truth alignments as test
 #TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
 TA_PATH="platinum_truth_alignments"
+EXP_PATH="platinum_experiment_alignments/alignments"
 # Comparison parameters
 
 #CLIP_PATH="data/filters/platinum2016.bed"
@@ -89,7 +90,7 @@ COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/fr
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
-COMP_TAG=comp.gt.${QF_TYPE}.norms.myroc.truth3.rtg
+COMP_TAG=comp.${QF_TYPE}.gt.norm.myroc
 
 if [ "$CLIP" = 1 ]; then
 	 COMP_OPTS="$COMP_OPTS --clip ${CLIP_PATH}"
@@ -112,15 +113,15 @@ function run_pipeline {
 		  if [ "$RUN_CALLER" = true ]; then
 				GLOBIGNORE=$GLOBIGNORE_CALL
 				mkdir ${VARIANTS_OUT_DIR}				
-				#rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
-				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/refonly/${SAMPLE}.gam ${ALIGNMENTS}/${i}/snp1kg/${SAMPLE}.gam ${ALIGNMENTS}/${i}/cactus/${SAMPLE}.gam  ${TA_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				#rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam  --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/refonly/${SAMPLE}.gam ${ALIGNMENTS}/${i}/snp1kg/${SAMPLE}.gam ${ALIGNMENTS}/${i}/cactus/${SAMPLE}.gam  ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
 		  for j in "${COMPS[@]}"
 		  do
 				GLOBIGNORE=$GLOBIGNORE_COMP				
 				# compute distances
 				mkdir ${COMP_OUT_DIR}
-				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
+				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
 				GLOBIGNORE=$GLOBIGNORE_CALL
 		  done
 
@@ -141,7 +142,7 @@ ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
 CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4"
 #CALL_OPTS="-d 0 -e 5000 -s 3 -D 20 -n 0 -F 0.2 -B 250 -H 3 -R 4"
-FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0 -E 4"
+FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0"
 VAR_OUT_DIR=${OUT_DIR}/primary_call_i_${ident}_delt_${delta}_ss_${secscore}
 COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG}
 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$ROC_FLAG" $DO_CALL

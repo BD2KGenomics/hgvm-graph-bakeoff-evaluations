@@ -62,6 +62,8 @@ PLOT_PARAMS = [
     "haplo1kg50_af100",
     "platinum",
     "freebayes_g",
+    "snp1kg_norm",
+    "snp1kg_plat",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -100,6 +102,8 @@ PLOT_PARAMS = [
     "\"1KG Hap50 .100\"",
     "Platinum",
     "\"Freebayes VG\"",
+    "\"1KG Norm\"",
+    "\"1KG Plat\"",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -138,6 +142,8 @@ PLOT_PARAMS = [
     "\"#FF6347\"",
     "\"#119911\"",
     "\"#b1b300\"",
+    "\"#fb4a44\"",
+    "\"#fabf1f\"",
     "--font_size 20 --dpi 90"]
 
 def name_map():
@@ -214,12 +220,14 @@ def make_max_f1_tsv(acc_tsv_path, f1_tsv_path, f1_pr_tsv_path, f1_qual_tsv_path,
     with open(acc_tsv_path) as pr_file:
         for line in pr_file:
             toks = line.split()
-            assert len(toks) >= 3
-            name, recall, precision, qual = toks[0], float(toks[1]), float(toks[2]), float(toks[3])
-            max_f1[name] = max(f1(precision, recall), max_f1[name])
-            if max_f1[name] == f1(precision, recall):
-                max_pr[name] = (precision, recall)
-                max_qual[name] = qual
+            try:
+                name, recall, precision, qual = toks[0], float(toks[1]), float(toks[2]), float(toks[3])
+                max_f1[name] = max(f1(precision, recall), max_f1[name])
+                if max_f1[name] == f1(precision, recall):
+                    max_pr[name] = (precision, recall)
+                    max_qual[name] = qual
+            except:
+                pass
     with open(f1_tsv_path, "w") as f1_file:
         for name, f1_score in max_f1.items():
             f1_file.write("{}\t{}\n".format(name, f1_score))
