@@ -5,26 +5,24 @@
 
 # expects there to be a rocksdb index for graphs in <graph_name>.index
 
-if [ "$#" -ne 4 ]; then
-	 echo "Syntax $0 <graphs_dir> <alginments_dir> <reads_dir> <out_dir>"
+if [ "$#" -ne 5 ]; then
+	 echo "Syntax $0 <graphs_dir> <alginments_dir> <reads_dir> <sample> <out_dir>"
 	 exit 1
 fi
 
 GRAPHS_DIR=$1
 ALIGNMENT_DIR=$2
 READS_DIR=$3
-OUT_DIR=$4
-
+SAMPLES=( "$4" )
+OUT_DIR=$5
 
 # must be absolute
 FA_DIR="/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/data/altRegions"
 PLATYPUS_CMD="python /cluster/home/hickey/tools/Platypus/bin/Platypus.py"
 
 REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
-#SAMPLES=( "NA12878" "NA12877" "NA12879" )
 
 #REGIONS=( "LRC_KIR" )
-SAMPLES=( "NA12878" )
 
 PLATYPUS_OPTS=" --mergeClusteredVariants=1"
 FREEBAYES_OPTS=" --strict-vcf"

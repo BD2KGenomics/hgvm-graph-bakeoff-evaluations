@@ -158,7 +158,7 @@ def main(args):
             # We fill in the x values later according to the order of the
             # series.
             x_value = None
-        elif len(parts) == 3:
+        elif len(parts) >= 3:
             # We have a series name. Pull that out and use it.
             series_name = parts[0]
             x_value = float(parts[1])

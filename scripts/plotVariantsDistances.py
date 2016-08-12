@@ -50,6 +50,20 @@ PLOT_PARAMS = [
     "g1kvcf",
     "freebayes",
     "samtools",
+    "snp1kg_af001",
+    "snp1kg_af010",
+    "snp1kg_af100",
+    "snp1kg_kp",
+    "haplo1kg30_af001",
+    "haplo1kg30_af010",
+    "haplo1kg30_af100",
+    "haplo1kg50_af001",
+    "haplo1kg50_af010",
+    "haplo1kg50_af100",
+    "platinum",
+    "freebayes_g",
+    "snp1kg_norm",
+    "snp1kg_plat",
     "--category_labels ",
     "1KG",
     "1KG",
@@ -76,6 +90,20 @@ PLOT_PARAMS = [
     "\"1000 Genomes\"",
     "FreeBayes",
     "Samtools",
+    "\"1KG .001\"",
+    "\"1KG .010\"",
+    "\"1KG .100\"",
+    "\"1KG UF\"",
+    "\"1KG Hap30 .001\"",
+    "\"1KG Hap30 .010\"",
+    "\"1KG Hap30 .100\"",
+    "\"1KG Hap50 .001\"",
+    "\"1KG Hap50 .010\"",
+    "\"1KG Hap50 .100\"",
+    "Platinum",
+    "\"Freebayes VG\"",
+    "\"1KG Norm\"",
+    "\"1KG Plat\"",
     "--colors",
     "\"#fb9a99\"",
     "\"#fb9a99\"",
@@ -102,6 +130,20 @@ PLOT_PARAMS = [
     "\"#cab2d6\"",
     "\"#FF00FF\"",
     "\"#2F4F4F\"",
+    "\"#C71585\"",
+    "\"#663399\"",
+    "\"#F4A460\"",
+    "\"#FA8072\"",
+    "\"#556B2F\"",
+    "\"#DEB887\"",
+    "\"#800000\"",
+    "\"#6A5ACD\"",
+    "\"#C71585\"",
+    "\"#FF6347\"",
+    "\"#119911\"",
+    "\"#b1b300\"",
+    "\"#fb4a44\"",
+    "\"#fabf1f\"",
     "--font_size 20 --dpi 90"]
 
 def name_map():
@@ -133,6 +175,10 @@ def parse_args(args):
                         help="directory of comparison output written by computeVariantsDistances.py")
     parser.add_argument("--skip", type=str, default=None,
                         help="comma separated list of skip words to pass to plotHeatMap.py")
+
+    parser.add_argument("--top", action="store_true",
+                        help="print some zoom-ins too")
+
                             
     args = args[1:]
 
@@ -164,6 +210,34 @@ def plot_kmer_comp(tsv_path, options):
     acc_png = out_base_path + "_acc.png"
     run("scripts/scatter.py {} --save {} --title \"{} KMER Set Accuracy\" --x_label \"Recall\" --y_label \"Precision\" --width 12 --height 9 --lines {}".format(acc_tsv, acc_png, region, params))
 
+def make_max_f1_tsv(acc_tsv_path, f1_tsv_path, f1_pr_tsv_path, f1_qual_tsv_path, options):
+    """ flatten precision-recall tsv into single best f1 entry per graph """
+    def f1(p, r):
+        return 0 if p + r == 0 else 2. * ((p * r) / (p + r))
+    max_f1 = defaultdict(int)
+    max_pr = dict()
+    max_qual = dict()
+    with open(acc_tsv_path) as pr_file:
+        for line in pr_file:
+            toks = line.split()
+            try:
+                name, recall, precision, qual = toks[0], float(toks[1]), float(toks[2]), float(toks[3])
+                max_f1[name] = max(f1(precision, recall), max_f1[name])
+                if max_f1[name] == f1(precision, recall):
+                    max_pr[name] = (precision, recall)
+                    max_qual[name] = qual
+            except:
+                pass
+    with open(f1_tsv_path, "w") as f1_file:
+        for name, f1_score in max_f1.items():
+            f1_file.write("{}\t{}\n".format(name, f1_score))
+    with open(f1_pr_tsv_path, "w") as f1_pr_file:
+        for name, pr_score in max_pr.items():
+            f1_pr_file.write("{}\t{}\t{}\n".format(name, pr_score[1], pr_score[0]))
+    with open(f1_qual_tsv_path, "w") as f1_qual_file:
+        for name, qual_score in max_qual.items():
+            f1_qual_file.write("{}\t{}\n".format(name, qual_score))
+            
 
 def plot_vcf_comp(tsv_path, options):
     """ take the big vcf compare table and make precision_recall plots for all the categories"""
@@ -172,14 +246,18 @@ def plot_vcf_comp(tsv_path, options):
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
     out_base_path = os.path.join(out_dir, out_name)
     region = out_name.split("-")[-1].upper()
+    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "--f1-" + region)
 
     params = " ".join(PLOT_PARAMS)
 
     # precision recall scatter plot
     header = vcf_dist_header(options)
+    # strip qual
+    header = header[:-1]
     for i in range(len(header) / 2):
         prec_idx = 2 * i
         rec_idx = prec_idx + 1
+        qual_idx = len(header)
         print prec_idx, header[prec_idx], rec_idx, header[rec_idx]
         ptoks = header[prec_idx].split("-")
         rtoks = header[rec_idx].split("-")
@@ -193,7 +271,7 @@ def plot_vcf_comp(tsv_path, options):
         acc_tsv = out_base_path + "_" + label + ".tsv"
         print "Make {} tsv with cols {} {}".format(label, rec_idx, prec_idx)
         # +1 to convert to awk 1-base coordinates. +1 again since header doesnt include row_label col
-        awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2)
+        awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2, qual_idx + 2)
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
         acc_png = out_base_path + "_" + label + ".png"
@@ -206,18 +284,39 @@ def plot_vcf_comp(tsv_path, options):
         cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
-        # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.798 --max_x 1.002 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+
+        #flatten to max f1 tsv and plot as bars
+        f1_tsv = out_base_path_f1 + "_" + label + ".tsv"
+        f1_png = out_base_path_f1 + "_" + label + ".png"
+        f1_pr_tsv = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".tsv"
+        f1_pr_png = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".png"
+        f1_qual_tsv = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".tsv"
+        f1_qual_png = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".png"
+
+        make_max_f1_tsv(acc_tsv, f1_tsv, f1_pr_tsv, f1_qual_tsv, options)
+        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
         print cmd
         os.system(cmd)
-        # top 20
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.796 --max_x 1.004 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
-        print cmd
-        os.system(cmd)        
-        # top 40
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(f1_pr_tsv, f1_pr_png, title, params)
         print cmd
         os.system(cmd)
+        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Quality for Max F1\" {} --max 20".format(f1_qual_tsv, f1_qual_png, title, params)
+        print cmd
+        os.system(cmd)
+        
+        if options.top is True:
+            # top 20
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.798 --max_x 1.002 --min_y 0.798 --max_y 1.002".format(acc_tsv, acc_png.replace(".png", "_top20.png"), title, params)
+            print cmd
+            os.system(cmd)
+            # top 20
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 11 --height 5.5 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.796 --max_x 1.004 --min_y 0.796 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top20_inset.png"), title, params)
+            print cmd
+            os.system(cmd)        
+            # top 40
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+            print cmd
+            os.system(cmd)
 
 def plot_heatmap(tsv, options):
     """ make a heatmap """

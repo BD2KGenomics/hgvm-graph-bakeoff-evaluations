@@ -21,6 +21,7 @@ from toillib import RealTimeLogger, robust_makedirs
 from callVariants import alignment_sample_tag, alignment_region_tag, alignment_graph_tag, run
 from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path, sample_txt_path
 from evaluateVariantCalls import defaultdict_set
+from vcfQualStats import vcf_qual_stats, balance_tables
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description=__doc__, 
@@ -96,6 +97,16 @@ def parse_args(args):
                         help="baseline to use (platvcf or g1kvcf) for vcf comparisons")
     parser.add_argument("--gt", action="store_true",
                         help="take into account genotype information (sompy or vcfeval)")
+    parser.add_argument("--new", action="store_true",
+                        help="use new caller (vg genotype)")
+    parser.add_argument("--min_ll", type=float, default=None,
+                        help="apply likelihood filter to vg call vcfs")
+    parser.add_argument("--filter_type", type=str, default="xaad",
+                        help="used for vcfFilter for curves (when not --new): {xaad, ad, ll, xl}")
+    parser.add_argument("--dedupe", action="store_true", default=False,
+                        help="use --dedupe option in vcfFilterQuality.py")
+    parser.add_argument("--vroc", action="store_true", default=False,
+                        help="use vcfevals roc logic (only gives total, not indel snp breakdown) and wont work with clipping")
                             
     args = args[1:]
 
@@ -347,7 +358,8 @@ def vcf_dist_fn(graph1, graph2, options):
                 j["Alts"]["INDEL"]["Precision"],
                 j["Alts"]["INDEL"]["Recall"],
                 j["Alts"]["TOTAL"]["Precision"],
-                j["Alts"]["TOTAL"]["Recall"]]]
+                 j["Alts"]["TOTAL"]["Recall"],
+                 0]]
 
 def vcf_dist_header(options):
     """ header"""
@@ -358,7 +370,8 @@ def vcf_dist_header(options):
             "INDEL-Precision",
             "INDEL-Recall",
             "TOT-Precision",
-            "TOT-Recall"]
+            "TOT-Recall",
+            "QUAL"]
 
 def sompy_dist_fn(graph1, graph2, options):
     jpath = comp_path_sompy(graph1, graph2, options)
@@ -397,7 +410,8 @@ def sompy_dist_fn(graph1, graph2, options):
             indels[prec_idx],
             indels[rec_idx],
             total[prec_idx],
-            total[rec_idx]]]
+            total[rec_idx],
+             0]]
 
 def happy_dist_fn(graph1, graph2, options):
     jpath = comp_path_happy(graph1, graph2, options)
@@ -456,8 +470,38 @@ def happy_dist_fn(graph1, graph2, options):
                  indels[prec_idx],
                  indels[rec_idx],
                  total[prec_idx],
-                 total[rec_idx]]]
+                 total[rec_idx],
+                 0]]
 
+def save_vcfeval_stats(out_path, fn_table, fp_table, tp_table):
+    """ write some summary counts from the vceval vcf output """
+    def write_table(t, name):
+        with open(os.path.join(out_path, "comp_counts_{}.tsv".format(name)), "w") as f:
+            for line in t:
+                f.write("{}\t{}\t{}\t{}\n".format(line[0], line[1], line[2], line[3]))
+
+    write_table(fn_table, "fn")
+    write_table(fp_table, "fp")
+    write_table(tp_table, "tp")
+            
+def load_vcfeval_stats(out_path):
+    """ read the counts back from file as list """
+    def read_table(name):
+        t = []
+        with open(os.path.join(out_path, "comp_counts_{}.tsv".format(name))) as f:
+            for line in f:
+                if len(line) > 0:
+                    row = line.split("\t")
+                    t += [[float(row[0]), int(row[1]), int(row[2]), int(row[3])]]
+        return t
+
+    fn_table = read_table("fn")
+    fp_table = read_table("fp")
+    tp_table = read_table("tp")
+    balance_tables(fn_table, fp_table, tp_table)
+
+    return fn_table, fp_table, tp_table
+                
 def vcf_num_records(vcf_path, bed_path = None):
     """ use bcftools stats to get the number of snps indels other in vcf """
     if not os.path.exists(vcf_path):
@@ -505,45 +549,71 @@ def vcfeval_dist_fn(graph1, graph2, options):
     #     None       985       1398       1075     0.4133       0.4782     0.4434
 
     with open(summary_path) as f:
-        header = f.readline().split()
+        lines = [line for line in f]
+        header = lines[0].split()
         prec_idx = header.index("Precision")
-        rec_idx = header.index("Sensitivity")
-        f.readline()
-        data = f.readline().split()
+        rec_idx = header.index("Sensitivity")        
+        data = lines[-1].split()
         total_precision = float(data[prec_idx])
         total_recall = float(data[rec_idx])
+
+    ## use vcfevals roc
+    if options.vroc is True:
+        roc_path = os.path.join(out_dir, "weighted_roc.tsv")
+        run("gzip -dc {} > {}".format(roc_path + ".gz", roc_path))
+        ret = []
+        with open(roc_path) as f:
+            for line in f:
+                if line[0] != "#" and len(line) > 0:
+                    toks = line.split("\t")
+                    precision, sensitivity = float(toks[4]), float(toks[5])
+                    ret += [[0, 0, 0, 0, 0, 0, precision, sensitivity, toks[0]]]
+        return ret
 
     # it's actually better to compute precision and recall from the vcf output
     # because we can do clipping here and it won't break normalization and
     # we can do a snp indel breakdown
-    
-    fn_path = os.path.join(out_dir, "fn.vcf.gz")
-    fp_path = os.path.join(out_dir, "fp.vcf.gz")
-    tp_path = os.path.join(out_dir, "tp.vcf.gz")
 
-    # count variants
-    assert options.clip is None or options.clip_fp is None
-    fns, fni, fno = vcf_num_records(fn_path, options.clip)
-    fps, fpi, fpo = vcf_num_records(fp_path, options.clip_fp if options.clip_fp else options.clip)
-    tps, tpi, tpo = vcf_num_records(tp_path, options.clip)
-    fnt = fns + fni + fno
-    fpt = fps + fpi + fpo
-    tpt = tps + tpi + tpo
-
-    precs = 0. if tps + fps == 0 else float(tps) / float(tps + fps)
-    recs = 0. if tps + fns  == 0 else float(tps) / float(tps + fns)
-    preci = 0. if tpi + fpi == 0 else float(tpi) / float(tpi + fpi)
-    reci = 0. if tpi + fni  == 0 else float(tpi) / float(tpi + fni)
-    prect = 0. if tpt + fpt == 0 else float(tpt) / float(tpt + fpt)
-    rect = 0. if tpt + fnt  == 0 else float(tpt) / float(tpt + fnt)
-
-    if options.clip is None and options.clip_fp is None:
-        # keep old way of computing as sanity check
-        assert abs(rect - total_recall) < 0.05 and abs(prect - total_precision) < 0.05
+    fn_table, fp_table, tp_table  = load_vcfeval_stats(out_dir)
     
-    # shoehorn into vcfCompre style output (todo, revise this)
-    return [[precs, recs, 0, 0, preci, reci, prect, rect]]
-    
+    assert len(fn_table) == len(fp_table) and len(fp_table) == len(tp_table)
+    rows = (0, len(fn_table)) if options.roc else (len(fn_table)-1, len(fn_table))
+    ret = []
+    for rownum in range(rows[0], rows[1]):
+        fns = fn_table[rownum][1]
+        fni = fn_table[rownum][2]
+        fno = fn_table[rownum][3]
+        fps = fp_table[rownum][1]
+        fpi = fp_table[rownum][2]
+        fpo = fp_table[rownum][3]
+        tps = tp_table[rownum][1]
+        tpi = tp_table[rownum][2]
+        tpo = tp_table[rownum][3]
+
+        fnt = fns + fni + fno
+        fpt = fps + fpi + fpo
+        tpt = tps + tpi + tpo
+
+        precs = 0. if tps + fps == 0 else float(tps) / float(tps + fps)
+        recs = 0. if tps + fns  == 0 else float(tps) / float(tps + fns)
+        preci = 0. if tpi + fpi == 0 else float(tpi) / float(tpi + fpi)
+        reci = 0. if tpi + fni  == 0 else float(tpi) / float(tpi + fni)
+        prect = 0. if tpt + fpt == 0 else float(tpt) / float(tpt + fpt)
+        rect = 0. if tpt + fnt  == 0 else float(tpt) / float(tpt + fnt)
+
+        qual = fn_table[rownum][0]
+        assert qual == fp_table[rownum][0]
+        assert qual == tp_table[rownum][0]
+
+        if options.clip is None and options.clip_fp is None and rownum == rows[1] - 1:
+            # keep old way of computing as sanity check
+            #assert abs(rect - total_recall) < 0.05 and abs(prect - total_precision) < 0.05
+            pass
+        
+        # shoehorn into vcfCompre style output (todo, revise this) + qual
+        ret += [[precs, recs, 0, 0, preci, reci, prect, rect, qual]]
+
+    return ret
     
 def make_mat(options, row_graphs, column_graphs, dist_fns):
     """ make a distance matix """
@@ -595,7 +665,8 @@ def make_tsvs(options):
 
         # do the baseline tsvs.  this is one row per graph,
         # with one column per comparison type with truth
-        for baseline in ["g1kvcf", "platvcf"]:
+        #for baseline in ["g1kvcf", "platvcf"]:
+        for baseline in ["platvcf"]:
             header = dist_names
             RealTimeLogger.get().info("Making {} baseline tsv for {}".format(baseline, region))
             mat = []
@@ -869,7 +940,7 @@ def compute_corg_comparison(job, graph1, graph2, options):
             f.write("{}\n".format(corg_val))
 
 def preprocess_vcf(job, graph, options):
-    """ run vt normalize and bed clip"""
+    """ run vt ormalize and bed clip"""
     input_vcf = input_vcf_path(graph, options)
     output_vcf = preprocessed_vcf_path(graph, options)
     robust_makedirs(os.path.dirname(output_vcf))
@@ -881,24 +952,32 @@ def preprocess_vcf(job, graph, options):
                                      options.qgraph is True):
         # g1kvcf has no quality info.  proxy with read depth to at least get a curve
         #filter_opts = "--info DP" if options.tags[graph][2] == "g1kvcf" else ""
-        filter_opts = ""
-        if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
-            #filter_opts += " --info DP"
-            filter_opts += " --xaad"
-        run("scripts/vcfFilterQuality.py {} {} --pct {} > {}".format(output_vcf, options.qpct,
-                                                                     filter_opts,
-                                                                     output_vcf + ".qpct"))
-        run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
+        if "platvcf" not in options.tags[graph][2]:
+            filter_opts = ""
+            vcfFQcmd = "cat {} | ".format(output_vcf)
+            if options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
+                #filter_opts += " --info DP"
+                filter_opts += " --{}".format(options.filter_type) if not options.new else " --ad"
+                if options.dedupe:
+                    filter_opts += " --dedupe"
+
+            vcfFQcmd += "scripts/vcfFilterQuality.py - {} --pct {} --set_qual > {}".format(options.qpct,
+                                                                                           filter_opts,
+                                                                                           output_vcf + ".qpct")
+            run(vcfFQcmd)
+            run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
     
 
-    # todo: see why gatk wont normalize
-    if options.normalize is True and options.tags[graph][2] != "gatk3":
-        sts = run("vt decompose {} | vt decompose_blocksub -a - | vt normalize -r {} - | vcfuniq > {}".format(
+    if options.normalize is True and options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
+#        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vt normalize -r {} - | vcfuniq > {}".format(
+        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vcfuniq | scripts/vcfSplitMulti.py - --merge > {}".format(
             output_vcf,
-            options.chrom_fa_path,
+#            options.chrom_fa_path,
             output_vcf + ".vt"))
-        if sts == 0:
-            run("cp {} {}".format(output_vcf + ".vt", output_vcf))
+        if sts != 0:
+            run("rm {}".format(output_vcf))
+            return
+        run("cp {} {}".format(output_vcf + ".vt", output_vcf))
 
     if options.clip is not None and options.comp_type != "vcfeval":
         clip_bed = clip_bed_path(graph, options)        
@@ -1004,9 +1083,22 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             #    ve_opts += " --bed-regions={}".format(options.clip)
             # indexing and compression was done by preprocessing phase
             run("rm -rf {}".format(out_path))
-            run("rtg vcfeval -b {}.gz -c {}.gz --all-records --ref-overlap -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
-                                                                                         options.chrom_sdf_path, ve_opts,
-                                                                                         out_path))
+            run("rtg vcfeval -b {}.gz -c {}.gz --all-records --ref-overlap --vcf-score-field QUAL -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
+                                                                                                                         options.chrom_sdf_path, ve_opts,
+                                                                                                                         out_path))
+            # count up output
+            fn_path = os.path.join(out_path, "fn.vcf.gz")
+            fp_path = os.path.join(out_path, "fp.vcf.gz")
+            tp_path = os.path.join(out_path, "tp.vcf.gz")
+
+            try:
+                fn_table = vcf_qual_stats(fn_path, options.clip, ignore_keywords = ["OverlapConflict"])
+                fp_table = vcf_qual_stats(fp_path, options.clip_fp if options.clip_fp else options.clip)
+                tp_table = vcf_qual_stats(tp_path, options.clip)
+                save_vcfeval_stats(out_path, fn_table, fp_table, tp_table)
+            except:
+                pass
+            
         
 def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
@@ -1139,8 +1231,8 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             if os.path.isfile(samtools_path):
                 sample_graphs[region][sample].add(samtools_path)
                 tags[samtools_path] = (region, sample, "samtools")                                
-            if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
-                sample_graphs[region][sample].add(g1kvcf_path)
+            #if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
+            #    sample_graphs[region][sample].add(g1kvcf_path)
 
         tags[sample_path] = (region, sample, method)
         tags[g1kvcf_path] = (region, sample, "g1kvcf")
