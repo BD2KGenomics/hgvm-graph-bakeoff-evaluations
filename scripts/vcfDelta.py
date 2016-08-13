@@ -34,11 +34,11 @@ def main(args):
 
     # this was originally written when I for some reason had a bcftools that was too old for isec, replace here
     vcf1 = options.vcf1
-    if not options.vcf1[-6:] == ".vcf.gz":
+    if not options.vcf1[-7:] == ".vcf.gz":
         os.system("bgzip {} -c > {}.gz".format(options.vcf1, options.vcf1))
         vcf1 += ".gz"
     vcf2 = options.vcf2
-    if not options.vcf1[-6:] == ".vcf.gz":
+    if not options.vcf1[-7:] == ".vcf.gz":
         os.system("bgzip {} -c > {}.gz".format(options.vcf2, options.vcf2))
         vcf2 += ".gz"
 

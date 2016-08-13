@@ -31,6 +31,8 @@ def parse_args(args):
                         help="clip using this bed file")
     parser.add_argument("--qual", type=float, default=None,
                         help="ignore qualities less than this")
+    parser.add_argument("--delta", type=str, default=None,
+                        help="subtract this vcf using vcfDelta.py")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -88,7 +90,15 @@ def main(args):
 
     # filter vcf into our output folder
     vcf_path = os.path.join(options.out_dir, os.path.basename(options.vcf_path))
-    cmd = "bcftools view {}".format(options.vcf_path)
+    if options.delta is not None:
+        tmp_path = vcf_path + ".pre_delta"
+        run("vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
+        run("bgzip -f {}".format(tmp_path))
+        run("tabix -f -p vcf {}.gz".format(tmp_path))
+        input_vcf = tmp_path + ".gz"
+    else:
+        input_vcf = options.vcf_path
+    cmd = "bcftools view {}".format(input_vcf)
     if options.clip is not None:
         cmd += " -R {}".format(options.clip)
     if options.qual is not None:
