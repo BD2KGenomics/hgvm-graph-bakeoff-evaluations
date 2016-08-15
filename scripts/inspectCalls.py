@@ -92,7 +92,7 @@ def main(args):
     vcf_path = os.path.join(options.out_dir, os.path.basename(options.vcf_path))
     if options.delta is not None:
         tmp_path = vcf_path + ".pre_delta"
-        run("vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
+        run("scripts/vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
         run("bgzip -f {}".format(tmp_path))
         run("tabix -f -p vcf {}.gz".format(tmp_path))
         input_vcf = tmp_path + ".gz"
