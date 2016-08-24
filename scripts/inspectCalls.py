@@ -33,6 +33,13 @@ def parse_args(args):
                         help="ignore qualities less than this")
     parser.add_argument("--delta", type=str, default=None,
                         help="subtract this vcf using vcfDelta.py")
+    parser.add_argument("--gam", type=str, default=None,
+                        help="gam for showing mapped reads as paths")
+    parser.add_argument("--filter_opts", type=str,
+                        default="-r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 --defray-ends 999",
+                        help="options for vg filter")
+    parser.add_argument("--gam_view", action="store_true",
+                        help="use vg view -A to view gams (instead of embedding as paths)")
     args = args[1:]
         
     return parser.parse_args(args)
@@ -60,12 +67,7 @@ def xg_path_node_id(xg_path, path_name, vg_offset):
     stdout, stderr = run("vg find -x {} -p {}:{}-{} | vg mod -o - | vg view -j - | jq .node[0].id".format(
         xg_path, path_name, vg_offset, vg_offset),
                          proc_stdout=subprocess.PIPE)
-    return int(stdout)
-
-def draw_variant(xg_path, path_name, offset, context, out_png):
-    """ draw the variant """
-    stdout, stderr = run("vg find -x {} -p {}:{}-{} -c {} | vg view -pd - | dot -Tpng > {}".format(
-        xg_path, path_name, offset, offset, context, out_png))
+    return int(stdout)                         
 
 def get_offset(region):
     return {"BRCA1" : 43044293, "BRCA2" : 32314860,
@@ -92,7 +94,7 @@ def main(args):
     vcf_path = os.path.join(options.out_dir, os.path.basename(options.vcf_path))
     if options.delta is not None:
         tmp_path = vcf_path + ".pre_delta"
-        run("vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
+        run("scripts/vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
         run("bgzip -f {}".format(tmp_path))
         run("tabix -f -p vcf {}.gz".format(tmp_path))
         input_vcf = tmp_path + ".gz"
@@ -111,6 +113,23 @@ def main(args):
         for line in vcf:
             if line[0] != "#":
                 vcf_lines.append(line)
+
+    # chunk gam.  chunk i corresponds to ith vcf line
+    if options.gam is not None:
+        chunk_path = os.path.join(options.out_dir, "gam_chunks")
+        bed_path = os.path.join(chunk_path, "coords.bed")
+        chunk_base = os.path.join(chunk_path, "chunk")
+        run("mkdir -p {}".format(chunk_path))
+        with open(bed_path, "w") as f:
+            for i, line in enumerate(vcf_lines[::options.step]):
+                toks = line.split()
+                vcf_pos = int(toks[1])
+                # convert from vcf 1-based position to vg 0-based path offset
+                vg_pos = vcf_pos - 1 - get_offset(options.region)
+                path_name = get_path_name(options.region) if options.ref is None else options.ref
+                f.write("{}\t{}\t{}\n".format(path_name, vg_pos, vg_pos + 1))
+        run("vg filter {} -x {} -R {} -B {} {}".format(
+            options.gam, xg_path, bed_path, chunk_base, options.filter_opts))
 
     for i, line in enumerate(vcf_lines[::options.step]):
         # parse vcf line
@@ -135,9 +154,41 @@ def main(args):
         with open(os.path.join(options.out_dir, record_name + ".vcf"), "w") as f:
             f.write(line)
 
-        # write the region to a png
-        draw_variant(xg_path, path_name, vg_pos, options.context,
-                     os.path.join(options.out_dir, record_name + ".png"))
+        vg_chunk_path = os.path.join(options.out_dir, record_name + ".vg")
+
+        big_index = xg_path
+                    
+        if options.gam is not None:
+            # make gam chunk
+            gam_path = os.path.join(options.out_dir, record_name + ".gam")
+            run("mv {}-{}.gam {}".format(chunk_base, i, gam_path))
+
+            # default to embadding alignments as paths since vg view -A
+            # is not very readable
+            if options.gam_view is False:
+                # make a big vg with gam paths
+                big_path = os.path.join(options.out_dir, record_name + "_big.vg")
+                run("vg mod {} -i {} > {}".format(options.vg_path, gam_path, big_path))
+
+                # re-index
+                big_index = os.path.join(options.out_dir, record_name + "_big.xg")
+                run("vg index {} -x {}".format(big_path, big_index))
+            
+        # chunk vg
+        run("vg find -p {}:{}-{} -x {} -c {} > {}".format(
+            path_name, vg_pos, vg_pos, big_index, options.context, vg_chunk_path))
+
+        # activate gam view if desired
+        if options.gam is not None and options.gam_view is True:
+            view_opts = "-A {}".format(gam_path)
+        else:
+            view_opts = ""
+            
+        # draw the vg chunk
+        png_path = os.path.join(options.out_dir, record_name + ".png")
+        run("vg view {} -pd {} | dot -Tpng > {}".format(
+            view_opts, vg_chunk_path, png_path))
+
 
     return 0
     

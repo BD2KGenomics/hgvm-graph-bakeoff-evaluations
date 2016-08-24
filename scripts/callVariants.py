@@ -366,9 +366,18 @@ def compute_vg_variants(job, input_gam, options):
     do_call = not options.genotype and (do_pu or not os.path.isfile(out_sample_vcf_path))
     do_surject = options.surject and (options.overwrite or not os.path.isfile(out_bam_path))
 
+    # We need an XG here for the mase graph, but I haven't got time to refactor
+    # to make it in the right place. So just make it here.
+    temp_xg_path = job.fileStore.getLocalTempDir() + "/filter.xg"
+
+    if do_gam_filter or do_pu:
+        # Make sure we have the xg index around, which fiulter may need.
+        run("vg index -x {} {}".format(temp_xg_path, input_graph_path), fail_hard = True)
+
     if do_gam_filter:
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter {} {} {} > {}".format(input_gam, options.filter_opts, input_graph_path,
+        run("vg filter -x {} {} {} {} > {}".format(temp_xg_path, input_gam,
+                                             options.filter_opts, input_graph_path,
                                              out_gam_filter_path),
             fail_hard = True)
 
@@ -379,7 +388,8 @@ def compute_vg_variants(job, input_gam, options):
 
     if do_pu:
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter {} {} | vg pileup {} - {} -t {} > {}".format(input_gam,
+        run("vg filter -x {} {} {} | vg pileup {} - {} -t {} > {}".format(temp_xg_path,
+                                                                    input_gam,
                                                                     options.filter_opts,
                                                                     input_graph_path,
                                                                     options.pileup_opts,

@@ -70,8 +70,9 @@ OPTS="--maxCores 36 --vg_cores 6 --vg_only --skipBaseline"
 
 #hack in truth alignments as test
 #TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
-TA_PATH="platinum_truth_alignments"
-EXP_PATH="platinum_experiment_alignments/alignments"
+#TA_PATH="platinum_truth_alignments"
+TA_PATH=/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments
+EXP_PATH="/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_experiment_alignments/alignments"
 # Comparison parameters
 
 #CLIP_PATH="data/filters/platinum2016.bed"
@@ -140,9 +141,10 @@ secscore=10000
 
 ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
-CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4"
+CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 -M 1 --multiallelic"
 #CALL_OPTS="-d 0 -e 5000 -s 3 -D 20 -n 0 -F 0.2 -B 250 -H 3 -R 4"
-FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0"
+# Defray all the way (as reads are << 999 bases long)
+FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0 --defray-ends 999"
 VAR_OUT_DIR=${OUT_DIR}/primary_call_i_${ident}_delt_${delta}_ss_${secscore}
 COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG}
 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$ROC_FLAG" $DO_CALL

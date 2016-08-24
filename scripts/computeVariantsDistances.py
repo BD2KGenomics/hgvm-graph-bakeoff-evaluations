@@ -969,10 +969,13 @@ def preprocess_vcf(job, graph, options):
     
 
     if options.normalize is True and options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
-#        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vt normalize -r {} - | vcfuniq > {}".format(
-        sts = run("scripts/vcfSplitMulti.py {} | vt decompose_blocksub -a - | vcfuniq | scripts/vcfSplitMulti.py - --merge > {}".format(
+        # run blocksub (only on single allelic)
+        sts = run("bcftools filter -e \"N_ALT > 1\" {} | vt decompose_blocksub -a - > {}".format( 
             output_vcf,
-#            options.chrom_fa_path,
+            output_vcf + ".vt"))
+        # add back multiallelic variants
+        run("bcftools filter -i \"N_ALT > 1\" {} | bcftools view - -H >> {}".format(
+            output_vcf,
             output_vcf + ".vt"))
         if sts != 0:
             run("rm {}".format(output_vcf))
