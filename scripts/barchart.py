@@ -229,6 +229,10 @@ def main(args):
     if options.max is not None:
         # Set only the upper y limit
         pyplot.ylim((pyplot.ylim()[0], options.max))
+
+    if options.min is not None:
+        # Set only the lower y limit
+        pyplot.ylim((options.min, pyplot.ylim()[1]))
         
     if options.sparse_ticks:
         # Set up tickmarks to have only 2 per axis, at the ends
