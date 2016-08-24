@@ -178,6 +178,8 @@ def parse_args(args):
 
     parser.add_argument("--top", action="store_true",
                         help="print some zoom-ins too")
+    parser.add_argument("--range", help="number of points to plot on either side of max f1 pr dot",
+                        type=int, default=5)
 
                             
     args = args[1:]
@@ -217,23 +219,30 @@ def make_max_f1_tsv(acc_tsv_path, f1_tsv_path, f1_pr_tsv_path, f1_qual_tsv_path,
     max_f1 = defaultdict(int)
     max_pr = dict()
     max_qual = dict()
-    with open(acc_tsv_path) as pr_file:
-        for line in pr_file:
-            toks = line.split()
-            try:
-                name, recall, precision, qual = toks[0], float(toks[1]), float(toks[2]), float(toks[3])
-                max_f1[name] = max(f1(precision, recall), max_f1[name])
-                if max_f1[name] == f1(precision, recall):
-                    max_pr[name] = (precision, recall)
-                    max_qual[name] = qual
-            except:
-                pass
+    with open(acc_tsv_path) as f:
+        pr_file = [line for line in f]
+    for i, line in enumerate(pr_file):
+        toks = line.split()
+        try:
+            name, recall, precision, qual = toks[0], float(toks[1]), float(toks[2]), float(toks[3])
+            max_f1[name] = max(f1(precision, recall), max_f1[name])
+            if max_f1[name] == f1(precision, recall):
+                max_pr[name] = (precision, recall, i)
+                max_qual[name] = qual
+        except:
+            pass
     with open(f1_tsv_path, "w") as f1_file:
         for name, f1_score in max_f1.items():
             f1_file.write("{}\t{}\n".format(name, f1_score))
     with open(f1_pr_tsv_path, "w") as f1_pr_file:
         for name, pr_score in max_pr.items():
-            f1_pr_file.write("{}\t{}\t{}\n".format(name, pr_score[1], pr_score[0]))
+            best_f1_line = pr_score[2]
+            for i in range(max(0, best_f1_line - options.range), min(len(pr_file), best_f1_line + options.range)):
+                line = pr_file[i]
+                toks = line.split()
+                if toks[0] == name:
+                    recall, precision = float(toks[1]), float(toks[2])
+                    f1_pr_file.write("{}\t{}\t{}\n".format(name, recall, precision))
     with open(f1_qual_tsv_path, "w") as f1_qual_file:
         for name, qual_score in max_qual.items():
             f1_qual_file.write("{}\t{}\n".format(name, qual_score))
@@ -244,9 +253,9 @@ def plot_vcf_comp(tsv_path, options):
     out_dir = os.path.join(options.comp_dir, "comp_plots")
     robust_makedirs(out_dir)
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
-    out_base_path = os.path.join(out_dir, out_name)
     region = out_name.split("-")[-1].upper()
-    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "--f1-" + region)
+    out_base_path = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "-pr-" + region)
+    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "-f1bar-" + region)
 
     params = " ".join(PLOT_PARAMS)
 
@@ -288,19 +297,19 @@ def plot_vcf_comp(tsv_path, options):
         #flatten to max f1 tsv and plot as bars
         f1_tsv = out_base_path_f1 + "_" + label + ".tsv"
         f1_png = out_base_path_f1 + "_" + label + ".png"
-        f1_pr_tsv = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".tsv"
-        f1_pr_png = out_base_path_f1.replace("-f1-", "-f1--pr-") + "_" + label + ".png"
-        f1_qual_tsv = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".tsv"
-        f1_qual_png = out_base_path_f1.replace("-f1-", "-f1-qual-") + "_" + label + ".png"
+        f1_pr_tsv = out_base_path_f1.replace("-f1bar-", "-f1pr-") + "_" + label + ".tsv"
+        f1_pr_png = out_base_path_f1.replace("-f1bar-", "-f1pr-") + "_" + label + ".png"
+        f1_qual_tsv = out_base_path_f1.replace("-f1bar-", "-f1qual-") + "_" + label + ".tsv"
+        f1_qual_png = out_base_path_f1.replace("-f1bar-", "-f1qual-") + "_" + label + ".png"
 
         make_max_f1_tsv(acc_tsv, f1_tsv, f1_pr_tsv, f1_qual_tsv, options)
-        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
+        cmd = "scripts/barchart.py {} --min 0.5 --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
         print cmd
         os.system(cmd)
-        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(f1_pr_tsv, f1_pr_png, title, params)
+        cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5".format(f1_pr_tsv, f1_pr_png, title, params)
         print cmd
         os.system(cmd)
-        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Quality for Max F1\" {} --max 20".format(f1_qual_tsv, f1_qual_png, title, params)
+        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Quality for Max F1\" {}".format(f1_qual_tsv, f1_qual_png, title, params)
         print cmd
         os.system(cmd)
         
