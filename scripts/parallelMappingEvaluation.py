@@ -901,10 +901,14 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "unmapped_lengths": collections.Counter(),
         "aligned_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
+        "primary_mapqs": collections.Counter(),
+        "primary_identities": collections.Counter(),
         "primary_mismatches": collections.Counter(),
         "primary_indels": collections.Counter(),
         "primary_substitutions": collections.Counter(),
         "secondary_scores": collections.Counter(),
+        "secondary_mapqs": collections.Counter(),
+        "secondary_identities": collections.Counter(),
         "secondary_mismatches": collections.Counter(),
         "secondary_indels": collections.Counter(),
         "secondary_substitutions": collections.Counter(),
@@ -943,6 +947,12 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # What should the denominator for substitution rate be for this
             # read? How many bases are in the read and aligned?
             aligned_length = 0
+            
+            # What's the mapping quality?
+            mapq = alignment["mapping_quality"]
+            
+            # And the identity?
+            identity = alignment["identity"]
             
             for mapping_number, mapping in enumerate(mappings):
                 # Figure out what the reference sequence for this mapping should
@@ -1070,6 +1080,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["secondary_mismatches"][mismatches] += 1
                 stats["secondary_indels"][indels] += 1
                 stats["secondary_substitutions"][substitutions] += 1
+                stats["secondary_mapqs"][mapq] += 1
+                stats["secondary_identities"][identity] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -1078,6 +1090,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["primary_mismatches"][mismatches] += 1
                 stats["primary_indels"][indels] += 1
                 stats["primary_substitutions"][substitutions] += 1
+                stats["primary_mapqs"][mapq] += 1
+                stats["primary_identities"][identity] += 1
                 
                 # Record that a read of this length was mapped
                 stats["mapped_lengths"][length] += 1
