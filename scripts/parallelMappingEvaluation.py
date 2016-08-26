@@ -948,8 +948,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # read? How many bases are in the read and aligned?
             aligned_length = 0
             
-            # What's the mapping quality?
-            mapq = alignment["mapping_quality"]
+            # What's the mapping quality? May not be defined on some reads.
+            mapq = alignment.get("mapping_quality", 0.0)
             
             # And the identity?
             identity = alignment["identity"]
