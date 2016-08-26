@@ -39,11 +39,6 @@ brca2	http://ga4gh-test1.cloudapp.net/prg-brca2/	prg	GRCh38	jerome.kelleher@well
 sma	http://ga4gh-test1.cloudapp.net/prg-sma/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
 lrc_kir	http://ga4gh-test1.cloudapp.net/prg-lrc_kir/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-11-18
 mhc	http://ga4gh-test1.cloudapp.net/prg-mhc/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-10
-brca1	http://ga4gh-test1.cloudapp.net/snp1kg-brca1/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-01-08
-brca2	http://ga4gh-test1.cloudapp.net/snp1kg-brca2/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-01-08
-sma	http://ga4gh-test1.cloudapp.net/snp1kg-sma/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
-lrc_kir	http://ga4gh-test1.cloudapp.net/snp1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
-mhc	http://ga4gh-test1.cloudapp.net/snp1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2015-12-21
 brca1	http://ga4gh-test1.cloudapp.net/simons-brca1/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
 brca2	http://ga4gh-test1.cloudapp.net/simons-brca2/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
 sma	http://ga4gh-test1.cloudapp.net/simons-sma/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
@@ -66,13 +61,73 @@ brca2	http://ga4gh-test1.cloudapp.net/shifted1kg-brca2/	vg	GRCh38 ref + 1000g VC
 sma	http://ga4gh-test1.cloudapp.net/shifted1kg-sma/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
 lrc_kir	http://ga4gh-test1.cloudapp.net/shifted1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
 mhc	http://ga4gh-test1.cloudapp.net/shifted1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
-brca1	http://ga4gh-test1.cloudapp.net/haplo1kg30-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
-brca2	http://ga4gh-test1.cloudapp.net/haplo1kg30-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
-sma	http://ga4gh-test1.cloudapp.net/haplo1kg30-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
-lrc_kir	http://ga4gh-test1.cloudapp.net/haplo1kg30-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
-mhc	http://ga4gh-test1.cloudapp.net/haplo1kg30-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
-brca1	http://ga4gh-test1.cloudapp.net/haplo1kg50-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
-brca2	http://ga4gh-test1.cloudapp.net/haplo1kg50-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2016-01-08
-sma	http://ga4gh-test1.cloudapp.net/haplo1kg50-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
-lrc_kir	http://ga4gh-test1.cloudapp.net/haplo1kg50-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
-mhc	http://ga4gh-test1.cloudapp.net/haplo1kg50-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-12-21
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_kp-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_kp-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_kp-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_kp-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_kp-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/snp1kg_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg30_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca2	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+sma	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+lrc_kir	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+mhc	/hive/users/hickey/ga4gh/vg/bakeoff.jun2/deploy/haplo1kg50_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
+brca1	/hive/users/hickey/ga4gh/vg/platinum_truth_graphs/platinum-brca1.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
+brca2	/hive/users/hickey/ga4gh/vg/platinum_truth_graphs/platinum-brca2.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
+sma	/hive/users/hickey/ga4gh/vg/platinum_truth_graphs/platinum-sma.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
+lrc_kir	/hive/users/hickey/ga4gh/vg/platinum_truth_graphs/platinum-lrc_kir.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
+mhc	/hive/users/hickey/ga4gh/vg/platinum_truth_graphs/platinum-mhc.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
