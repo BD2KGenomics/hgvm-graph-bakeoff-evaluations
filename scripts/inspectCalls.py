@@ -23,6 +23,8 @@ def parse_args(args):
                         help="output dir to create")
     parser.add_argument("--context", type=int, default=1,
                         help="context expansion for vg find")
+    parser.add_argument("--aug_context", type=int, default=10,
+                        help="context for expanson for vg find on augmented graph")
     parser.add_argument("--step", type=int, default=1,
                         help="only consider every STEP variants in VCF")
     parser.add_argument("--ref", type=str, default=None,
@@ -94,7 +96,7 @@ def main(args):
     vcf_path = os.path.join(options.out_dir, os.path.basename(options.vcf_path))
     if options.delta is not None:
         tmp_path = vcf_path + ".pre_delta"
-        run("scripts/vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
+        run("vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
         run("bgzip -f {}".format(tmp_path))
         run("tabix -f -p vcf {}.gz".format(tmp_path))
         input_vcf = tmp_path + ".gz"
@@ -154,9 +156,10 @@ def main(args):
         with open(os.path.join(options.out_dir, record_name + ".vcf"), "w") as f:
             f.write(line)
 
+        # chunk vg
         vg_chunk_path = os.path.join(options.out_dir, record_name + ".vg")
-
-        big_index = xg_path
+        run("vg find -p {}:{}-{} -x {} -c {} > {}".format(
+            path_name, vg_pos, vg_pos, xg_path, options.context, vg_chunk_path))
                     
         if options.gam is not None:
             # make gam chunk
@@ -173,10 +176,14 @@ def main(args):
                 # re-index
                 big_index = os.path.join(options.out_dir, record_name + "_big.xg")
                 run("vg index {} -x {}".format(big_path, big_index))
+
+                # figure out the node at this exact location in the augmented index
+                aug_ref_node = xg_path_node_id(big_index, path_name, vg_pos)
             
-        # chunk vg
-        run("vg find -p {}:{}-{} -x {} -c {} > {}".format(
-            path_name, vg_pos, vg_pos, big_index, options.context, vg_chunk_path))
+                # chunk augmented vg
+                aug_chunk = os.path.join(options.out_dir, record_name + "_big.vg")
+                run("vg find -p {}:{}-{} -x {} -c {} > {}".format(
+                    path_name, vg_pos, vg_pos, big_index, options.aug_context, aug_chunk))
 
         # activate gam view if desired
         if options.gam is not None and options.gam_view is True:
@@ -188,6 +195,12 @@ def main(args):
         png_path = os.path.join(options.out_dir, record_name + ".png")
         run("vg view {} -pd {} | dot -Tpng > {}".format(
             view_opts, vg_chunk_path, png_path))
+
+        # draw the gam-augmented chunk
+        aug_png = os.path.join(options.out_dir, record_name.replace(
+            "rn_{}".format(ref_node), "rn_{}".format(aug_ref_node)) + "_gam.png")
+        run("vg view -pd {} | dot -Tpng > {}".format(aug_chunk, aug_png))
+        
 
 
     return 0
