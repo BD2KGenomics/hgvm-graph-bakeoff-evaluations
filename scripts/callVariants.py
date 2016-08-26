@@ -360,11 +360,11 @@ def compute_vg_variants(job, input_gam, options):
     out_gam_index_path = gam_index_path(input_gam, options)
     out_bam_path = out_sample_vg_path.replace(".vg", ".bam")
     do_genotype = options.genotype and (options.overwrite or not os.path.isfile(out_sample_vcf_path))
-    do_gam_filter= do_genotype and (options.overwrite or not os.path.isfile(out_gam_filter_path))
+    do_gam_filter= (options.overwrite or not os.path.isfile(out_gam_filter_path))
     do_gam_index = do_genotype and (do_gam_filter or options.overwrite or not os.path.isdir(out_gam_index_path))
     do_pu = not options.genotype and (options.overwrite or not os.path.isfile(out_pileup_path))
     do_call = not options.genotype and (do_pu or not os.path.isfile(out_sample_vcf_path))
-    do_surject = options.surject and (options.overwrite or not os.path.isfile(out_bam_path))
+    do_surject = options.surject and (options.overwrite or do_gam_filter or not os.path.isfile(out_bam_path))
 
     # We need an XG here for the mase graph, but I haven't got time to refactor
     # to make it in the right place. So just make it here.
@@ -388,13 +388,11 @@ def compute_vg_variants(job, input_gam, options):
 
     if do_pu:
         robust_makedirs(os.path.dirname(out_pileup_path))
-        run("vg filter -x {} {} {} | vg pileup {} - {} -t {} > {}".format(temp_xg_path,
-                                                                    input_gam,
-                                                                    options.filter_opts,
-                                                                    input_graph_path,
-                                                                    options.pileup_opts,
-                                                                    options.vg_cores,
-                                                                    out_pileup_path),
+        run("vg pileup {} {} {} -t {} > {}".format(input_graph_path,
+                                                   out_gam_filter_path,
+                                                   options.pileup_opts,
+                                                   options.vg_cores,
+                                                   out_pileup_path),
             fail_hard = True)
     ref = None
     bedLength = -1
@@ -448,7 +446,7 @@ def compute_vg_variants(job, input_gam, options):
                                                                          os.path.join(os.path.dirname(out_bam_path), "graph"),
                                                                          options.vg_cores),
                 fail_hard = True)
-            run("vg surject {} -t {} -p {} -b -d {}.index > {}".format(input_gam, options.vg_cores, ref,
+            run("vg surject {} -t {} -p {} -b -d {}.index > {}".format(out_gam_filter_path, options.vg_cores, ref,
                                                                        os.path.join(os.path.dirname(out_bam_path), "graph"),
                                                                        out_bam_path),
                 fail_hard = True)
