@@ -23,9 +23,10 @@ def reverse_complement(dna):
     return dna.translate(RC_TABLE)[::-1]
 
 # Global SAM constants
-BAM_FREVERSE=16
-BAM_FREAD1=64
-BAM_FREAD2=128
+BAM_FREVERSE = 16
+BAM_FREAD1 = 64
+BAM_FREAD2 = 128
+BAM_SECONDARY = 256
 
 def parse_args(args):
     """
@@ -57,6 +58,8 @@ def parse_args(args):
         help="FASTQ file to save the READ2 reads in")
     parser.add_argument("--interleaved", action="store_true",
         help="write interleaved FASTQ to fq1")
+    parser.add_argument("--drop_secondary", action="store_true",
+        help="drop pairs where a primary alignment is not seen at both ends")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -120,6 +123,9 @@ class Read(object):
             self.is_reverse = True
         else:
             self.is_reverse = False
+            
+        # Mark secondary alignments
+        self.is_secondary = self.flags & BAM_SECONDARY
             
         # Grab the contig we mapped to
         self.contig = parts[2]
@@ -318,13 +324,16 @@ def pysam_parse_reads(sam_file):
         yield our_read
     
         
-def parse_and_deduplicate_sam(sam_input):
+def parse_and_deduplicate_sam(sam_input, drop_secondary = False):
     """
     Given a source of input SAM lines, parses lines into Read objects, and
     deduplicates them, discarding suspect ones when non-suspect ones are
     available.
     
     Yields dicts form end number to Read object for each template.
+    
+    If drop_secondary is true, discard any templates where there isn't a primary
+    alignment observed for both ends.
     
     """
     
@@ -333,6 +342,12 @@ def parse_and_deduplicate_sam(sam_input):
     
     # For this template, we keep the best read for each end we find.
     reads_by_end = {}
+    
+    # We also keep track of which ends have had primary alignments show up. It's
+    # OK if a secondary alignment is the best one (because we drop the alignment
+    # bit and only spit out sequence and quality), but we may need a primary to
+    # exist in the region.
+    primaries_seen = set()
     
     for line in sam_input:
         if line.startswith("@"):
@@ -343,16 +358,36 @@ def parse_and_deduplicate_sam(sam_input):
         # Work on the reads
         
         if read.template != last_template:
+            # We need to spit out the last template since we saw all its
+            # relevant reads.
             
-            # It's OK if we spit out suspect stuff as long as we got the best
-            # suspect alignment
-            yield reads_by_end
+            drop_template = False
+            if drop_secondary:
+                for end in reads_by_end.iterkeys():
+                    if end not in primaries_seen:
+                        # We need to drop this template, because we found an end
+                        # with no primary alignment in the region we're running
+                        # on.
+                        drop_template = True
+                
+            
+            if not drop_template:
+                # This template should be kept
+            
+                # It's OK if we spit out suspect stuff as long as we got the
+                # best suspect alignment
+                yield reads_by_end
         
             # Start a new state
             last_template = read.template
             reads_by_end = {}
+            primaries_seen = set()
             
         
+        if not read.is_secondary:
+            # This is a primary read for this end, Remember that.
+            primaries_seen.add(read.end)
+            
         if not reads_by_end.has_key(read.end):
             # This is the only read for this end so far
             reads_by_end[read.end] = read
@@ -369,9 +404,23 @@ def parse_and_deduplicate_sam(sam_input):
                     "{} of template {}:\n{}\n{}".format(read.end, read.template,
                     read.line, reads_by_end[read.end].line))
     
-    # It's OK if we spit out suspect stuff as long as we got the best
-    # suspect alignment
-    yield reads_by_end
+    # Now we have to handle the last template.
+    # TODO: is there a good way to not duplicate this code?
+    
+    drop_template = False
+    if drop_secondary:
+        for end in reads_by_end.iterkeys():
+            if end not in primaries_seen:
+                # We need to drop this template, because we found an end
+                # with no primary alignment in the region we're running
+                # on.
+                drop_template = True
+        
+    
+    if not drop_template:
+        # It's OK if we spit out suspect stuff as long as we got the best
+        # suspect alignment
+        yield reads_by_end
             
 def write_fastq(stream, read):
     """
@@ -404,7 +453,9 @@ def run(options):
     Do the actual work of the program.
     """
     
-    for reads_by_end in parse_and_deduplicate_sam(options.input_sam):
+    for reads_by_end in parse_and_deduplicate_sam(options.input_sam,
+        options.drop_secondary):
+        
         if not (reads_by_end.has_key(1) and reads_by_end.has_key(2)):
             # Skip unpaired reads
             continue
