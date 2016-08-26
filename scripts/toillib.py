@@ -22,9 +22,7 @@ import datetime
 # We need some stuff in order to have Azure
 try:
     import azure
-    # Make sure to get the 0.11 BlobService, in case the new azure storage
-    # module is also installed.
-    from azure.storage import BlobService
+    from azure.storage import BlockBlobService
     import toil.jobStores.azureJobStore
     have_azure = True
 except ImportError:
@@ -819,7 +817,7 @@ class AzureIOStore(IOStore):
                 self.container_name, self.name_prefix))
         
             # Connect to the blob service where we keep everything
-            self.connection = BlobService(
+            self.connection = BlockBlobService(
                 account_name=self.account_name, account_key=self.account_key)
             
     @backoff        
@@ -904,9 +902,11 @@ class AzureIOStore(IOStore):
                 else:
                     # We found an actual file 
                     if with_times:
-                        mtime = dateutil.parser.parse(
-                            blob.properties.last_modified).replace(
-                            tzinfo=dateutil.tz.tzutc())
+                        mtime = blob.properties.last_modified
+                        # Make sure we're getting proper localized datetimes
+                        # from the new Azure Storage API.
+                        assert(isinstance(mtime, datetime.datetime))
+                        assert(mtime.tzinfo is not None and mtime.tzinfo.utcoffset(mtime) is not None)
                         yield relative_path, mtime
                             
                     else:
@@ -997,9 +997,12 @@ class AzureIOStore(IOStore):
                 
                 if blob.name == self.name_prefix + path:
                     # Found it
-                    return dateutil.parser.parse(
-                        blob.properties.last_modified).replace(
-                        tzinfo=dateutil.tz.tzutc())
+                    mtime = blob.properties.last_modified
+                    # Make sure we're getting proper localized datetimes
+                    # from the new Azure Storage API.
+                    assert(isinstance(mtime, datetime.datetime))
+                    assert(mtime.tzinfo is not None and mtime.tzinfo.utcoffset(mtime) is not None)
+                    return mtime
                 
             # Save the marker
             marker = result.next_marker
