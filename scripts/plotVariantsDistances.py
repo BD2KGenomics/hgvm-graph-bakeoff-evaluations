@@ -179,7 +179,7 @@ def parse_args(args):
     parser.add_argument("--top", action="store_true",
                         help="print some zoom-ins too")
     parser.add_argument("--range", help="number of points to plot on either side of max f1 pr dot",
-                        type=int, default=5)
+                        type=int, default=10)
 
                             
     args = args[1:]
@@ -254,8 +254,11 @@ def plot_vcf_comp(tsv_path, options):
     robust_makedirs(out_dir)
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
     region = out_name.split("-")[-1].upper()
-    out_base_path = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "-pr-" + region)
-    out_base_path_f1 = os.path.join(out_dir, "-".join(out_name.split("-")[:-1]) + "-f1bar-" + region)
+    def out_base_path(tag, label, extension):
+        bd = tag if extension != ".tsv" else "tsv"
+        ret = os.path.join(out_dir, bd, "-".join(out_name.split("-")[:-1]) + "-{}-".format(tag) + region) + "_" + label + extension
+        robust_makedirs(os.path.dirname(ret))
+        return ret
 
     params = " ".join(PLOT_PARAMS)
 
@@ -277,13 +280,13 @@ def plot_vcf_comp(tsv_path, options):
         if comp_cat not in ["TOT", "SNP", "INDEL"]:
             continue
         label = header[prec_idx].replace("Precision", "acc")
-        acc_tsv = out_base_path + "_" + label + ".tsv"
+        acc_tsv = out_base_path("pr", label, ".tsv")
         print "Make {} tsv with cols {} {}".format(label, rec_idx, prec_idx)
         # +1 to convert to awk 1-base coordinates. +1 again since header doesnt include row_label col
         awkcmd = '''if (NR!=1) print $1 "\t" ${} "\t" ${} "\t" ${}'''.format(rec_idx + 2, prec_idx + 2, qual_idx + 2)
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
-        acc_png = out_base_path + "_" + label + ".png"
+        acc_png = out_base_path("pr", label, ".png")
         title = "VCF"
         if comp_cat == "TOT":
             title += " Total Accuracy"
@@ -295,12 +298,12 @@ def plot_vcf_comp(tsv_path, options):
         os.system(cmd)
 
         #flatten to max f1 tsv and plot as bars
-        f1_tsv = out_base_path_f1 + "_" + label + ".tsv"
-        f1_png = out_base_path_f1 + "_" + label + ".png"
-        f1_pr_tsv = out_base_path_f1.replace("-f1bar-", "-f1pr-") + "_" + label + ".tsv"
-        f1_pr_png = out_base_path_f1.replace("-f1bar-", "-f1pr-") + "_" + label + ".png"
-        f1_qual_tsv = out_base_path_f1.replace("-f1bar-", "-f1qual-") + "_" + label + ".tsv"
-        f1_qual_png = out_base_path_f1.replace("-f1bar-", "-f1qual-") + "_" + label + ".png"
+        f1_tsv = out_base_path("f1bar", label, ".tsv")
+        f1_png = out_base_path("f1bar", label, ".png")
+        f1_pr_tsv = out_base_path("f1pr", label, ".tsv")
+        f1_pr_png = out_base_path("f1pr", label, ".png")
+        f1_qual_tsv = out_base_path("f1qual", label, ".tsv")
+        f1_qual_png = out_base_path("f1qual", label, ".png")
 
         make_max_f1_tsv(acc_tsv, f1_tsv, f1_pr_tsv, f1_qual_tsv, options)
         cmd = "scripts/barchart.py {} --min 0.5 --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
