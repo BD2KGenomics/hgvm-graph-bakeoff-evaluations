@@ -22,8 +22,13 @@ import datetime
 # We need some stuff in order to have Azure
 try:
     import azure
-    from azure.storage import BlockBlobService
     import toil.jobStores.azureJobStore
+    try:
+        # Version 0.30+ of azure.storage
+        from azure.storage.blob import BlockBlobService
+    except ImportError:
+        # Versions before 0.30
+        from azure.storage.blob import BlobService as BlockBlobService
     have_azure = True
 except ImportError:
     have_azure = False
@@ -903,10 +908,17 @@ class AzureIOStore(IOStore):
                     # We found an actual file 
                     if with_times:
                         mtime = blob.properties.last_modified
-                        # Make sure we're getting proper localized datetimes
-                        # from the new Azure Storage API.
-                        assert(isinstance(mtime, datetime.datetime))
-                        assert(mtime.tzinfo is not None and mtime.tzinfo.utcoffset(mtime) is not None)
+                        
+                        if isinstance(mtime, datetime.datetime):
+                            # Make sure we're getting proper localized datetimes
+                            # from the new Azure Storage API.
+                            assert(mtime.tzinfo is not None and
+                                mtime.tzinfo.utcoffset(mtime) is not None)
+                        else:
+                            # Convert mtime from a string as in the old API.
+                            mtime = dateutil.parser.parse(mtime).replace(
+                                tzinfo=dateutil.tz.tzutc())
+                            
                         yield relative_path, mtime
                             
                     else:
@@ -998,10 +1010,17 @@ class AzureIOStore(IOStore):
                 if blob.name == self.name_prefix + path:
                     # Found it
                     mtime = blob.properties.last_modified
-                    # Make sure we're getting proper localized datetimes
-                    # from the new Azure Storage API.
-                    assert(isinstance(mtime, datetime.datetime))
-                    assert(mtime.tzinfo is not None and mtime.tzinfo.utcoffset(mtime) is not None)
+                        
+                    if isinstance(mtime, datetime.datetime):
+                        # Make sure we're getting proper localized datetimes
+                        # from the new Azure Storage API.
+                        assert(mtime.tzinfo is not None and
+                            mtime.tzinfo.utcoffset(mtime) is not None)
+                    else:
+                        # Convert mtime from a string as in the old API.
+                        mtime = dateutil.parser.parse(mtime).replace(
+                            tzinfo=dateutil.tz.tzutc())
+                            
                     return mtime
                 
             # Save the marker
