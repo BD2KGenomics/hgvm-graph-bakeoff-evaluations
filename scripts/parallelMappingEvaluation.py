@@ -330,6 +330,15 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 tasks.append(subprocess.Popen(["cat", url_parts.path],
                     stdout=subprocess.PIPE))
             
+            else if url.endswith(".vg"):
+                # Assume it's a vg file
+                
+                RealTimeLogger.get().info("Downloading {} to {}".format(
+                    url, graph_filename))
+                    
+                tasks.append(subprocess.Popen(["curl", url],
+                    stdout=subprocess.PIPE))
+                
             else:
                 # Assume it's on a server
                 
