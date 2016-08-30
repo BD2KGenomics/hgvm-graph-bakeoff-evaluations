@@ -16,7 +16,7 @@ then
 fi
 
 # Set to "call" or "genotype" for comparison experiment
-PARAM_SET="call"
+PARAM_SET="defray"
 
 # What evaluation are we?
 EVAL="assembly_sd"
