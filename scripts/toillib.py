@@ -400,6 +400,33 @@ class IOStore(object):
         raise NotImplementedError()
         
     @staticmethod
+    def absolute(store_string):
+        """
+        Convert a relative path IOStore string to an absolute path one. Leaves
+        strings that aren't FileIOStore specifications alone.
+        
+        Since new Toil versions change the working directory of SingleMachine
+        batch system jobs, we need to have absolute paths passed into jobs.
+        
+        Recommended to be used as an argparse type, so that strings can be
+        directly be passed to IOStore.get on the nodes.
+        
+        """
+        
+        if store_string == "":
+            return ""
+        if store_string[0] == ".":
+            # It's a relative ./ path
+            return os.path.abspath(store_string)
+        if store_string.startswith("file:"):
+            # It's a file:-prefixed thing that may be a relative path
+            # Normalize the part after "file:" (which is 5 characters)
+            return "file:" + os.path.abspath(store_string[5:])
+            
+        return store_string
+        
+        
+    @staticmethod
     def get(store_string):
         """
         Get a concrete IOStore created from the given connection string.
@@ -429,7 +456,7 @@ class IOStore(object):
         # Code adapted from toil's common.py loadJobStore()
         
         if store_string[0] in "/.":
-            # Prepend file: tot he path
+            # Prepend file: to the path
             store_string = "file:" + store_string
 
         try:
@@ -571,18 +598,22 @@ class FileIOStore(IOStore):
         
         RealTimeLogger.get().info("Enumerating {} from "
             "FileIOStore in {}".format(input_path, self.path_prefix))
+            
+        real_path = os.path.join(self.path_prefix, input_path)
         
-        if not os.path.exists(os.path.join(self.path_prefix, input_path)):
+        if not os.path.exists(real_path):
             # Nothing to list over
+            RealTimeLogger.get().warning("No path: {} relative to {}".format(
+                real_path, os.getcwd()))
             return
             
-        if not os.path.isdir(os.path.join(self.path_prefix, input_path)):
+        if not os.path.isdir(real_path):
             # Can't list a file, only a directory.
+            RealTimeLogger.get().warning("Is a file: {}".format(real_path))
             return
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
-            if(recursive and os.path.isdir(os.path.join(self.path_prefix,
-                input_path, item))):
+            if(recursive and os.path.isdir(os.path.join(real_path, item))):
                 # We're recursing and this is a directory.
                 # Recurse on this.
                 for subitem in self.list_input_directory(

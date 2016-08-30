@@ -44,9 +44,9 @@ def parse_args(args):
     # General options
     parser.add_argument("server_list", type=argparse.FileType("r"),
         help="TSV file continaing <region>\t<url> lines for servers to test")
-    parser.add_argument("sample_store",
+    parser.add_argument("sample_store", type=IOStore.absolute,
         help="sample input IOStore with <region>/<sample>/<sample>.bam.fq")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
@@ -252,8 +252,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 "{} < {}".format(match.group(1), mtime.ctime(),
                 options.too_old.ctime()))
             
-    RealTimeLogger.get().info("Already have {} completed samples for {} in "
-        "{}".format(len(completed_samples), basename, stats_dir))
+    RealTimeLogger.get().info("Already have {}/{} completed samples for {} in "
+        "{}".format(len(completed_samples), len(input_samples), basename,
+        stats_dir))
     
     # What samples haven't been done yet and need doing
     samples_to_run = []
