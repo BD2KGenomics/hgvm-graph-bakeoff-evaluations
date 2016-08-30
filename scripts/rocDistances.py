@@ -14,8 +14,7 @@ matplotlib.use('Agg')
 import pylab
 import networkx as nx
 from collections import defaultdict
-from toil.job import Job
-from toillib import RealTimeLogger, robust_makedirs
+from toillib import robust_makedirs
 from callVariants import alignment_sample_tag, alignment_region_tag, alignment_graph_tag, run
 from callVariants import graph_path, sample_vg_path, g1k_vg_path, graph_path
 from evaluateVariantCalls import defaultdict_set
