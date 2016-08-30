@@ -122,7 +122,8 @@ for PARAM_SET in defray; do
                     # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
                     REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
                     
-                    vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    # Use default vg call parameters that Glenn set to be his favorite
+                    vg call --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                     
                 elif [[ "${PARAM_SET}" == "genotype" ]]; then
