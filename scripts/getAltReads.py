@@ -848,7 +848,8 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     # We import the converter so Toil will take care of finding it for us.
     # Configure the SAM to FASTQ converter
     convert_options = smartSam2Fastq.parse_args(["smartSam2Fastq.py",
-        "--interleaved", "--fq1", fastq_filename, "--input_sam", sam_filename])
+        "--interleaved", "--drop_secondary", "--fq1", fastq_filename,
+        "--input_sam", sam_filename])
     
     # Do the conversion
     if not smartSam2Fastq.run(convert_options):

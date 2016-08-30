@@ -44,9 +44,9 @@ def parse_args(args):
     # General options
     parser.add_argument("server_list", type=argparse.FileType("r"),
         help="TSV file continaing <region>\t<url> lines for servers to test")
-    parser.add_argument("sample_store",
+    parser.add_argument("sample_store", type=IOStore.absolute,
         help="sample input IOStore with <region>/<sample>/<sample>.bam.fq")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to create and fill with alignments and stats")
     parser.add_argument("--server_version", default="v0.6.g",
         help="server version to add to URLs")
@@ -252,8 +252,9 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 "{} < {}".format(match.group(1), mtime.ctime(),
                 options.too_old.ctime()))
             
-    RealTimeLogger.get().info("Already have {} completed samples for {} in "
-        "{}".format(len(completed_samples), basename, stats_dir))
+    RealTimeLogger.get().info("Already have {}/{} completed samples for {} in "
+        "{}".format(len(completed_samples), len(input_samples), basename,
+        stats_dir))
     
     # What samples haven't been done yet and need doing
     samples_to_run = []
@@ -330,6 +331,15 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 tasks.append(subprocess.Popen(["cat", url_parts.path],
                     stdout=subprocess.PIPE))
             
+            elif url.endswith(".vg"):
+                # Assume it's a vg file
+                
+                RealTimeLogger.get().info("Downloading {} to {}".format(
+                    url, graph_filename))
+                    
+                tasks.append(subprocess.Popen(["curl", url],
+                    stdout=subprocess.PIPE))
+                
             else:
                 # Assume it's on a server
                 
@@ -901,10 +911,14 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "unmapped_lengths": collections.Counter(),
         "aligned_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
+        "primary_mapqs": collections.Counter(),
+        "primary_identities": collections.Counter(),
         "primary_mismatches": collections.Counter(),
         "primary_indels": collections.Counter(),
         "primary_substitutions": collections.Counter(),
         "secondary_scores": collections.Counter(),
+        "secondary_mapqs": collections.Counter(),
+        "secondary_identities": collections.Counter(),
         "secondary_mismatches": collections.Counter(),
         "secondary_indels": collections.Counter(),
         "secondary_substitutions": collections.Counter(),
@@ -943,6 +957,12 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # What should the denominator for substitution rate be for this
             # read? How many bases are in the read and aligned?
             aligned_length = 0
+            
+            # What's the mapping quality? May not be defined on some reads.
+            mapq = alignment.get("mapping_quality", 0.0)
+            
+            # And the identity?
+            identity = alignment["identity"]
             
             for mapping_number, mapping in enumerate(mappings):
                 # Figure out what the reference sequence for this mapping should
@@ -1070,6 +1090,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["secondary_mismatches"][mismatches] += 1
                 stats["secondary_indels"][indels] += 1
                 stats["secondary_substitutions"][substitutions] += 1
+                stats["secondary_mapqs"][mapq] += 1
+                stats["secondary_identities"][identity] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -1078,6 +1100,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["primary_mismatches"][mismatches] += 1
                 stats["primary_indels"][indels] += 1
                 stats["primary_substitutions"][substitutions] += 1
+                stats["primary_mapqs"][mapq] += 1
+                stats["primary_identities"][identity] += 1
                 
                 # Record that a read of this length was mapped
                 stats["mapped_lengths"][length] += 1

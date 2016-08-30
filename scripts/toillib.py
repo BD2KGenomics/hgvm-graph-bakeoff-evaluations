@@ -22,10 +22,13 @@ import datetime
 # We need some stuff in order to have Azure
 try:
     import azure
-    # Make sure to get the 0.11 BlobService, in case the new azure storage
-    # module is also installed.
-    from azure.storage.blob import BlobService
     import toil.jobStores.azureJobStore
+    try:
+        # Version 0.30+ of azure.storage
+        from azure.storage.blob import BlockBlobService
+    except ImportError:
+        # Versions before 0.30
+        from azure.storage.blob import BlobService as BlockBlobService
     have_azure = True
 except ImportError:
     have_azure = False
@@ -397,6 +400,33 @@ class IOStore(object):
         raise NotImplementedError()
         
     @staticmethod
+    def absolute(store_string):
+        """
+        Convert a relative path IOStore string to an absolute path one. Leaves
+        strings that aren't FileIOStore specifications alone.
+        
+        Since new Toil versions change the working directory of SingleMachine
+        batch system jobs, we need to have absolute paths passed into jobs.
+        
+        Recommended to be used as an argparse type, so that strings can be
+        directly be passed to IOStore.get on the nodes.
+        
+        """
+        
+        if store_string == "":
+            return ""
+        if store_string[0] == ".":
+            # It's a relative ./ path
+            return os.path.abspath(store_string)
+        if store_string.startswith("file:"):
+            # It's a file:-prefixed thing that may be a relative path
+            # Normalize the part after "file:" (which is 5 characters)
+            return "file:" + os.path.abspath(store_string[5:])
+            
+        return store_string
+        
+        
+    @staticmethod
     def get(store_string):
         """
         Get a concrete IOStore created from the given connection string.
@@ -426,7 +456,7 @@ class IOStore(object):
         # Code adapted from toil's common.py loadJobStore()
         
         if store_string[0] in "/.":
-            # Prepend file: tot he path
+            # Prepend file: to the path
             store_string = "file:" + store_string
 
         try:
@@ -568,18 +598,22 @@ class FileIOStore(IOStore):
         
         RealTimeLogger.get().info("Enumerating {} from "
             "FileIOStore in {}".format(input_path, self.path_prefix))
+            
+        real_path = os.path.join(self.path_prefix, input_path)
         
-        if not os.path.exists(os.path.join(self.path_prefix, input_path)):
+        if not os.path.exists(real_path):
             # Nothing to list over
+            RealTimeLogger.get().warning("No path: {} relative to {}".format(
+                real_path, os.getcwd()))
             return
             
-        if not os.path.isdir(os.path.join(self.path_prefix, input_path)):
+        if not os.path.isdir(real_path):
             # Can't list a file, only a directory.
+            RealTimeLogger.get().warning("Is a file: {}".format(real_path))
             return
         
         for item in os.listdir(os.path.join(self.path_prefix, input_path)):
-            if(recursive and os.path.isdir(os.path.join(self.path_prefix,
-                input_path, item))):
+            if(recursive and os.path.isdir(os.path.join(real_path, item))):
                 # We're recursing and this is a directory.
                 # Recurse on this.
                 for subitem in self.list_input_directory(
@@ -819,7 +853,7 @@ class AzureIOStore(IOStore):
                 self.container_name, self.name_prefix))
         
             # Connect to the blob service where we keep everything
-            self.connection = BlobService(
+            self.connection = BlockBlobService(
                 account_name=self.account_name, account_key=self.account_key)
             
     @backoff        
@@ -877,9 +911,8 @@ class AzureIOStore(IOStore):
         
             # Get the results from Azure. We don't use delimiter since Azure
             # doesn't seem to provide the placeholder entries it's supposed to.
-            
             result = self.connection.list_blobs(self.container_name, 
-                marker=marker)
+                prefix=fake_directory, marker=marker)
                 
             RealTimeLogger.get().info("Found {} files".format(len(result)))
                 
@@ -887,7 +920,7 @@ class AzureIOStore(IOStore):
                 # Yield each result's blob name, but directory names only once
                 
                 # Drop the common prefix
-                relative_path = blob.name
+                relative_path = blob.name[len(fake_directory):]
                 
                 if (not recursive) and "/" in relative_path:
                     # We found a file in a subdirectory, and we aren't supposed
@@ -905,9 +938,18 @@ class AzureIOStore(IOStore):
                 else:
                     # We found an actual file 
                     if with_times:
-                        mtime = dateutil.parser.parse(
-                            blob.properties.last_modified).replace(
-                            tzinfo=dateutil.tz.tzutc())
+                        mtime = blob.properties.last_modified
+                        
+                        if isinstance(mtime, datetime.datetime):
+                            # Make sure we're getting proper localized datetimes
+                            # from the new Azure Storage API.
+                            assert(mtime.tzinfo is not None and
+                                mtime.tzinfo.utcoffset(mtime) is not None)
+                        else:
+                            # Convert mtime from a string as in the old API.
+                            mtime = dateutil.parser.parse(mtime).replace(
+                                tzinfo=dateutil.tz.tzutc())
+                            
                         yield relative_path, mtime
                             
                     else:
@@ -998,9 +1040,19 @@ class AzureIOStore(IOStore):
                 
                 if blob.name == self.name_prefix + path:
                     # Found it
-                    return dateutil.parser.parse(
-                        blob.properties.last_modified).replace(
-                        tzinfo=dateutil.tz.tzutc())
+                    mtime = blob.properties.last_modified
+                        
+                    if isinstance(mtime, datetime.datetime):
+                        # Make sure we're getting proper localized datetimes
+                        # from the new Azure Storage API.
+                        assert(mtime.tzinfo is not None and
+                            mtime.tzinfo.utcoffset(mtime) is not None)
+                    else:
+                        # Convert mtime from a string as in the old API.
+                        mtime = dateutil.parser.parse(mtime).replace(
+                            tzinfo=dateutil.tz.tzutc())
+                            
+                    return mtime
                 
             # Save the marker
             marker = result.next_marker
