@@ -25,13 +25,16 @@ mkdir -p "${INPUT_DIR}/extracted"
 # What evaluation are we?
 EVAL="assembly_sd"
 
-# What samples do we use for our synthetic diploid
-SAMPLES=(
+# What sample is our pre-merged balanced synthetic diploid?
+SAMPLE="SYNDIP"
+
+# What assemblies are its two halves
+ASSEMBLIES=(
     "CHM1"
     "CHM13"
 )
 
-for PARAM_SET in call defray; do
+for PARAM_SET in defray; do
 
     for REGION in brca1 brca2 sma lrc_kir mhc; do
         REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
@@ -44,20 +47,20 @@ for PARAM_SET in call defray; do
             
         # We need to grab the relevant parts of the assembly from the FASTA
         true > "${RTEMP}/reads.txt"
-        for SAMPLE in "${SAMPLES[@]}"; do
+        for ASSEMBLY in "${ASSEMBLIES[@]}"; do
             # Get the relevant assembly regions from each sample.
             
             # Look up assembly by sample
-            if [[ "${SAMPLE}" == "CHM1" ]]; then
+            if [[ "${ASSEMBLY}" == "CHM1" ]]; then
                 ASSEMBLY_FASTA="mole_assembly/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015_genomic.fna"
-            elif [[ "${SAMPLE}" == "CHM13" ]]; then
+            elif [[ "${ASSEMBLY}" == "CHM13" ]]; then
                 ASSEMBLY_FASTA="mole_assembly/GCA_000983455.2_CHM13_Draft_Assembly_genomic.fna"
             else
-                echo "Unknown sample assembly ${SAMPLE}"
+                echo "Unknown assembly ${ASSEMBLY}"
                 exit 1
             fi
             
-            bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/${SAMPLE}/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
+            bedtools getfasta -fi "${ASSEMBLY_FASTA}" -bed "mole_regions/${ASSEMBLY}/${REGION^^}.bed" -fo "${RTEMP}/relevant.fa"
             cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
         done
 
@@ -69,7 +72,7 @@ for PARAM_SET in call defray; do
 
             if [[ "${GRAPH}" == "freebayes" ]]; then
                 # Grab the Freebayes calls for this region
-                # TODO: replace these with pooled CHM1/CHM13 freebayes calls
+                # TODO: replace these with pooled SYNDIP freebayes calls
                 
                 cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
                 rm -f "${TEMP}/on_ref.vcf.gz"
@@ -91,16 +94,8 @@ for PARAM_SET in call defray; do
                 VGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.vg"
                 XGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.xg"
                 
-                # Make a combined GAM
-                GAM="${TEMP}/combined.gam"
-                true > "${GAM}"
-                
-                for SAMPLE in "${SAMPLES[@]}"; do
-                    SAMPLE_GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
-                    # Concatenate all the sample GAMs together.
-                    # TODO: balance read counts or something
-                    cat "${SAMPLE_GAM}" >> "${GAM}"
-                done
+                # Find the sample's GAM
+                GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
                 
                 if [[ "${PARAM_SET}" == "call" ]]; then
                     
@@ -121,13 +116,14 @@ for PARAM_SET in call defray; do
                         vg index -x "${XGFILE}" "${VGFILE}"
                     fi
                     
-                    vg filter -x "${XGFILE}" -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 --defray-ends 40 "${GAM}" > "${TEMP}/filtered.gam"
+                    vg filter -x "${XGFILE}" -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 --defray-ends 999 "${GAM}" > "${TEMP}/filtered.gam"
                     vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
                     
                     # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
                     REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
                     
-                    vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    # Use default vg call parameters that Glenn set to be his favorite
+                    vg call --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                     
                 elif [[ "${PARAM_SET}" == "genotype" ]]; then

@@ -141,7 +141,7 @@ secscore=10000
 
 ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
-CALL_OPTS="-b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 -M 1 --multiallelic"
+CALL_OPTS="" # Use the defaults that Glenn coded in as the best parameter set
 #CALL_OPTS="-d 0 -e 5000 -s 3 -D 20 -n 0 -F 0.2 -B 250 -H 3 -R 4"
 # Defray all the way (as reads are << 999 bases long)
 FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0 --defray-ends 999"

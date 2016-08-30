@@ -23,6 +23,7 @@ all output will be in the variants/ folder.
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
 import doctest, re, json, collections, time, timeit, string
+import signal
 from threading import Timer
 from toil.job import Job
 from toillib import RealTimeLogger, robust_makedirs
@@ -81,6 +82,8 @@ def parse_args(args):
                         help="use vg genotype instead of vg call")
     parser.add_argument("--surject", action="store_true",
                         help="attempt to make a surjected bam from each gam")
+    parser.add_argument("--cwd", default=os.getcwd(),
+                        help="set Toil job working directory")
 
     args = args[1:]
         
@@ -288,6 +291,10 @@ def run(cmd, stdout = sys.stdout, stderr = sys.stderr, timeout_sec = sys.maxint,
 def compute_linear_variants(job, input_gam, options):
     """ project to bam, then run samtools to call some variants
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     input_graph_path = graph_path(input_gam, options)
     input_index_path = index_path(input_graph_path, options)
 
@@ -350,6 +357,10 @@ def compute_linear_variants(job, input_gam, options):
 def compute_vg_variants(job, input_gam, options):
     """ run vg pileup and vg call on the input
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     input_graph_path = graph_path(input_gam, options)
     out_pileup_path = pileup_path(input_gam, options)
     out_sample_vg_path = sample_vg_path(input_gam, options)
@@ -482,6 +493,10 @@ def compute_vg_variants(job, input_gam, options):
 def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
     """ make 1000 genomes sample graph by filtering the vcf
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     # there is only one g1vcf graph per region per sample
     # this function is also going to get called once for each graph type
     # so we hack here to only run on refonly graphs (arbitrary choice)
@@ -554,6 +569,10 @@ def compute_snp1000g_baseline(job, input_gam, platinum, filter_indels, options):
 def call_variants(job, options):
     """ run everything (root toil job)
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     for input_gam in options.in_gams:
         job.addChildJobFn(compute_vg_variants, input_gam, options,
                           cores=options.vg_cores)

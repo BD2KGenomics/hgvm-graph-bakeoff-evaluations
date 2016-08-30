@@ -107,6 +107,8 @@ def parse_args(args):
                         help="use --dedupe option in vcfFilterQuality.py")
     parser.add_argument("--vroc", action="store_true", default=False,
                         help="use vcfevals roc logic (only gives total, not indel snp breakdown) and wont work with clipping")
+    parser.add_argument("--cwd", default=os.getcwd(),
+                        help="set Toil job working directory")
                             
     args = args[1:]
 
@@ -122,6 +124,10 @@ def compute_kmer_index(job, graph, options):
     vg indexes are just created in place, ie same dir as graph,
     so need to have write permission there
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     out_index_path = index_path(graph, options)
     do_index = options.overwrite or not os.path.exists(out_index_path)
 
@@ -897,6 +903,10 @@ def remove_nones(mat, col_names, row_names):
 def compute_kmer_comparison(job, graph1, graph2, options):
     """ run vg compare between two graphs
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     out_path = comp_path(graph1, graph2, options)
     graph1_index_path = index_path(graph1, options)
     assert os.path.exists(graph1_index_path)
@@ -915,6 +925,10 @@ def compute_kmer_comparison(job, graph1, graph2, options):
 def compute_corg_comparison(job, graph1, graph2, options):
     """ run corg on the graphs.  store the output in a text file
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     out_path = corg_path(graph1, graph2, options)
     corg_vg = corg_graph_path(graph1, graph2, options)
     do_comp = options.overwrite or not os.path.exists(out_path)
@@ -940,7 +954,11 @@ def compute_corg_comparison(job, graph1, graph2, options):
             f.write("{}\n".format(corg_val))
 
 def preprocess_vcf(job, graph, options):
-    """ run vt ormalize and bed clip"""
+    """ run vt normalize and bed clip"""
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     input_vcf = input_vcf_path(graph, options)
     output_vcf = preprocessed_vcf_path(graph, options)
     robust_makedirs(os.path.dirname(output_vcf))
@@ -1013,6 +1031,10 @@ def preprocess_vcf(job, graph, options):
 def compute_vcf_comparison(job, graph1, graph2, options):
     """ run vcf compare between two graphs
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     if options.comp_type == "sompy":
         out_path = comp_path_sompy(graph1, graph2, options)
     elif options.comp_type == "happy":
@@ -1107,6 +1129,10 @@ def compute_kmer_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     RealTimeLogger.get().info("Running vg compare on {} pairs of input graphs".format(
         len(options.pair_comps)))
     for pair_comp in options.pair_comps:
@@ -1119,6 +1145,10 @@ def compute_kmer_comparisons(job, options):
 def compute_corg_comparisons(job, options):
     """ run corg compare on all corg-ablegraphs. 
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     RealTimeLogger.get().info("Running corg comparison {} pairs of input graphs".format(
         len(options.pair_comps)))
     for pair_comp in options.pair_comps:
@@ -1132,6 +1162,10 @@ def compute_vcf_comparisons(job, options):
     """ run vg compare in parallel on all the graphs,
     outputting a json file for each
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     RealTimeLogger.get().info("Running vcf comparison {} pairs of input graphs".format(
         len(options.pair_comps)))
     for pair_comp in options.pair_comps:
@@ -1148,6 +1182,10 @@ def compute_kmer_indexes(job, options):
     then all comparisons (follow on)
     then summary (follow on of that)
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     # do all the indexes
     input_set = set()
     for pair_comp in options.pair_comps:
