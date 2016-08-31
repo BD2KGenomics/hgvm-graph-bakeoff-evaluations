@@ -56,11 +56,14 @@ in 5th column of vcf """
             qual = get_qual_from_line(line, None)
             if qual not in counts:
                 counts[qual] = [0, 0, 0]
-            # makes most sense for single allelic , normalized vcfs
-            if all(len(alt) == 1 and len(ref) == 1 for alt in alts):
+            # count any site where no length change as snp
+            # (rely on normalization to help divide these up)
+            if all(len(alt) == len(ref) for alt in alts):
                 counts[qual][0] += 1
-            elif all(len(alt) != len(ref) for alt in alts):
+            # and aynthing else an indel
+            elif any(len(alt) != len(ref) for alt in alts):
                 counts[qual][1] += 1
+            # deprecated for now
             else:
                 counts[qual][2] += 1
                     
