@@ -7,13 +7,18 @@
 
 # wildcards used to work for samples, activate by wrapping in quotes
 
-if [ "$#" -ne 7 ]; then
-	 echo "Syntax $0 <toil_dir> <graphs_dir> <alignments_dir> <out_dir> <sample> <clip> <qual>"
+if [ "$#" -ne 8 ]; then
+	 echo "Syntax $0 <toil_dir> <graphs_dir> <alignments_dir> <out_dir> <sample> <clip> <qual> <gt>"
 	 exit 1
 fi
 
 if [[ "$6" -ne 0 && "$6" -ne 1 ]]; then
 	 echo "clip must be 0 or 1"
+	 exit 1
+fi
+
+if [[ "$8" -ne 0 && "$8" -ne 1 ]]; then
+	 echo "gt must be 0 or 1"
 	 exit 1
 fi
 
@@ -49,6 +54,7 @@ OUT_DIR=$4
 SAMPLE=$5
 CLIP=$6
 qual=$7
+GTCOMP=$8
 
 # VCF comparisons : sompy happy vcf vcfeval
 #COMPS=( "sompy" "happy" "vcf" )
@@ -86,12 +92,17 @@ PLAT_PATH="data/platinum"
 # this controls what part of vg-call vcf's get used for the roc.  will get passed as --${QF_TYPE} to vcfFilterQuality.py (which has really hacky hardcoded support for a few fields i've tried)
 QF_TYPE="ad"
 # see also --dedupe --genotype --vroc --clip 
-COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/freebayes --platypus_path platinum_classic3/platypus --samtools_path platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
+COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path platinum_classic3/freebayes --platypus_path platinum_classic3/platypus --samtools_path platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
 
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
-COMP_TAG=comp.${QF_TYPE}.gt.norm.myroc
+COMP_TAG=comp.${QF_TYPE}.norm.myroc
+
+if [ "$GTCOMP" = 1 ]; then
+	 COMP_OPTS="$COMP_OPTS --gt"
+	 COMP_TAG=${COMP_TAG}.gt
+fi
 
 if [ "$CLIP" = 1 ]; then
 	 COMP_OPTS="$COMP_OPTS --clip ${CLIP_PATH}"
