@@ -986,7 +986,7 @@ def preprocess_vcf(job, graph, options):
             run("cp {} {}".format(output_vcf + ".qpct", output_vcf))
     
 
-    if options.normalize is True and options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
+    if options.normalize is True:# and options.tags[graph][2] not in ["gatk3", "platypus", "freebayes", "samtools", "g1kvcf", "platvcf", "platvcf-baseline"]:
         # run blocksub (only on single allelic)
         sts = run("bcftools filter -e \"N_ALT > 1\" {} | vt decompose_blocksub -a - > {}".format( 
             output_vcf,
