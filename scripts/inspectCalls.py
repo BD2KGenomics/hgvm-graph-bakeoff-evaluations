@@ -139,6 +139,11 @@ def main(args):
         vcf_pos = int(toks[1])
         ref = toks[3]
         alt = toks[4]
+        filtered=toks[6]
+        
+        if filtered != "PASS" and filtered != ".":
+            # Skip filtered-out variants
+            continue
         
         # convert from vcf 1-based position to vg 0-based path offset
         vg_pos = vcf_pos - 1 - get_offset(options.region)
@@ -184,6 +189,12 @@ def main(args):
                 aug_chunk = os.path.join(options.out_dir, record_name + "_big.vg")
                 run("vg find -p {}:{}-{} -x {} -c {} > {}".format(
                     path_name, vg_pos, vg_pos, big_index, options.aug_context, aug_chunk))
+                    
+                    
+                # draw the gam-augmented chunk
+                aug_png = os.path.join(options.out_dir, record_name.replace(
+                    "rn_{}".format(ref_node), "rn_{}".format(aug_ref_node)) + "_gam.png")
+                run("vg view -pd {} | dot -Tpng > {}".format(aug_chunk, aug_png))
 
         # activate gam view if desired
         if options.gam is not None and options.gam_view is True:
@@ -196,10 +207,7 @@ def main(args):
         run("vg view {} -pd {} | dot -Tpng > {}".format(
             view_opts, vg_chunk_path, png_path))
 
-        # draw the gam-augmented chunk
-        aug_png = os.path.join(options.out_dir, record_name.replace(
-            "rn_{}".format(ref_node), "rn_{}".format(aug_ref_node)) + "_gam.png")
-        run("vg view -pd {} | dot -Tpng > {}".format(aug_chunk, aug_png))
+        
         
 
 
