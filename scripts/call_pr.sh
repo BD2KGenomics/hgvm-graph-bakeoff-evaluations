@@ -86,7 +86,7 @@ PLAT_PATH="data/platinum"
 # this controls what part of vg-call vcf's get used for the roc.  will get passed as --${QF_TYPE} to vcfFilterQuality.py (which has really hacky hardcoded support for a few fields i've tried)
 QF_TYPE="ad"
 # see also --dedupe --genotype --vroc --clip 
-COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path platinum_classic3/freebayes --platypus_path platinum_classic3/platypus --samtools_path platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
+COMP_OPTS="--vg_cores 6 --maxCores 30 --gt --freebayes_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes --platypus_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/platypus --samtools_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
 
 # example how to use user-specified platypus and freebayes vcfs
 #COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
