@@ -106,7 +106,8 @@ for PARAM_SET in defray; do
                     REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
                     
                     vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
-                    cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
+                    # TODO: only look for fail in the filter column!
+                    cat "${TEMP}/calls.vcf" | grep -v "FAIL" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                 
                 elif [[ "${PARAM_SET}" == "defray" ]]; then
                     # Just like call but with an xg index and --defray-ends on the filter step.
