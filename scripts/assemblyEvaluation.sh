@@ -36,14 +36,14 @@ ASSEMBLIES=(
 
 for PARAM_SET in defray; do
 
-    for REGION in brca1 brca2 lrc_kir mhc; do
+    for REGION in lrc_kir brca1 brca2 mhc; do
         REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
         
         # How many bases should we knock off the start of the region? Some of
         # our regions don't have good assembly coverage all the way to the start
         # in both assemblies?
         TRIM_START=0
-        if [ "${REGION}" == "lrc_kir" ]; then
+        if [[ "${REGION}" == "lrc_kir" ]]; then
             # LRC_KIR has the second assembly come in about here, according to
             # my BED files I made from my alignment.
             TRIM_START=87796
@@ -78,111 +78,100 @@ for PARAM_SET in defray; do
             TEMP="${RTEMP}/graph/${GRAPH}"
             mkdir -p "${TEMP}"
 
-            if [[ "${GRAPH}" == "freebayes" ]]; then
-                # Grab the Freebayes calls for this region
-                
-                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
-                rm -f "${TEMP}/on_ref.vcf.gz"
-                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-                vg validate "${TEMP}/reconstructed.vg"
-                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
-            
-            elif [[ "${GRAPH}" == "platypus" ]]; then
-                # Grab the Platypus calls for this region
-                
-                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/platypus/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
-                rm -f "${TEMP}/on_ref.vcf.gz"
-                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-                vg validate "${TEMP}/reconstructed.vg"
-                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
-            
-            elif [[ "${GRAPH}" == "samtools" ]]; then
-                # Grab the Samtools calls for this region
-                
-                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/samtools/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
-                rm -f "${TEMP}/on_ref.vcf.gz"
-                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
-                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
-                vg validate "${TEMP}/reconstructed.vg"
-                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
-            
-            elif [[ "${GRAPH}" == "empty" ]]; then
+            # Trim the FASTA. I could write a FASTA trimmer script, or
+            # depend on a FASTA trimmer script, but using inline Python is
+            # so much easier.
+            cat "${REF_FASTA}" | python -c 'import sys; import Bio.SeqIO; Bio.SeqIO.write(Bio.SeqIO.read(sys.stdin, "fasta")[int(sys.argv[1]):], sys.stdout, "fasta")' ${TRIM_START} > "${TEMP}/ref.fa"
+
+            if [[ "${GRAPH}" == "empty" ]]; then
                 # Don't use a vcf, just vg construct
                 # We can't actually tabix index an empty VCF I think
                 
-                vg construct -r "${REF_FASTA}" -a -f > "${TEMP}/sample.vg"
-                
+                vg construct -r "${TEMP}/ref.fa" -a -f > "${TEMP}/sample.vg"
             else
-                # Do the genotyping since this is a real graph
+                # We will use a vcf. Each if branch has to output an on_ref_sorted.vcf.
 
-                VGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.vg"
-                XGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.xg"
+                if [[ "${GRAPH}" == "freebayes" ]]; then
+                    # Grab the Freebayes calls for this region
+                    
+                    cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
                 
-                # Find the sample's GAM
-                GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
+                elif [[ "${GRAPH}" == "platypus" ]]; then
+                    # Grab the Platypus calls for this region
+                    
+                    cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/platypus/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
                 
-                if [[ "${PARAM_SET}" == "call" ]]; then
+                elif [[ "${GRAPH}" == "samtools" ]]; then
+                    # Grab the Samtools calls for this region
                     
-                    vg filter -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 "${GAM}" > "${TEMP}/filtered.gam"
-                    vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+                    cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/samtools/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+               
+                else
+                    # Do the genotyping since this is a real graph
+
+                    VGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.vg"
+                    XGFILE="${INPUT_DIR}/extracted/${GRAPH}-${REGION}.xg"
                     
-                    # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
-                    REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
+                    # Find the sample's GAM
+                    GAM="${INPUT_DIR}/alignments/${REGION}/${GRAPH}/${SAMPLE}.gam"
                     
-                    vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
-                    # TODO: only look for fail in the filter column!
-                    cat "${TEMP}/calls.vcf" | grep -v "FAIL" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-                
-                elif [[ "${PARAM_SET}" == "defray" ]]; then
-                    # Just like call but with an xg index and --defray-ends on the filter step.
+                    # Now we need to pick a calling method. Each of these will produce an unsorted calls.vcf.
                     
-                    if [[ (! -e "${XGFILE}")  || ("${VGFILE}" -nt "${XGFILE}") ]]; then
-                        # No XG file, or VG file is newer than it. Index.
-                        vg index -x "${XGFILE}" "${VGFILE}"
+                    if [[ "${PARAM_SET}" == "call" ]]; then
+                        
+                        vg filter -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 "${GAM}" > "${TEMP}/filtered.gam"
+                        vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+                        
+                        # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
+                        REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
+                        
+                        vg call -b 5 -s 1 -d 1 -f 0 -D 10 -H 3 -n 1 -F 0.2 -B 250 -R 4 --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    
+                    elif [[ "${PARAM_SET}" == "defray" ]]; then
+                        # Just like call but with an xg index and --defray-ends on the filter step.
+                        
+                        if [[ (! -e "${XGFILE}")  || ("${VGFILE}" -nt "${XGFILE}") ]]; then
+                            # No XG file, or VG file is newer than it. Index.
+                            vg index -x "${XGFILE}" "${VGFILE}"
+                        fi
+                        
+                        vg filter -x "${XGFILE}" -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 --defray-ends 999 "${GAM}" > "${TEMP}/filtered.gam"
+                        vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
+                        
+                        # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
+                        REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
+                        
+                        # Use default vg call parameters that Glenn set to be his favorite
+                        vg call --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                        
+                    elif [[ "${PARAM_SET}" == "genotype" ]]; then
+                    
+                        # Use vg genotype
+                        
+                        # Make sure to drop all secondaries
+                        # TODO: can't vg filter just do that?
+                        vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" | vg view -aj - | jq 'select(.is_secondary | not)' | vg view -JGa - > "${TEMP}/filtered.gam"
+                    
+                        rm -Rf "${TEMP}/reads.index"
+                        vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
+                        vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref --min_per_strand 1 --het_prior_denom 10 > "${TEMP}/calls.vcf" 2>"${TEMP}/log.txt"
+                    
+                    else
+                    
+                        echo "Unknown parameter set ${PARAM_SET}"
+                        exit 1
+                    
                     fi
                     
-                    vg filter -x "${XGFILE}" -r 0.90 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 -E 4 --defray-ends 999 "${GAM}" > "${TEMP}/filtered.gam"
-                    vg pileup -w 40 -m 10 -q 10 -a "${VGFILE}" "${TEMP}/filtered.gam" > "${TEMP}/pileup.vgpu"
-                    
-                    # Guess ref path, because if we ask for output on "ref" and input isn't on "ref" we get in trouble
-                    REF_PATH="$(vg view -j ${VGFILE} | jq -r '.path[].name' | grep -v 'GI' | head -n 1)"
-                    
-                    # Use default vg call parameters that Glenn set to be his favorite
-                    vg call --contig ref -r "${REF_PATH}" "${VGFILE}" "${TEMP}/pileup.vgpu" > "${TEMP}/calls.vcf"
+                    # Sort and filter on quality
                     cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
                     
-                elif [[ "${PARAM_SET}" == "genotype" ]]; then
-                
-                    # Use vg genotype
-                    
-                    # Make sure to drop all secondaries
-                    # TODO: can't vg filter just do that?
-                    vg filter -r 0.9 -d 0.00 -e 0.00 -afu -s 10000 -q 15 -o 0 "${GAM}" | vg view -aj - | jq 'select(.is_secondary | not)' | vg view -JGa - > "${TEMP}/filtered.gam"
-                
-                    rm -Rf "${TEMP}/reads.index"
-                    vg index -d "${TEMP}/reads.index" -N "${TEMP}/filtered.gam"
-                    vg genotype "${VGFILE}" "${TEMP}/reads.index" -C -q -i -v --contig ref --min_per_strand 1 --het_prior_denom 10 > "${TEMP}/calls.vcf" 2>"${TEMP}/log.txt"
-                    cat "${TEMP}/calls.vcf" | sort -n -k2 | uniq | ./scripts/vcfFilterQuality.py - 5 --ad > "${TEMP}/on_ref_sorted.vcf"
-                
-                else
-                
-                    echo "Unknown parameter set ${PARAM_SET}"
-                    exit 1
-                
                 fi
-                
-                # Now trim the VCF and shift all the variants down
-                cat "${TEMP}/on_ref_sorted.vcf" | awk -v offset=${TRIM_START} '{if($1 !~ "#") { $2 -= offset; if($2 >= 0) print} else {print}}' > "${TEMP}/on_ref_trimmed.vcf"
-                
-                # Also trim the FASTA. I could write a FASTA trimmer script, or
-                # depend on a FASTA trimmer script, but using inline Python is
-                # so much easier.
-                cat "${REF_FASTA}" | python -c 'import sys; import Bio.SeqIO; Bio.SeqIO.write(Bio.SeqIO.read(sys.stdin, "fasta")[int(sys.argv[1]):], sys.stdout, "fasta")' ${TRIM_START} > "${TEMP}/ref.fa"
+                    
+                # Now drop failing records, trim the VCF and shift all the variants down
+                cat "${TEMP}/on_ref_sorted.vcf" | \
+                    awk -F $'\t' 'BEGIN {OFS = FS} { if($1 !~ "#") { if($7 == "PASS" || $7 == ".") { print } } else print; }' | \
+                    awk -v offset=${TRIM_START} -F $'\t' 'BEGIN {OFS = FS} {if($1 !~ "#") { $2 -= offset; if($2 >= 0) print} else {print}}' > "${TEMP}/on_ref_trimmed.vcf"
                 
                 rm -f "${TEMP}/on_ref.vcf.gz"
                 bgzip "${TEMP}/on_ref_trimmed.vcf" -c > "${TEMP}/on_ref.vcf.gz"
