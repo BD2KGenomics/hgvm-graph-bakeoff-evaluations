@@ -125,6 +125,14 @@ for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
     ALL_UNVISITED_COUNT[$GRAPH]=0
 done
 
+# Make plot directories
+mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp"  
+mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count"
+
+# Keep stats files in their own directories
+mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats"  
+mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count/stats"
+
 # Clear out old stats
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-insertions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv"
@@ -137,16 +145,8 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_S
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv"
 
 
-for REGION in brca1 brca2 lrc_kir mhc; do
+for REGION in  lrc_kir brca1 brca2 mhc; do
       
-    mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp"  
-    mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count"
-    
-    # Keep stats files in their own directories
-    mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats"  
-    mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count/stats"
-    
-    
     # Clear out old stats
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-deletions-${PARAM_SET}.tsv"
