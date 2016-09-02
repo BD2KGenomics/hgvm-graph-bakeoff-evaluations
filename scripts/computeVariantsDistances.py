@@ -1224,7 +1224,16 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
     #other direction
     tags = dict()
 
-    for input_gam in in_gams:
+    # hack in dummy files for total vcfs
+    total_gams = set()
+    if options.comp_type in ["vcf", "sompy", "happy", "vcfeval"]:
+        for input_gam in in_gams:
+            region = alignment_region_tag(input_gam, options)
+            # dangerous :: fix
+            dummy_gam = input_gam.replace(region, "total")
+            total_gams.add(dummy_gam)
+
+    for input_gam in in_gams + list(total_gams):
         region = alignment_region_tag(input_gam, options)
         sample = alignment_sample_tag(input_gam, options)
         method = alignment_graph_tag(input_gam, options)
@@ -1271,7 +1280,7 @@ def breakdown_gams(in_gams, orig, orig_and_sample, options):
             samtools_path = input_vcf_path(None, options, region, sample, "samtools")
             if os.path.isfile(samtools_path):
                 sample_graphs[region][sample].add(samtools_path)
-                tags[samtools_path] = (region, sample, "samtools")                                
+                tags[samtools_path] = (region, sample, "samtools")
             #if options.baseline != "g1kvcf" and os.path.isfile(test_path(g1kvcf_path, "g1kvcf")):                
             #    sample_graphs[region][sample].add(g1kvcf_path)
 

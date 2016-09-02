@@ -129,16 +129,20 @@ function run_pipeline {
 				#rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam  --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/refonly/${SAMPLE}.gam ${ALIGNMENTS}/${i}/snp1kg/${SAMPLE}.gam ${ALIGNMENTS}/${i}/cactus/${SAMPLE}.gam  ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
-		  for j in "${COMPS[@]}"
-		  do
-				GLOBIGNORE=$GLOBIGNORE_COMP				
-				# compute distances
-				mkdir ${COMP_OUT_DIR}
-				rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${i}_${j}.txt
-				GLOBIGNORE=$GLOBIGNORE_CALL
-		  done
-
 	 done
+
+	 # make a total directory (one vcf for all regions)
+	 scripts/callTotals.py ${VARIANTS_OUT_DIR} 2> ${VARIANTS_OUT_DIR}/total_log.txt
+
+	 for j in "${COMPS[@]}"
+	 do
+		  GLOBIGNORE=$GLOBIGNORE_COMP				
+		  # compute distances
+		  mkdir ${COMP_OUT_DIR}
+		  rm -rf ${TOIL_DIR}_testc${TAG} ; scripts/computeVariantsDistances.py ./${TOIL_DIR}_testc${TAG} ${ALIGNMENTS}/*/*/${SAMPLE}.gam ${TA_PATH}/*/*/${SAMPLE}.gam ${EXP_PATH}/*/*/${SAMPLE}.gam ${VARIANTS_OUT_DIR} ${GRAPHS} ${j} ${COMP_OUT_DIR} ${COMP_OPTS} ${INDEX_OPTS} ${ROC}  2>> ${COMP_OUT_DIR}/comp_log_${j}.txt
+		  GLOBIGNORE=$GLOBIGNORE_CALL
+	 done
+
 }
 
 # 1000 Genomes-like options fixed here for pileups

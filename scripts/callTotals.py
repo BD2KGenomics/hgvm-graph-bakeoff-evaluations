@@ -21,6 +21,8 @@ def parse_args(args):
                         help="input alignment files")
     parser.add_argument("--name", type=str, default="total",
                         help="name of output directory")
+    parser.add_argument("--classic", action="store_true", default=False,
+                        help="Do merge, but expect output of classic_pipeline.sh")
 
     args = args[1:]
         
@@ -31,6 +33,31 @@ def main(args):
     options = parse_args(args)
 
     RealTimeLogger.start_master()
+
+    if options.classic:
+        # expect call_dir/SAMPLE/region.vcf
+
+        for sampledir in glob.glob(os.path.join(options.call_dir, "*")):
+            if os.path.isdir(sampledir):
+                sample = os.path.basename(sampledir)
+                vcfs = []
+                outfile = os.path.join(sampledir, "TOTAL.vcf")
+                for vcf in glob.glob(os.path.join(sampledir, "*.vcf")):
+                    if os.path.basename(vcf) in ["BRCA1.vcf", "BRCA2.vcf", "SMA.vcf", "LRC_KIR.vcf", "MHC.vcf"]:
+                        run("bgzip -c {} > {}.gz".format(vcf, vcf), fail_hard = True)
+                        run("tabix -f -p vcf {}.gz".format(vcf), fail_hard = True)
+                        vcfs.append("{}.gz".format(vcf))
+                if len(vcfs) > 0:
+                    run("rm -f {}.gz".format(outfile))
+                    try:
+                        run("rtg vcfmerge {} -o {}.gz".format(" ".join(vcfs), outfile),
+                            fail_hard = True)
+                        run("bgzip -dc {}.gz > {}".format(outfile, outfile, fail_hard = True))
+                    except:
+                        run("rm -f {} {}.gz".format(outfile, outfile))
+
+        return 0
+
     # expect call_dir/<REGION>/<GRAPH>/<SAMPLE>_sample.vcf
 
     # count up regions
