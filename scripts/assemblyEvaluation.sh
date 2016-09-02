@@ -36,10 +36,18 @@ ASSEMBLIES=(
 
 for PARAM_SET in defray; do
 
-    for REGION in brca1 brca2 sma lrc_kir mhc; do
+    for REGION in brca1 brca2 lrc_kir mhc; do
         REF_FASTA="data/altRegions/${REGION^^}/ref.fa"
         
-        
+        # How many bases should we knock off the start of the region? Some of
+        # our regions don't have good assembly coverage all the way to the start
+        # in both assemblies?
+        TRIM_START=0
+        if [ "${REGION}" == "lrc_kir" ]; then
+            # LRC_KIR has the second assembly come in about here, according to
+            # my BED files I made from my alignment.
+            TRIM_START=87796
+        fi
             
         # This holds all the region-level data that is constant across graphs
         RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/${PARAM_SET}/${REGION}"
@@ -64,7 +72,7 @@ for PARAM_SET in defray; do
             cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
         done
 
-        for GRAPH in empty snp1kg refonly shifted1kg; do
+        for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
 
             # This holds all the temporary files for this graph for this region.
             TEMP="${RTEMP}/graph/${GRAPH}"
@@ -72,9 +80,30 @@ for PARAM_SET in defray; do
 
             if [[ "${GRAPH}" == "freebayes" ]]; then
                 # Grab the Freebayes calls for this region
-                # TODO: replace these with pooled SYNDIP freebayes calls
                 
-                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/freebayes/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+                rm -f "${TEMP}/on_ref.vcf.gz"
+                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+                vg validate "${TEMP}/reconstructed.vg"
+                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+            
+            elif [[ "${GRAPH}" == "platypus" ]]; then
+                # Grab the Platypus calls for this region
+                
+                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/platypus/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
+                rm -f "${TEMP}/on_ref.vcf.gz"
+                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+                tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
+                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+                vg validate "${TEMP}/reconstructed.vg"
+                vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
+            
+            elif [[ "${GRAPH}" == "samtools" ]]; then
+                # Grab the Samtools calls for this region
+                
+                cp "/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/syndip_classic/samtools/${SAMPLE}/${REGION^^}.vcf.ref" "${TEMP}/on_ref_sorted.vcf"
                 rm -f "${TEMP}/on_ref.vcf.gz"
                 bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
                 tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
@@ -147,12 +176,18 @@ for PARAM_SET in defray; do
                 
                 fi
                 
+                # Now trim the VCF and shift all the variants down
+                cat "${TEMP}/on_ref_sorted.vcf" | awk -v offset=${TRIM_START} '{if($1 !~ "#") { $2 -= offset; if($2 >= 0) print} else {print}}' > "${TEMP}/on_ref_trimmed.vcf"
                 
-            
+                # Also trim the FASTA. I could write a FASTA trimmer script, or
+                # depend on a FASTA trimmer script, but using inline Python is
+                # so much easier.
+                cat "${REF_FASTA}" | python -c 'import sys; import Bio.SeqIO; Bio.SeqIO.write(Bio.SeqIO.read(sys.stdin, "fasta")[int(sys.argv[1]):], sys.stdout, "fasta")' ${TRIM_START} > "${TEMP}/ref.fa"
+                
                 rm -f "${TEMP}/on_ref.vcf.gz"
-                bgzip "${TEMP}/on_ref_sorted.vcf" -c > "${TEMP}/on_ref.vcf.gz"
+                bgzip "${TEMP}/on_ref_trimmed.vcf" -c > "${TEMP}/on_ref.vcf.gz"
                 tabix -f -p vcf "${TEMP}/on_ref.vcf.gz"
-                vg construct -r "${REF_FASTA}" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
+                vg construct -r "${TEMP}/ref.fa" -v "${TEMP}/on_ref.vcf.gz" -a -f > "${TEMP}/reconstructed.vg"
                 vg validate "${TEMP}/reconstructed.vg"
                 vg mod -v "${TEMP}/on_ref.vcf.gz" "${TEMP}/reconstructed.vg" > "${TEMP}/sample.vg"
             

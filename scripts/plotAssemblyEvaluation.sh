@@ -93,7 +93,7 @@ PLOT_PARAMS=(
     --dpi 90 --font_size 14 --no_n
 )
 
-for REGION in brca1 brca2 sma lrc_kir mhc; do
+for REGION in brca1 brca2 lrc_kir mhc; do
       
     mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp"  
     mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count"
@@ -115,7 +115,7 @@ for REGION in brca1 brca2 sma lrc_kir mhc; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
 
 
-    for GRAPH in snp1kg refonly shifted1kg freebayes empty; do
+    for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
     
         # Parse all the counts from the stats files
         
