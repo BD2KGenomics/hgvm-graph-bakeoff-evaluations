@@ -22,6 +22,8 @@ def parse_args(args):
                         help="output directory of computeVariantsDistances.py")
     parser.add_argument("out_dir", type=str,
                         help="directory where output of this script will go")
+    parser.add_argument("--clip", type=str, default=None,
+                        help="bed regions to subset on")
                             
     args = args[1:]
         
@@ -55,6 +57,8 @@ def count_variants(vcf_path, filter_string, xref, kind):
     kind in [indels, snps, all]
     """
     vstr = "-v snps,mnps" if kind is "snps" else "-V snps,mnps" if kind is "indels" else ""
+    if options.clip is not None:
+        vstr += " -R {}".format(options.clip)
     xstr = "grep XREF" if xref is True else "grep -v XREF"
     cmd = "bcftools view {} -H -f {} {} | {} | wc -l".format(vcf_path, filter_string, vstr, xstr)
     proc = subprocess.Popen(cmd, shell=True, bufsize=-1,
