@@ -90,6 +90,7 @@ QF_TYPE="ad"
 
 COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path ${CLASSIC_PATH}/freebayes --platypus_path ${CLASSIC_PATH}/platypus --samtools_path ${CLASSIC_PATH}/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
 
+STATS_OPTS=""
 
 COMP_TAG=comp.${QF_TYPE}.norm.myroc
 
@@ -101,6 +102,7 @@ fi
 if [ "$CLIP" = 1 ]; then
 	 COMP_OPTS="$COMP_OPTS --clip ${CLIP_PATH}"
 	 COMP_TAG=${COMP_TAG}.clip
+	 STATS_OPTS="$STATS_OPTS --clip ${CLIP_PATH}"
 fi
 
 # call variants, compute and plot baseline comparison
@@ -160,18 +162,18 @@ run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPT
 # scrape together all results into one tsv / region / comp type
 scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
 
-# finally, draw out the tables created above
-scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top
 
 echo ""
-echo "to run stats:"
-echo "scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/callstats.log"
+echo "scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log"
+echo "scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log"
+echo "scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top 2>> ${OUT_DIR}/plots.log "
+
+scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log &
 # note: triostats.py only runs if there's a dummy platinum directory for NA12879 and the comparison was run on it too
 # todo: fix (note the dummy comparison is never actually used, it's just the vcfs never get preprocessed without it)
-echo "scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/triostats.log"
+scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log &
 
-scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/callstats.log &
-scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/triostats.log &
+scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top >> ${OUT_DIR}/plots.log &
 
 
 exit 0

@@ -27,6 +27,8 @@ def parse_args(args):
                         help="PED format pedigree")
     parser.add_argument("--chrom_fa_path", type=str, default="data/g1kvcf/chrom.fa",
                         help="fasta file with entire chromosome info for all regions")
+    parser.add_argument("--clip", type=str, default=None,
+                        help="bed regions to subset on")
                             
     args = args[1:]
         
@@ -84,6 +86,8 @@ def make_trio_vcfs(vcfmap, options):
                 for kind in input_vcfs.keys():
                     filter_vcf = os.path.join(work_dir, "{}_{}_{}.vcf".format(graph, sample, kind))
                     vstr = "-v snps,mnps" if kind is "snp" else "-V snps,mnps" if kind is "indel" else ""
+                    if options.clip is not None:
+                        vstr += " -R {}".format(options.clip)
                     run("bcftools view {} -f PASS,. {} | bcftools norm - -f {} > {}".format(
                         pvcf, vstr, options.chrom_fa_path, filter_vcf))
                     run("bgzip -f {}".format(filter_vcf))
