@@ -67,18 +67,13 @@ INDEX_OPTS="--kmer 20 --edge_max 5 --timeout 5000"
 
 # Calling parameters
 REGIONS=( "brca1" "brca2" "sma" "lrc_kir" "mhc" )
-#REGIONS=( "brca2" "brca1" "sma" "lrc_kir" )
+#REGIONS=( "brca2" "brca1" )
 #REGIONS=( "brca2" "sma" "lrc_kir" )
 #REGIONS=( "lrc_kir" )
 
 #OPTS="--maxCores 8 --vg_cores 4 --vg_only --skipBaseline --genotype"
-OPTS="--maxCores 36 --vg_cores 6 --vg_only --skipBaseline"
+OPTS="--maxCores 36 --vg_cores 4 --vg_only --skipBaseline"
 
-#hack in truth alignments as test
-#TA_PATH="/cluster/home/anovak/hive/ga4gh/bake-off/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments/alignments"
-#TA_PATH="platinum_truth_alignments"
-TA_PATH=/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_truth_alignments
-EXP_PATH="/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_experiment_alignments/alignments"
 # Comparison parameters
 
 #CLIP_PATH="data/filters/platinum2016.bed"
@@ -86,17 +81,15 @@ CLIP_PATH="data/filters/platinum.bed"
 #CLIP_PATH="data/filters/homo/homo_44_platinum.bed"
 PLAT_PATH="data/platinum"
 
-# Normalization (requires vt, recommended for som.py and vcf comparison)
-#COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30"
+CLASSIC_PATH=/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic
+#CLASSIC_PATH=/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic_primary
 
 # this controls what part of vg-call vcf's get used for the roc.  will get passed as --${QF_TYPE} to vcfFilterQuality.py (which has really hacky hardcoded support for a few fields i've tried)
 QF_TYPE="ad"
 # see also --dedupe --genotype --vroc --clip 
 
-COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/freebayes --platypus_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/platypus --samtools_path /cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum_classic3/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
+COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path ${CLASSIC_PATH}/freebayes --platypus_path ${CLASSIC_PATH}/platypus --samtools_path ${CLASSIC_PATH}/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
 
-# example how to use user-specified platypus and freebayes vcfs
-#COMP_OPTS="--clip data/filters/platinum.bed --normalize --ignore Conflict --ignore Silver --vg_cores 10 --maxCores 30 --platypus_path platinum_classic/platypus --freebayes_path platinum_classic/freebayes"
 
 COMP_TAG=comp.${QF_TYPE}.norm.myroc
 
@@ -126,8 +119,7 @@ function run_pipeline {
 		  if [ "$RUN_CALLER" = true ]; then
 				GLOBIGNORE=$GLOBIGNORE_CALL
 				mkdir ${VARIANTS_OUT_DIR}				
-				#rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam  --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
-				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/refonly/${SAMPLE}.gam ${ALIGNMENTS}/${i}/snp1kg/${SAMPLE}.gam ${ALIGNMENTS}/${i}/cactus/${SAMPLE}.gam  ${TA_PATH}/${i}/*/${SAMPLE}.gam ${EXP_PATH}/${i}/*/${SAMPLE}.gam --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
+				rm -rf ${TOIL_DIR}_test${TAG} ; scripts/callVariants.py ./${TOIL_DIR}_test${TAG}  ${ALIGNMENTS}/${i}/*/${SAMPLE}.gam  --graph_dir ${GRAPHS} --out_dir ${VARIANTS_OUT_DIR} ${OPTS} --call_opts "${CALL_OPTS}" --pileup_opts "${PILEUP_OPTS}" --filter_opts "${FILTER_OPTS}" 2>> ${VARIANTS_OUT_DIR}/call_log_${i}.txt
 		  fi
 	 done
 
@@ -169,7 +161,18 @@ run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPT
 scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
 
 # finally, draw out the tables created above
-scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG}
+scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top
+
+echo ""
+echo "to run stats:"
+echo "scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/callstats.log"
+# note: triostats.py only runs if there's a dummy platinum directory for NA12879 and the comparison was run on it too
+# todo: fix (note the dummy comparison is never actually used, it's just the vcfs never get preprocessed without it)
+echo "scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/triostats.log"
+
+scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/callstats.log &
+scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} 2>> ${OUT_DIR}/triostats.log &
+
 
 exit 0
 

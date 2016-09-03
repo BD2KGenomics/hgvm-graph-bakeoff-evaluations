@@ -271,11 +271,12 @@ def corg_graph_path(graph1, graph2, options):
     b, e = os.path.splitext(corg_path(graph1, graph2, options))
     return b + ".vg"
 
-def out_tsv_path(options, region, category, distance):
+def out_tsv_path(options, region, category, distance, sample = None):
     """ get the output tsv path
     """
+    rtag = region if sample is None else region + "-" + sample
     return os.path.join(options.comp_dir, "comp_tables",
-                        category + "-" + distance + "-" + region + ".tsv")
+                        category + "-" + distance + "-" + rtag + ".tsv")
 
 def vg_length(vg, options):
     """ get sequence length out of vg stats
@@ -290,11 +291,12 @@ def vg_length(vg, options):
     length = int(output.split()[1])
     return length    
 
-def raw_tsv_path(options, region, category, distance):
+def raw_tsv_path(options, region, category, distance, sample = None):
     """ get the output tsv path for "raw" tables (ie with nones for missing data)
     """
+    rtag = region if sample is None else region + "-" + sample
     return os.path.join(options.comp_dir, "comp_tables_raw",
-                        category + "-" + distance + "-" + region + ".tsv")
+                        category + "-" + distance + "-" + rtag + ".tsv")
                         
 def jaccard_dist_fn(graph1, graph2, options):
     """ scrape jaccard dist from vg compare output
@@ -673,11 +675,11 @@ def make_tsvs(options):
         # with one column per comparison type with truth
         #for baseline in ["g1kvcf", "platvcf"]:
         for baseline in ["platvcf"]:
-            header = dist_names
-            RealTimeLogger.get().info("Making {} baseline tsv for {}".format(baseline, region))
-            mat = []
-            row_labels = []
             for sample in options.sample_graphs[region].keys():
+                header = dist_names
+                RealTimeLogger.get().info("Making {} baseline tsv for {} {}".format(baseline, region, sample))
+                mat = []
+                row_labels = []
                 for truth in options.baseline_graphs[region][sample]:
                     if options.tags[truth][2] == baseline:
                         for graph in options.sample_graphs[region][sample]:
@@ -697,14 +699,14 @@ def make_tsvs(options):
                             for row in rows:
                                 mat.append(row)
                         break # shoud not be necessary
-            # write the baseline matrix (with None for missing data) to file 
-            tsv_path = raw_tsv_path(options, region, baseline, options.comp_type)
-            write_tsv(tsv_path, mat, header, row_labels, "Graph")
+                # write the baseline matrix (with None for missing data) to file 
+                tsv_path = raw_tsv_path(options, region, baseline, options.comp_type, sample)
+                write_tsv(tsv_path, mat, header, row_labels, "Graph")
 
-            # remove Nones and write tsv again
-            clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
-            tsv_path = out_tsv_path(options, region, baseline, options.comp_type)
-            write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
+                # remove Nones and write tsv again
+                clean_mat, clean_header, clean_row_labels = remove_nones(mat, header, row_labels)
+                tsv_path = out_tsv_path(options, region, baseline, options.comp_type, sample)
+                write_tsv(tsv_path, clean_mat, clean_header, clean_row_labels, "Graph")
 
         # sample vs sample heatmap
         if options.sample:
@@ -1316,6 +1318,15 @@ def main(args):
     options.out_dir = options.var_dir
 
     # find all the graphs
+    # clean out shell artifacts
+    in_gams = []
+    for gam in options.in_gams:
+        if os.path.isfile(gam):
+            in_gams.append(gam)
+        else:
+            RealTimeLogger.get().warning("skipping {}".format(gam))
+    options.in_gams = in_gams
+    
     breakdown = breakdown_gams(options.in_gams, options.orig,
                                options.orig_and_sample, options)
     options.orig_graphs = breakdown[0]

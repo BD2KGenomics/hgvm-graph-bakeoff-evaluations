@@ -177,8 +177,8 @@ def parse_args(args):
 
     parser.add_argument("--top", action="store_true",
                         help="print some zoom-ins too")
-    parser.add_argument("--range", help="number of points to plot on either side of max f1 pr dot",
-                        type=int, default=10)
+    parser.add_argument("--range", help="distance range to plot on either side of max f1 pr dot",
+                        type=float, default=0.1)
 
                             
     args = args[1:]
@@ -194,7 +194,8 @@ def plot_kmer_comp(tsv_path, options):
     robust_makedirs(out_dir)
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
     out_base_path = os.path.join(out_dir, out_name)
-    region = out_name.split("-")[-1].upper()
+    sample = out_name.split("-")[-1].upper()
+    region = out_name.split("-")[-2].upper()
 
     params = " ".join(PLOT_PARAMS)
     # jaccard boxplot
@@ -235,13 +236,15 @@ def make_max_f1_tsv(acc_tsv_path, f1_tsv_path, f1_pr_tsv_path, f1_qual_tsv_path,
             f1_file.write("{}\t{}\n".format(name, f1_score))
     with open(f1_pr_tsv_path, "w") as f1_pr_file:
         for name, pr_score in max_pr.items():
-            best_f1_line = pr_score[2]
-            for i in range(max(0, best_f1_line - options.range), min(len(pr_file), best_f1_line + options.range)):
+            best_f1_line = pr_file[pr_score[2]]
+            best_recall, best_precision = float(best_f1_line.split()[1]), float(best_f1_line.split()[2])
+            for i in range(0, len(pr_file)):
                 line = pr_file[i]
                 toks = line.split()
                 if toks[0] == name:
                     recall, precision = float(toks[1]), float(toks[2])
-                    f1_pr_file.write("{}\t{}\t{}\n".format(name, recall, precision))
+                    if abs(recall - best_recall) <= options.range and abs(precision - best_precision) <= options.range:
+                        f1_pr_file.write("{}\t{}\t{}\n".format(name, recall, precision))
     with open(f1_qual_tsv_path, "w") as f1_qual_file:
         for name, qual_score in max_qual.items():
             f1_qual_file.write("{}\t{}\n".format(name, qual_score))
@@ -252,10 +255,11 @@ def plot_vcf_comp(tsv_path, options):
     out_dir = os.path.join(options.comp_dir, "comp_plots")
     robust_makedirs(out_dir)
     out_name = os.path.basename(os.path.splitext(tsv_path)[0])
-    region = out_name.split("-")[-1].upper()
+    sample = out_name.split("-")[-1].upper()
+    region = out_name.split("-")[-2].upper()
     def out_base_path(tag, label, extension):
         bd = tag if extension != ".tsv" else "tsv"
-        ret = os.path.join(out_dir, bd, "-".join(out_name.split("-")[:-1]) + "-{}-".format(tag) + region) + "_" + label + extension
+        ret = os.path.join(out_dir, bd, "-".join(out_name.split("-")[:-1]) + "-{}-{}-".format(sample, tag) + region) + "_" + label + extension
         robust_makedirs(os.path.dirname(ret))
         return ret
 
@@ -286,12 +290,15 @@ def plot_vcf_comp(tsv_path, options):
         awkstr = "awk \'{" + awkcmd + "}\'"
         run("{} {} > {}".format(awkstr, tsv_path, acc_tsv))
         acc_png = out_base_path("pr", label, ".png")
-        title = "VCF"
+        title = sample.upper() + " "
         if comp_cat == "TOT":
             title += " Total Accuracy"
         else:
-            title += " {} Accuracy".format(comp_cat)
-        title += " for {}".format(region)
+            title += " {} Accuracy".format(comp_cat.title())
+        if region == "TOTAL":
+            title += ", all regions"
+        else:
+            title += ", {}".format(region)
         cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x -0.01 --max_x 1.01 --min_y -0.01 --max_y 1.01".format(acc_tsv, acc_png, title, params)
         print cmd
         os.system(cmd)
@@ -305,7 +312,7 @@ def plot_vcf_comp(tsv_path, options):
         f1_qual_png = out_base_path("f1qual", label, ".png")
 
         make_max_f1_tsv(acc_tsv, f1_tsv, f1_pr_tsv, f1_qual_tsv, options)
-        cmd = "scripts/barchart.py {} --min 0.5 --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
+        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
         print cmd
         os.system(cmd)
         cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5".format(f1_pr_tsv, f1_pr_png, title, params)
@@ -326,6 +333,10 @@ def plot_vcf_comp(tsv_path, options):
             os.system(cmd)        
             # top 40
             cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.596 --max_x 1.004 --min_y 0.596 --max_y 1.004".format(acc_tsv, acc_png.replace(".png", "_top40.png"), title, params)
+            print cmd
+            os.system(cmd)
+            # top .5 bar
+            cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.5".format(f1_tsv, f1_png.replace(".png", "_top50.png"), title, params)
             print cmd
             os.system(cmd)
 
