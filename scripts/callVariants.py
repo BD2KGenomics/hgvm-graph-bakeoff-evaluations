@@ -141,7 +141,7 @@ def alignment_region_tag(alignment_path, options):
     """ say alignment is bla/gcsa/real/camel-brca1.gam, then return brca1
     """
     region = alignment_path.split("/")[-3]
-    assert region in ["brca1", "brca2", "cenx", "lrc_kir", "sma", "mhc"]
+    assert region in ["brca1", "brca2", "cenx", "lrc_kir", "sma", "mhc", "total"]
     return region
 
 def alignment_graph_tag(gam_path, options):

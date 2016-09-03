@@ -32,6 +32,7 @@ BWA_OPTS=" -t 20 -p"
 #BWA_OPTS=" -t 20"
 SURJECT_OPTS=" -p ref -b -t 30"
 OVERWRITE=1
+EXPERIMENTAL=0
 
 function primary_graph {
 	 local REGION=$1
@@ -252,12 +253,12 @@ function align_all {
 				# bwa-mem pipelines
 				bwa_mem $INPUT_REF $FASTQ $OUTPUT_BAM
 
-                echo "Platypus for ${SAMPLE} ${REGION}"
+            echo "Platypus for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/platypus/${SAMPLE} 2> /dev/null
 				local PLAT_OUTPUT=${OUT_DIR}/platypus/${SAMPLE}/${REGION}.vcf
 				platypus $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT
 
-                echo "Freebayes for ${SAMPLE} ${REGION}"
+            echo "Freebayes for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/freebayes/${SAMPLE} 2> /dev/null
 				local FREEBAYES_OUTPUT=${OUT_DIR}/freebayes/${SAMPLE}/${REGION}.vcf
 				free_bayes $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT
@@ -266,74 +267,79 @@ function align_all {
 				local SAMTOOLS_OUTPUT=${OUT_DIR}/samtools/${SAMPLE}/${REGION}.vcf
 				sam_tools $OUTPUT_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT
 
-				# as above, but zap map qualities to 60
-				local MAPQ_BAM=${BASE_DIR}/${SAMPLE}_mapq.bam
-				set_mapq $OUTPUT_BAM 60 $MAPQ_BAM
+				if [[ $EXPERIMENTAL -eq 1 ]]
+				then
+
+					 # as above, but zap map qualities to 60
+					 local MAPQ_BAM=${BASE_DIR}/${SAMPLE}_mapq.bam
+					 set_mapq $OUTPUT_BAM 60 $MAPQ_BAM
+					 
+					 echo "Platypus no MAPQ for ${SAMPLE} ${REGION}"
+					 mkdir ${OUT_DIR}/platypus_mapq/${SAMPLE} 2> /dev/null
+					 local PLAT_OUTPUT_MAPQ=${OUT_DIR}/platypus_mapq/${SAMPLE}/${REGION}.vcf
+					 platypus $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_MAPQ
+
+					 mkdir ${OUT_DIR}/freebayes_mapq/${SAMPLE} 2> /dev/null
+					 local FREEBAYES_OUTPUT_MAPQ=${OUT_DIR}/freebayes_mapq/${SAMPLE}/${REGION}.vcf
+					 free_bayes $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_MAPQ
+
+					 mkdir ${OUT_DIR}/samtools_mapq/${SAMPLE} 2> /dev/null
+					 local SAMTOOLS_OUTPUT_MAPQ=${OUT_DIR}/samtools_mapq/${SAMPLE}/${REGION}.vcf
+					 sam_tools $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_MAPQ
+
+					 # remove pairing information
+					 local PAIRO_BAM=${BASE_DIR}/${SAMPLE}_pairo.bam
+					 remove_pairing $OUTPUT_BAM $PAIRO_BAM
+					 
+					 mkdir ${OUT_DIR}/platypus_pairo/${SAMPLE} 2> /dev/null
+					 local PLAT_OUTPUT_PAIRO=${OUT_DIR}/platypus_pairo/${SAMPLE}/${REGION}.vcf
+					 platypus $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_PAIRO
+
+					 mkdir ${OUT_DIR}/freebayes_pairo/${SAMPLE} 2> /dev/null
+					 local FREEBAYES_OUTPUT_PAIRO=${OUT_DIR}/freebayes_pairo/${SAMPLE}/${REGION}.vcf
+					 free_bayes $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIRO
+
+					 mkdir ${OUT_DIR}/samtools_pairo/${SAMPLE} 2> /dev/null
+					 local SAMTOOLS_OUTPUT_PAIRO=${OUT_DIR}/samtools_pairo/${SAMPLE}/${REGION}.vcf
+					 sam_tools $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIRO
+
+					 # zap map qualities to 60 and remove pairing information
+					 local PAIR_BAM=${BASE_DIR}/${SAMPLE}_pair.bam
+					 remove_pairing $MAPQ_BAM $PAIR_BAM
+					 
+					 mkdir ${OUT_DIR}/platypus_pair/${SAMPLE} 2> /dev/null
+					 local PLAT_OUTPUT_PAIR=${OUT_DIR}/platypus_pair/${SAMPLE}/${REGION}.vcf
+					 platypus $PAIR_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_PAIR
+
+					 mkdir ${OUT_DIR}/freebayes_pair/${SAMPLE} 2> /dev/null
+					 local FREEBAYES_OUTPUT_PAIR=${OUT_DIR}/freebayes_pair/${SAMPLE}/${REGION}.vcf
+					 free_bayes $PAIR_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIR
+
+					 mkdir ${OUT_DIR}/samtools_pair/${SAMPLE} 2> /dev/null
+					 local SAMTOOLS_OUTPUT_PAIR=${OUT_DIR}/samtools_pair/${SAMPLE}/${REGION}.vcf
+					 sam_tools $PAIR_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIR
+
+					 # surject bams and run on those
+					 local SURJECT_BAM=${BASE_DIR}/${SAMPLE}_surject.bam
+					 local GRAPH_PATH=`primary_graph $REGION`
+					 local GAM_PATH=`primary_gam $REGION $SAMPLE`
+					 surject_gam $GRAPH_PATH $GAM_PATH $SURJECT_BAM.surject
+					 set_mapq $SURJECT_BAM.surject 60 $SURJECT_BAM
+
+					 mkdir ${OUT_DIR}/platypus_surject/${SAMPLE} 2> /dev/null
+					 local PLAT_OUTPUT_SURJECT=${OUT_DIR}/platypus_surject/${SAMPLE}/${REGION}.vcf
+					 platypus $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_SURJECT
+
+					 mkdir ${OUT_DIR}/freebayes_surject/${SAMPLE} 2> /dev/null
+					 local FREEBAYES_OUTPUT_SURJECT=${OUT_DIR}/freebayes_surject/${SAMPLE}/${REGION}.vcf
+					 free_bayes $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_SURJECT
+
+					 mkdir ${OUT_DIR}/samtools_surject/${SAMPLE} 2> /dev/null
+					 local SAMTOOLS_OUTPUT_SURJECT=${OUT_DIR}/samtools_surject/${SAMPLE}/${REGION}.vcf
+					 sam_tools $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_SURJECT
+
+				fi
 				
-				echo "Platypus no MAPQ for ${SAMPLE} ${REGION}"
-				mkdir ${OUT_DIR}/platypus_mapq/${SAMPLE} 2> /dev/null
-				local PLAT_OUTPUT_MAPQ=${OUT_DIR}/platypus_mapq/${SAMPLE}/${REGION}.vcf
-				platypus $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_MAPQ
-
-				mkdir ${OUT_DIR}/freebayes_mapq/${SAMPLE} 2> /dev/null
-				local FREEBAYES_OUTPUT_MAPQ=${OUT_DIR}/freebayes_mapq/${SAMPLE}/${REGION}.vcf
-				free_bayes $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_MAPQ
-
-				mkdir ${OUT_DIR}/samtools_mapq/${SAMPLE} 2> /dev/null
-				local SAMTOOLS_OUTPUT_MAPQ=${OUT_DIR}/samtools_mapq/${SAMPLE}/${REGION}.vcf
-				sam_tools $MAPQ_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_MAPQ
-
-				# remove pairing information
-				local PAIRO_BAM=${BASE_DIR}/${SAMPLE}_pairo.bam
-				remove_pairing $OUTPUT_BAM $PAIRO_BAM
-				
-				mkdir ${OUT_DIR}/platypus_pairo/${SAMPLE} 2> /dev/null
-				local PLAT_OUTPUT_PAIRO=${OUT_DIR}/platypus_pairo/${SAMPLE}/${REGION}.vcf
-				platypus $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_PAIRO
-
-				mkdir ${OUT_DIR}/freebayes_pairo/${SAMPLE} 2> /dev/null
-				local FREEBAYES_OUTPUT_PAIRO=${OUT_DIR}/freebayes_pairo/${SAMPLE}/${REGION}.vcf
-				free_bayes $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIRO
-
-				mkdir ${OUT_DIR}/samtools_pairo/${SAMPLE} 2> /dev/null
-				local SAMTOOLS_OUTPUT_PAIRO=${OUT_DIR}/samtools_pairo/${SAMPLE}/${REGION}.vcf
-				sam_tools $PAIRO_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIRO
-
-				# zap map qualities to 60 and remove pairing information
-				local PAIR_BAM=${BASE_DIR}/${SAMPLE}_pair.bam
-				remove_pairing $MAPQ_BAM $PAIR_BAM
-				
-				mkdir ${OUT_DIR}/platypus_pair/${SAMPLE} 2> /dev/null
-				local PLAT_OUTPUT_PAIR=${OUT_DIR}/platypus_pair/${SAMPLE}/${REGION}.vcf
-				platypus $PAIR_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_PAIR
-
-				mkdir ${OUT_DIR}/freebayes_pair/${SAMPLE} 2> /dev/null
-				local FREEBAYES_OUTPUT_PAIR=${OUT_DIR}/freebayes_pair/${SAMPLE}/${REGION}.vcf
-				free_bayes $PAIR_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_PAIR
-
-				mkdir ${OUT_DIR}/samtools_pair/${SAMPLE} 2> /dev/null
-				local SAMTOOLS_OUTPUT_PAIR=${OUT_DIR}/samtools_pair/${SAMPLE}/${REGION}.vcf
-				sam_tools $PAIR_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_PAIR
-
-				# surject bams and run on those
-				local SURJECT_BAM=${BASE_DIR}/${SAMPLE}_surject.bam
-				local GRAPH_PATH=`primary_graph $REGION`
-				local GAM_PATH=`primary_gam $REGION $SAMPLE`
-				surject_gam $GRAPH_PATH $GAM_PATH $SURJECT_BAM.surject
-				set_mapq $SURJECT_BAM.surject 60 $SURJECT_BAM
-
-				mkdir ${OUT_DIR}/platypus_surject/${SAMPLE} 2> /dev/null
-				local PLAT_OUTPUT_SURJECT=${OUT_DIR}/platypus_surject/${SAMPLE}/${REGION}.vcf
-				platypus $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $PLAT_OUTPUT_SURJECT
-
-				mkdir ${OUT_DIR}/freebayes_surject/${SAMPLE} 2> /dev/null
-				local FREEBAYES_OUTPUT_SURJECT=${OUT_DIR}/freebayes_surject/${SAMPLE}/${REGION}.vcf
-				free_bayes $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $FREEBAYES_OUTPUT_SURJECT
-
-				mkdir ${OUT_DIR}/samtools_surject/${SAMPLE} 2> /dev/null
-				local SAMTOOLS_OUTPUT_SURJECT=${OUT_DIR}/samtools_surject/${SAMPLE}/${REGION}.vcf
-				sam_tools $SURJECT_BAM $INPUT_REF $REGION $SAMPLE $SAMTOOLS_OUTPUT_SURJECT
-
 		  done
 	 done				
 }
