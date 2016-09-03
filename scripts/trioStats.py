@@ -40,7 +40,7 @@ def munge_vcf_results(comp_dir):
     for regiondir in glob.glob(os.path.join(comp_dir, "preprocessed_vcfs", "*")):
         if os.path.isdir(regiondir):
             region = os.path.basename(regiondir)
-            for pvcf in glob.glob(os.path.join(regiondir, "*.vcf")):
+            for pvcf in glob.glob(os.path.join(regiondir, "*.vcf.gz")):
                 vcfname = os.path.basename(pvcf)
                 toks = vcfname.split("_")
                 #expect sample_graph
