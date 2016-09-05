@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -112,6 +112,10 @@ declare -A ALL_DELETE_COUNT
 declare -A ALL_SUBSTITUTE_COUNT
 declare -A ALL_UNVISITED_COUNT
 
+declare -A ALL_FALSE_POSITIVES
+declare -A ALL_FALSE_NEGATIVES
+declare -A ALL_TRUE_POSITIVES
+
 for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
     # Fill global stats arrays with 0
     ALL_INSERT_BASES[$GRAPH]=0
@@ -123,6 +127,10 @@ for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
     ALL_DELETE_COUNT[$GRAPH]=0
     ALL_SUBSTITUTE_COUNT[$GRAPH]=0
     ALL_UNVISITED_COUNT[$GRAPH]=0
+    
+    ALL_FALSE_POSITIVES[$GRAPH]=0
+    ALL_FALSE_NEGATIVES[$GRAPH]=0
+    ALL_TRUE_POSITIVES[$GRAPH]=0
 done
 
 # Make plot directories
@@ -139,6 +147,8 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv"
 
+true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
+
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv"
@@ -153,6 +163,8 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
     
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
+    
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
@@ -164,6 +176,11 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         # Parse all the counts from the stats files
         
         GRAPH_STATS="${INPUT_DIR}/evals/${EVAL}/stats/${REGION}/${GRAPH}-${PARAM_SET}.txt"
+        
+        # We need to rerun the stats collection, in case we want new stats.
+        RTEMP="${INPUT_DIR}/evals/${EVAL}/temp/${PARAM_SET}/${REGION}"
+        TEMP="${RTEMP}/graph/${GRAPH}"
+        vg stats "${TEMP}/sample.vg" -v -a "${TEMP}/assembly_aligned.gam" > "${GRAPH_STATS}" 2>&1
     
         if [[ -e ${GRAPH_STATS} ]]; then
         
@@ -172,6 +189,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
             DELETE_BASES=$(cat "${GRAPH_STATS}" | grep "Deletions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
             SUBSTITUTE_BASES=$(cat "${GRAPH_STATS}" | grep "Substitutions" | sed -E 's/.* ([0-9]+) bp.*/\1/g')
             UNVISITED_BASES=$(cat "${GRAPH_STATS}" | grep "Unvisited" | sed -E 's/.* \(([0-9]+) bp\).*/\1/g')
+            SINGLE_VISITED_BASES=$(cat "${GRAPH_STATS}" | grep "Unvisited" | sed -E 's/.* \(([0-9]+) bp\).*/\1/g')
             
             ALL_INSERT_BASES[$GRAPH]=$((ALL_INSERT_BASES[$GRAPH] + INSERT_BASES))
             ALL_DELETE_BASES[$GRAPH]=$((ALL_DELETE_BASES[$GRAPH] + DELETE_BASES))
@@ -207,6 +225,45 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
             printf "${GRAPH}\t${UNVISITED_COUNT}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
                 
+            # Get the length of the sample graph
+            GRAPH_BASES=$(vg stats -l "${TEMP}/sample.vg" | cut -f2)
+            
+            # How many bases are in nodes visited twice?
+            DOUBLE_VISITED_NODE_BASES=$((GRAPH_BASES - UNVISITED_BASES - SINGLE_VISITED_BASES))
+            # How many visitings of nodes are there, weighted by node bases?
+            NODE_BASE_VISITS=$((2 * DOUBLE_VISITED_NODE_BASES + SINGLE_VISITED_BASES))
+            # Of that, how many actual vitist to bases are there? We need to
+            # subtract out deleted and substituted bases, which detract from
+            # bases actually touched by the assemblies.
+            BASE_VISITS=$((NODE_BASE_VISITS - DELETE_BASES - SUBSTITUTE_BASES))
+            
+            # That gives us our true positives
+            TRUE_POSITIVES=${BASE_VISITS}
+            # False positives is unvisited bases, plus those deleted (because we
+            # had asserted a copy incorrectly per deletion), plus those
+            # substituted (because we had asserted a copy incorrectly per
+            # substitution). We assume unvisited bases are only worth 1, because
+            # if there wasn't a way around them in the graph (i.e. if they were
+            # called homozygous) they would be deletions/substitutions and not
+            # just unvisited.
+            FALSE_POSITIVES=$((UNVISITED_BASES + DETETE_BASES + SUBSTITUTE_BASES))
+            # False negatives are insertions and substitutions: things we didn't
+            # call as existing.
+            FALSE_NEGATIVES=$((INSERT_BASES + SUBSTITUTE_BASES))
+            
+            # Add to global arrays
+            ALL_FALSE_POSITIVES[$GRAPH]=$((ALL_FALSE_POSITIVES[$GRAPH] + FALSE_POSITIVES))
+            ALL_FALSE_NEGATIVES[$GRAPH]=$((ALL_FALSE_NEGATIVES[$GRAPH] + FALSE_NEGATIVES))
+            ALL_TRUE_POSITIVES[$GRAPH]=$((ALL_TRUE_POSITIVES[$GRAPH] + TRUE_POSITIVES))
+            
+            # Calculate precision and recall
+            PRECISION=$(echo "${TRUE_POSITIVES} / ( ${TRUE_POSITIVES} + ${FALSE_POSITIVES} )" | bc -l)
+            RECALL=$(echo "${TRUE_POSITIVES} / ( ${TRUE_POSITIVES} + ${FALSE_NEGATIVES} )" | bc -l)
+            
+            # Prepare the plot file for a precision vs. recall plot (where precision is Y)
+            printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
+                "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
+            
         fi
 
     done
@@ -238,6 +295,13 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --x_label "Graph type" \
         --y_label "Length of unvisited called nodes" \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/scatter.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv" \
+        --title "Precision vs. Recall in ${REGION^^} ($PARAM_SET)" \
+        --x_label "Recall" \
+        --y_label "Precision" \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     # Plot by event count
@@ -291,6 +355,14 @@ for GRAPH in "${!ALL_INSERT_BASES[@]}"; do
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv"
     printf "${GRAPH}\t${ALL_UNVISITED_COUNT[$GRAPH]}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv"
+        
+    # Calculate precision and recall
+    PRECISION=$(echo "${ALL_TRUE_POSITIVES[$GRAPH]} / ( ${ALL_TRUE_POSITIVES[$GRAPH]} + ${ALL_FALSE_POSITIVES[$GRAPH]} )" | bc -l)
+    RECALL=$(echo "${ALL_TRUE_POSITIVES[$GRAPH]} / ( ${ALL_TRUE_POSITIVES[$GRAPH]} + ${ALL_FALSE_NEGATIVES[$GRAPH]} )" | bc -l)
+    
+    # Prepare the plot file for a precision vs. recall plot (where precision is Y)
+    printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
+        "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
 
 done
 
@@ -321,6 +393,14 @@ done
     --x_label "Graph type" \
     --y_label "Length of unvisited called nodes" \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+    "${PLOT_PARAMS[@]}"
+    
+# Plot total precision/recall
+./scripts/scatter.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv" \
+    --title "Precision vs. Recall overall ($PARAM_SET)" \
+    --x_label "Recall" \
+    --y_label "Precision" \
+    --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
 # Plot totals by event count
