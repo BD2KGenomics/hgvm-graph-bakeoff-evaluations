@@ -96,7 +96,7 @@ PLOT_PARAMS=(
     "#9E7C72"
     "#FF00FF"
     "#2F4F4F"
-    "#FFFF00"
+    "#edd91b"
     --dpi 90 --font_size 14 --no_n
 )
 
@@ -301,6 +301,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Precision vs. Recall in ${REGION^^} ($PARAM_SET)" \
         --x_label "Recall" \
         --y_label "Precision" \
+        --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 --legend_overlay "lower right" \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -400,6 +401,7 @@ done
     --title "Precision vs. Recall overall ($PARAM_SET)" \
     --x_label "Recall" \
     --y_label "Precision" \
+    --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 --legend_overlay "lower right" \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
