@@ -85,6 +85,8 @@ def parse_args(args):
         help="colors for all categories, in order")
     parser.add_argument("--no_n", dest="show_n", action="store_false",
         help="don't add n value to title")
+    parser.add_argument("--ascending", action="store_true",
+                        help="plot bars in ascending (by value) order")                        
         
     return parser.parse_args(args)
     
@@ -173,6 +175,34 @@ def main(args):
     
     # Compute the order to use
     if options.categories is not None:
+        
+        # hack in ascending order option
+        if options.ascending is True:
+            
+            # sort the labels too
+            if options.category_labels is not None:
+                label_map = dict()
+                for i in range(len(options.categories)):
+                    label_map[options.categories[i]] = options.category_labels[i]
+
+            # sort the colors too
+            if options.colors is not None:
+                color_map = dict()
+                for i in range(len(options.categories)):
+                    color_map[options.categories[i]] = options.colors[i]
+                    
+            # sort by value
+            options.categories = sorted(options.categories,
+                                        key = lambda x : categories[x] if x in categories else sys.maxint)
+
+            # update the labels
+            if options.category_labels is not None:
+                options.category_labels = [label_map[x] for x in options.categories]
+
+            # update the colors
+            if options.colors is not None:
+                options.colors = [color_map[x] for x in options.categories]
+                                
         category_order = options.categories
     else:
         category_order = sorted(categories.iterkeys(), key=natural_keys)
@@ -198,7 +228,7 @@ def main(args):
     category_order = [x for x in category_order if x is not None]
     category_labels = [x for x in category_labels if x is not None]
     category_colors = [x for x in category_colors if x is not None]
-    
+
     # Do the plot
     pyplot.bar(xrange(len(category_order)), [categories[category] for category in 
         category_order], bottom=[divisions[category] for category in 
@@ -246,7 +276,7 @@ def main(args):
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>
     pyplot.gca().tick_params(axis="x", pad=0.5 * options.font_size)
-    
+            
     # Make everything fit
     pyplot.tight_layout()
     
