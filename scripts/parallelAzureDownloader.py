@@ -38,9 +38,9 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to download from")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put things in")
     parser.add_argument("--pattern", default="*", 
         help="fnmatch-style pattern for file names to copy")
