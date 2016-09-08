@@ -121,8 +121,6 @@ do
     OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.${PLOT_FILETYPE}"
     OVERALL_PERFECT_FILE="${PLOTS_DIR}/perfect.tsv"
     OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.${PLOT_FILETYPE}"
-    OVERALL_ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.tsv"
-    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.ALL.${PLOT_FILETYPE}"
     OVERALL_SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.tsv"
     OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
 
@@ -135,8 +133,6 @@ do
         MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.${PLOT_FILETYPE}"
         PERFECT_FILE="${PLOTS_DIR}/perfect.${REGION}.tsv"
         PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.${PLOT_FILETYPE}"
-        ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.${REGION}.tsv"
-        ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.${REGION}.${PLOT_FILETYPE}"
         SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
         SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
         ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
@@ -177,13 +173,6 @@ do
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
-        ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
-            --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
-            --x_sideways --hline_median refonly \
-            --range --sparse_ticks --sparse_axes \
-            "${PLOT_PARAMS[@]}"
-        
         if [ "${HR_REGION}" == "CENX" ]
         then
             # There's hardly any single mapping in CENX, so we need to go down all the way.
@@ -312,7 +301,6 @@ do
     # Aggregate the overall files
     cat "${PLOTS_DIR}"/mapping.*.tsv > "${OVERALL_MAPPING_FILE}"
     cat "${PLOTS_DIR}"/perfect.*.tsv > "${OVERALL_PERFECT_FILE}"
-    cat "${PLOTS_DIR}"/oneerror.*.tsv > "${OVERALL_ONE_ERROR_FILE}"
     cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_FILE}"
 
     # Make the overall plots
@@ -330,13 +318,6 @@ do
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
-        --title "$(printf "One-error (<=1 mismatch)\nreads (${MODE})")" \
-        --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
-        --x_sideways --hline_median trivial \
-        --range --sparse_ticks --sparse_axes \
-        "${PLOT_PARAMS[@]}"
-
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
         --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \

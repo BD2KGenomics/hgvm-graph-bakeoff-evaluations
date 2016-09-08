@@ -168,20 +168,22 @@ def collate_region(job, options, region):
                 # Compute the answers for this sample
                 
                 # How many reads are mapped well enough?
-                total_mapped_well = sum((stats["primary_mismatches"].get(str(x),
-                    0) for x in xrange(3)))
+                total_mapped_well = sum((
+                    stats["primary_matches_per_column"].get(x)
+                    for x in stats["primary_matches_per_column"].iterkeys()
+                    if float(x) > 0.95))
                     
                 # How many reads are multimapped well enough?
-                total_multimapped = sum((stats["secondary_mismatches"].get(
-                    str(x), 0) for x in xrange(3)))
+                total_multimapped = sum((
+                    stats["secondary_matches_per_column"].get(x)
+                    for x in stats["secondary_matches_per_column"].iterkeys()
+                    if float(x) > 0.95))
                     
                 # How many reads are perfect?
-                total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
-                    for x in xrange(1)))
-                    
-                # How many reads are mapped with <=1 error?
-                total_one_error = sum((stats["primary_mismatches"].get(str(x),
-                    0) for x in xrange(2)))
+                total_perfect = sum((
+                    stats["primary_matches_per_column"].get(x)
+                    for x in stats["primary_matches_per_column"].iterkeys()
+                    if float(x) == 1.0))
                     
                 # How many reads have no indels?
                 total_no_indels = sum((stats["primary_indels"].get(str(x), 0)
@@ -246,9 +248,6 @@ def collate_region(job, options, region):
                 # What portion are perfect?
                 sample_stats["portion_perfect"] = (total_perfect /
                     float(total_reads))
-                # What portion are <=1 error?
-                sample_stats["portion_one_error"] = (total_one_error / 
-                    float(total_reads))
                 # What portion are mapped at all?
                 sample_stats["portion_mapped_at_all"] = (total_mapped_at_all / 
                     float(total_reads))
@@ -281,9 +280,9 @@ def collate_region(job, options, region):
                     # The aligned bases are the ones that aren't in indels or
                     # leading/trailing softclips.
                     
-                    # Calculate portion of aligned bases that are substitutions
-                    # (even if we're "substituting" the same sequence in).
-                    sample_stats["substitution_rate"] = (mismatch_bases /
+                    # Calculate portion of aligned bases that are substitutions.
+                    # Doesn't count indels at all.
+                    sample_stats["substitution_rate"] = (substitution_bases /
                         float(total_aligned))
                         
                     # Calculate indels per base
@@ -354,8 +353,6 @@ def collate_region(job, options, region):
             "portion_mapped_well": "plots/{}/mapping.{}.tsv".format(mode,
                 region),
             "portion_perfect": "plots/{}/perfect.{}.tsv".format(mode, region),
-            "portion_one_error": "plots/{}/oneerror.{}.tsv".format(mode,
-                region),
             "portion_single_mapped": "plots/{}/singlemapping.{}.tsv".format(
                 mode, region),
             "portion_mapped_at_all": "plots/{}/anymapping.{}.tsv".format(mode,

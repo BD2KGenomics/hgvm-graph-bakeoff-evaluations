@@ -912,14 +912,16 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "aligned_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
         "primary_mapqs": collections.Counter(),
-        "primary_identities": collections.Counter(),
-        "primary_mismatches": collections.Counter(),
+        "primary_identities": collections.Counter(), # Deprecated; doesn't count deletions in this vg
+        "primary_mismatches": collections.Counter(), # Deprecated; doesn't count deletions
+        "primary_matches_per_column": collections.Counter(),
         "primary_indels": collections.Counter(),
         "primary_substitutions": collections.Counter(),
         "secondary_scores": collections.Counter(),
         "secondary_mapqs": collections.Counter(),
-        "secondary_identities": collections.Counter(),
-        "secondary_mismatches": collections.Counter(),
+        "secondary_identities": collections.Counter(), # Deprecated; doesn't count deletions in this vg
+        "secondary_mismatches": collections.Counter(), # Deprecated; doesn't count deletions
+        "secondary_matches_per_column": collections.Counter(),
         "secondary_indels": collections.Counter(),
         "secondary_substitutions": collections.Counter(),
         "run_time": run_time
@@ -958,6 +960,9 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # read? How many bases are in the read and aligned?
             aligned_length = 0
             
+            # How many total columns are there in the alignment?
+            alignment_columns = 0
+            
             # What's the mapping quality? May not be defined on some reads.
             mapq = alignment.get("mapping_quality", 0.0)
             
@@ -978,10 +983,11 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                     
                     if mapping.get("is_reverse", False):
                         # We start at the offset base on the reverse strand.
-
-                        # Add 1 to make the offset inclusive as an end poiint                        
+                        # This means we count from the end.
+                        # But if offset is 0 we take the whole thing.
                         ref_sequence = reverse_complement(
-                            ref_sequence[0:offset + 1])
+                            ref_sequence[0:-offset] if offset != 0
+                            else ref_sequence)
                     else:
                         # Just clip so we start at the specified offset
                         ref_sequence = ref_sequence[offset:]
@@ -1016,10 +1022,18 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                     reference_N_count = count_Ns(ref_sequence[
                         index_in_ref:index_in_ref + edit.get("from_length", 0)])
                         
+                    # Count up the columns, which is the max of the from and to
+                    # lengths, but discounting any columns where the reference
+                    # has an N.
+                    alignment_columns += max(edit.get("to_length", 0),
+                        edit.get("from_length", 0)) - reference_N_count
+                        
                     if edit.get("to_length", 0) == edit.get("from_length", 0):
                         # Add in the length of this edit if it's actually
-                        # aligned (not an indel or softclip)
-                        aligned_length += edit.get("to_length", 0)
+                        # aligned (not an indel or softclip).
+                        # Make sure not to count Ns in the reference.
+                        aligned_length += (edit.get("to_length", 0) -
+                            reference_N_count)
                         
                     if (not edit.has_key("sequence") and 
                         edit.get("to_length", 0) == edit.get("from_length", 0)):
@@ -1055,10 +1069,6 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                         substitutions += (edit.get("to_length", 0) -
                             reference_N_count)
                             
-                        # Pull those Ns out of the substitution rate denominator
-                        # as well.
-                        aligned_length -= reference_N_count
-                        
                     # We still count query Ns as "aligned" when not in indels
                         
                     # Advance in the reference sequence
@@ -1066,6 +1076,12 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
 
             # Calculate mismatches as what's not perfect matches
             mismatches = length - matches
+            
+            # Calculate matches per alignment column, which is a way better
+            # measure of alignment identity than vg's "identity" which also
+            # ignores deletions.
+            matches_per_column = (float(matches) / alignment_columns
+                if alignment_columns > 0 else 0)
                     
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
@@ -1092,6 +1108,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["secondary_substitutions"][substitutions] += 1
                 stats["secondary_mapqs"][mapq] += 1
                 stats["secondary_identities"][identity] += 1
+                stats["secondary_matches_per_column"][matches_per_column] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -1102,6 +1119,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["primary_substitutions"][substitutions] += 1
                 stats["primary_mapqs"][mapq] += 1
                 stats["primary_identities"][identity] += 1
+                stats["primary_matches_per_column"][matches_per_column] += 1
                 
                 # Record that a read of this length was mapped
                 stats["mapped_lengths"][length] += 1
