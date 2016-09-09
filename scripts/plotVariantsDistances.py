@@ -312,13 +312,13 @@ def plot_vcf_comp(tsv_path, options):
         f1_qual_png = out_base_path("f1qual", label, ".png")
 
         make_max_f1_tsv(acc_tsv, f1_tsv, f1_pr_tsv, f1_qual_tsv, options)
-        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
+        cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {}".format(f1_tsv, f1_png, title, params)
         print cmd
         os.system(cmd)
         cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5".format(f1_pr_tsv, f1_pr_png, title, params)
         print cmd
         os.system(cmd)
-        cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Quality for Max F1\" {}".format(f1_qual_tsv, f1_qual_png, title, params)
+        cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Quality for Max F1\" {}".format(f1_qual_tsv, f1_qual_png, title, params)
         print cmd
         os.system(cmd)
         
@@ -336,9 +336,38 @@ def plot_vcf_comp(tsv_path, options):
             print cmd
             os.system(cmd)
             # top .5 bar
-            cmd = "scripts/barchart.py {} --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.5".format(f1_tsv, f1_png.replace(".png", "_top50.png"), title, params)
+            cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.5".format(f1_tsv, f1_png.replace(".png", "_top50.png"), title, params)
             print cmd
             os.system(cmd)
+            # top .6 bar
+            cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.6".format(f1_tsv, f1_png.replace(".png", "_top60.png"), title, params)
+            print cmd
+            os.system(cmd)
+            # top .7 bar
+            cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.7".format(f1_tsv, f1_png.replace(".png", "_top70.png"), title, params)
+            print cmd
+            os.system(cmd)            
+            # top .85 bar
+            cmd = "scripts/barchart.py {} --ascending --no_n --save {} --title \"{}\" --x_sideways --x_label \"Graph\" --y_label \"Max F1\" {} --min 0.85".format(f1_tsv, f1_png.replace(".png", "_top85.png"), title, params)
+            print cmd
+            os.system(cmd)
+
+            # top .25 f1pr scatter
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.746 --max_x 1.004 --min_y 0.746 --max_y 1.004".format(f1_pr_tsv, f1_pr_png.replace(".png", "_top25.png"), title, params)
+            print cmd
+            os.system(cmd)
+
+            # top .50 f1pr scatter
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.496 --max_x 1.004 --min_y 0.496 --max_y 1.004".format(f1_pr_tsv, f1_pr_png.replace(".png", "_top50.png"), title, params)
+            print cmd
+            os.system(cmd)
+
+            # top .65 f1pr scatter
+            cmd = "scripts/scatter.py {} --save {} --title \"{}\" --x_label \"Recall\" --y_label \"Precision\" --width 18 --height 9 {} --lines --no_n --line_width 1.5 --marker_size 5 --min_x 0.646 --max_x 1.004 --min_y 0.646 --max_y 1.004".format(f1_pr_tsv, f1_pr_png.replace(".png", "_top65.png"), title, params)
+            print cmd
+            os.system(cmd)
+
+
 
 def plot_heatmap(tsv, options):
     """ make a heatmap """
