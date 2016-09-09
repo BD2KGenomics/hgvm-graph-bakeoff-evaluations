@@ -22,7 +22,7 @@ PLATYPUS_CMD="python /cluster/home/hickey/tools/Platypus/bin/Platypus.py"
 
 REGIONS=( "BRCA2" "MHC" "BRCA1" "SMA" "LRC_KIR" )
 
-#REGIONS=( "LRC_KIR" )
+#REGIONS=( "BRCA2" )
 
 PLATYPUS_OPTS=" --mergeClusteredVariants=1"
 FREEBAYES_OPTS=" --strict-vcf"
@@ -140,12 +140,14 @@ function bwa_index {
 function bwa_mem {
 	 local FA=$1
 	 local READS=$2
-	 local OUT_BAM=$3
+	 local SAMPLE=$3
+	 local OUT_BAM=$4
 
 	 if [[ ! -f $OUT_BAM ]] || [[ $OVERWRITE -eq 1 ]]
 	 then
-		  echo "bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM"
-		  bwa mem $BWA_OPTS $FA $READS | samtools view -1 - > $OUT_BAM
+		  echo "bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:${SAMPLE}\tSM:${SAMPLE}' | samtools view -1 - > $OUT_BAM"
+		  bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:${SAMPLE}\tSM:${SAMPLE}' | samtools view -1 - > $OUT_BAM
+
 		  samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
 		  samtools index -b $OUT_BAM
@@ -251,7 +253,7 @@ function align_all {
 				local OUTPUT_BAM=${BASE_DIR}/${SAMPLE}.bam
 
 				# bwa-mem pipelines
-				bwa_mem $INPUT_REF $FASTQ $OUTPUT_BAM
+				bwa_mem $INPUT_REF $FASTQ $SAMPLE $OUTPUT_BAM
 
             echo "Platypus for ${SAMPLE} ${REGION}"
 				mkdir ${OUT_DIR}/platypus/${SAMPLE} 2> /dev/null
