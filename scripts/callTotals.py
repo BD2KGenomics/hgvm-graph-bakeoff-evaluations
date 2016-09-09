@@ -139,7 +139,7 @@ def main(args):
             # make an index just in case
             run("vcfsort {} > {}.sort".format(merge_vcf_path, merge_vcf_path), fail_hard = True)
             run("mv {}.sort {}".format(merge_vcf_path, merge_vcf_path), fail_hard = True)
-            run("bgzip -f {}".format(merge_vcf_path, merge_vcf_path), fail_hard = True)
+            run("bgzip -c {} > {}.gz".format(merge_vcf_path, merge_vcf_path), fail_hard = True)
             run("tabix -f -p vcf {}.gz".format(merge_vcf_path, merge_vcf_path), fail_hard = True)
         
     return 0
