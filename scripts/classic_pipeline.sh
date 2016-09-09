@@ -145,8 +145,8 @@ function bwa_mem {
 
 	 if [[ ! -f $OUT_BAM ]] || [[ $OVERWRITE -eq 1 ]]
 	 then
-		  echo "bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:${SAMPLE}\tSM:${SAMPLE}' | samtools view -1 - > $OUT_BAM"
-		  bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:${SAMPLE}\tSM:${SAMPLE}' | samtools view -1 - > $OUT_BAM
+		  echo "bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:'${SAMPLE}'\tSM:'${SAMPLE} | samtools view -1 - > $OUT_BAM"
+		  bwa mem $BWA_OPTS $FA $READS -R '@RG\tID:'${SAMPLE}'\tSM:'${SAMPLE} | samtools view -1 - > $OUT_BAM
 
 		  samtools sort $OUT_BAM -o ${OUT_BAM}.sort
 		  mv ${OUT_BAM}.sort $OUT_BAM
