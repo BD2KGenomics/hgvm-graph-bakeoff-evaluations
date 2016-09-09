@@ -170,13 +170,13 @@ echo "scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_s
 echo "scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log"
 #echo "scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top 2>> ${OUT_DIR}/plots.log "
 
-scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log &
+#scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log &
 # note: triostats.py only runs if there's a dummy platinum directory for NA12879 and the comparison was run on it too
 # todo: fix (note the dummy comparison is never actually used, it's just the vcfs never get preprocessed without it)
-scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log &
+#scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log &
 
-scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top >> ${OUT_DIR}/plots.log &
-#scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} >> ${OUT_DIR}/plots.log 
+#scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top >> ${OUT_DIR}/plots.log &
+scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} >> ${OUT_DIR}/plots.log 
 
 
 exit 0
