@@ -44,17 +44,18 @@ def main(args):
                 outfile = os.path.join(sampledir, "TOTAL.vcf")
                 for vcf in glob.glob(os.path.join(sampledir, "*.vcf")):
                     if os.path.basename(vcf) in ["BRCA1.vcf", "BRCA2.vcf", "SMA.vcf", "LRC_KIR.vcf", "MHC.vcf"]:
-                        run("bgzip -c {} > {}.gz".format(vcf, vcf), fail_hard = True)
+                        run("vcfsort {} > {}.sort".format(vcf, vcf), fail_hard = True)
+                        run("bgzip -c {}.sort > {}.gz".format(vcf, vcf), fail_hard = True)
+                        run("rm -f {}.sort".format(vcf))
                         run("tabix -f -p vcf {}.gz".format(vcf), fail_hard = True)
                         vcfs.append("{}.gz".format(vcf))
                 if len(vcfs) > 0:
-                    run("rm -f {}.gz".format(outfile))
-                    try:
-                        run("rtg vcfmerge {} -o {}.gz".format(" ".join(vcfs), outfile),
-                            fail_hard = True)
-                        run("bgzip -dc {}.gz > {}".format(outfile, outfile, fail_hard = True))
-                    except:
-                        run("rm -f {} {}.gz".format(outfile, outfile))
+                    run("vt cat {} > {}".format(" ".join(vcfs), outfile),
+                        fail_hard = True)
+                    run("vcfsort {} > {}.sort".format(outfile, outfile), fail_hard = True)
+                    run("mv {}.sort {}".format(outfile, outfile), fail_hard = True)
+                    run("bgzip -c {} > {}.gz".format(outfile, outfile), fail_hard = True)
+                    run("tabix -f -p vcf {}.gz".format(outfile), fail_hard = True)
 
         return 0
 
@@ -133,10 +134,13 @@ def main(args):
                 input_files.append("{}.vcf.gz".format(outbase))
             
             # run the merge
-            run("rtg vcfmerge {} -o {}.gz".format(" ".join(input_files), merge_vcf_path), fail_hard = True)
+            run("vt cat {} > {}".format(" ".join(input_files), merge_vcf_path), fail_hard = True)
 
-            # decompress
-            run("gzip -dc {}.gz > {}".format(merge_vcf_path, merge_vcf_path))
+            # make an index just in case
+            run("vcfsort {} > {}.sort".format(merg_vcf_path), fail_hard = True)
+            run("mv {}.sort {}".format(merge_vcf_path), fail_hard = True)
+            run("bgzip -f {}.vcf".format(merge_vcf_path), fail_hard = True)
+            run("tabix -f -p vcf {}.vcf.gz".format(merge_vcf_path), fail_ahrd = True)
         
     return 0
     
