@@ -52,7 +52,7 @@ def munge_vcfeval_results(comp_dir):
                     evalmap[region][sample][graph] = vcfevaldir
     return evalmap
 
-def count_variants(vcf_path, filter_string, xref, kind):
+def count_variants(vcf_path, filter_string, xref, kind, options):
     """ use vcftools to count up lines in a vcf that meet criteria.
     kind in [indels, snps, all]
     """
@@ -74,17 +74,17 @@ def get_counts(vcfeval_dir, options):
     tpvcf = os.path.join(vcfeval_dir, "tp.vcf.gz")
     fpvcf = os.path.join(vcfeval_dir, "fp.vcf.gz")
     counts = dict()
-    counts["TP-REF-SNP"] = count_variants(tpvcf, "PASS,.", True, "snps")
-    counts["TP-AUG-SNP"] = count_variants(tpvcf, "PASS,.", False, "snps")
-    counts["TP-REF-INDEL"] = count_variants(tpvcf, "PASS,.", True, "indels")
-    counts["TP-AUG-INDEL"] = count_variants(tpvcf, "PASS,.", False, "indels")
+    counts["TP-REF-SNP"] = count_variants(tpvcf, "PASS,.", True, "snps", options)
+    counts["TP-AUG-SNP"] = count_variants(tpvcf, "PASS,.", False, "snps", options)
+    counts["TP-REF-INDEL"] = count_variants(tpvcf, "PASS,.", True, "indels", options)
+    counts["TP-AUG-INDEL"] = count_variants(tpvcf, "PASS,.", False, "indels", options)
     counts["TP-REF-TOTAL"] = counts["TP-REF-SNP"] + counts["TP-REF-INDEL"]
     counts["TP-AUG-TOTAL"] = counts["TP-AUG-SNP"] + counts["TP-AUG-INDEL"]
 
-    counts["FP-REF-SNP"] = count_variants(fpvcf, "PASS,.", True, "snps")
-    counts["FP-AUG-SNP"] = count_variants(fpvcf, "PASS,.", False, "snps")
-    counts["FP-REF-INDEL"] = count_variants(fpvcf, "PASS,.", True, "indels")
-    counts["FP-AUG-INDEL"] = count_variants(fpvcf, "PASS,.", False, "indels")
+    counts["FP-REF-SNP"] = count_variants(fpvcf, "PASS,.", True, "snps", options)
+    counts["FP-AUG-SNP"] = count_variants(fpvcf, "PASS,.", False, "snps", options)
+    counts["FP-REF-INDEL"] = count_variants(fpvcf, "PASS,.", True, "indels", options)
+    counts["FP-AUG-INDEL"] = count_variants(fpvcf, "PASS,.", False, "indels", options)
     counts["FP-REF-TOTAL"] = counts["FP-REF-SNP"] + counts["FP-REF-INDEL"]
     counts["FP-AUG-TOTAL"] = counts["FP-AUG-SNP"] + counts["FP-AUG-INDEL"]
 

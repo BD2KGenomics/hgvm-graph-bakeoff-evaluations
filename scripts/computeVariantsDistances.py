@@ -109,6 +109,10 @@ def parse_args(args):
                         help="use vcfevals roc logic (only gives total, not indel snp breakdown) and wont work with clipping")
     parser.add_argument("--cwd", default=os.getcwd(),
                         help="set Toil job working directory")
+    parser.add_argument("--combine_samples", type=str, default=None,
+                        help="comma-separated list of samples to combine into COMBINED sample")
+    parser.add_argument("--combined_name", type=str, default="COMBINED",
+                        help="name of the combined sample to generate")                        
                             
     args = args[1:]
 
@@ -251,15 +255,20 @@ def comp_path_happy(graph1, graph2, options):
     return os.path.join(options.comp_dir, "happy_compare_data", region1,
                             method1 + s1tag + "_vs_" + method2 + s2tag + ".summary.csv")
 
-def comp_path_vcfeval(graph1, graph2, options):
+def comp_path_vcfeval(graph1, graph2, options, sample_override = None):
     """ get the path for json output of vcf compare
     """
     region1, sample1, method1 = options.tags[graph1]
     region2, sample2, method2 = options.tags[graph2]
     assert region1 == region2
+
+    if sample_override is not None:
+        sample1 = sample_override
+        sample2 = sample_override
+
     if sample1 is not None and sample2 is not None:
         assert sample1 == sample2
-
+        
     s1tag = "_" + sample1 if sample1 is not None else ""
     s2tag = "_" + sample2 if sample2 is not None else ""
     return os.path.join(options.comp_dir, "vcfeval_compare_data", region1,
@@ -549,21 +558,6 @@ def vcf_num_records(vcf_path, bed_path = None):
 
 def vcfeval_dist_fn(graph1, graph2, options):
     out_dir = comp_path_vcfeval(graph1, graph2, options)
-    summary_path = os.path.join(out_dir, "summary.txt")
-
-    # read in the text summary, looks like this
-    #2016-04-25 08:59:09 Threshold  True-pos  False-pos  False-neg  Precision  Sensitivity  F-measure
-    #----------------------------------------------------------------------------
-    #     None       985       1398       1075     0.4133       0.4782     0.4434
-
-    with open(summary_path) as f:
-        lines = [line for line in f]
-        header = lines[0].split()
-        prec_idx = header.index("Precision")
-        rec_idx = header.index("Sensitivity")        
-        data = lines[-1].split()
-        total_precision = float(data[prec_idx])
-        total_recall = float(data[rec_idx])
 
     ## use vcfevals roc
     if options.vroc is True:
@@ -612,11 +606,6 @@ def vcfeval_dist_fn(graph1, graph2, options):
         qual = fn_table[rownum][0]
         assert qual == fp_table[rownum][0]
         assert qual == tp_table[rownum][0]
-
-        if options.clip is None and options.clip_fp is None and rownum == rows[1] - 1:
-            # keep old way of computing as sanity check
-            #assert abs(rect - total_recall) < 0.05 and abs(prect - total_precision) < 0.05
-            pass
         
         # shoehorn into vcfCompre style output (todo, revise this) + qual
         ret += [[precs, recs, 0, 0, preci, reci, prect, rect, qual]]
@@ -643,6 +632,104 @@ def n_avg(row):
     else:
         return float(sum(a)) / len(a)
 
+def generate_combined_samples(options):
+    """ go through comparison output, and merge up all samples in --combine_samples
+    into a single dummy-sammple called COMBIEND, that will be treated as any
+    other sample downstream """
+
+    # only implemented for vcfeval
+    if options.comp_type == "vcfeval":
+
+        for region in options.sample_graphs.keys():
+
+            # pull out all graphs and baselines in the region
+            region_graphs = [g for g,b in options.pair_comps if options.tags[g][0] == region]
+            region_baselines = [b for g,b in options.pair_comps if options.tags[g][0] == region]
+
+            # will iterate over METHOD X BASELINE
+            method_set = set([options.tags[g][2] for g in region_graphs])
+            baseline_method_set = set([options.tags[b][2] for b in region_baselines])
+
+            for method in method_set:
+                graphs = [g for g in region_graphs if options.tags[g][2] == method]
+                for baseline_method in baseline_method_set:
+                    baselines = [b for b in region_baselines if options.tags[b][2] == baseline_method]
+                    generate_combined_vcfeval_sample(region, method, baseline_method, graphs, baselines, options)
+
+def generate_combined_vcfeval_sample(region, method, baseline_method, graphs, baselines, options):
+    """ merge up a single set of graph results into one """
+
+    in_vcfs = [] # triple of (fn, fp, tp)
+    baseline = baselines[0]
+    sample_baseline = options.tags[baseline][1]
+    comb_samples = options.combine_samples.split(",")
+
+    # we are iterating over every sample for a given method/region, checking if we want to combine
+    # and remembering it's vcfeval output in in_vcfs
+    for graph in graphs:
+        out_vcfeval_dir = comp_path_vcfeval(graph, baseline, options, sample_override=options.combined_name)
+        gregion, sample, gmethod = options.tags[graph]
+        assert gregion == region and gmethod == method
+
+        # scape together all the vcfeval results
+        if sample in comb_samples:
+            in_vcfeval_dir = comp_path_vcfeval(graph, baseline, options, sample_override=sample)
+            results = (os.path.join(in_vcfeval_dir, "fn.vcf.gz"),
+                       os.path.join(in_vcfeval_dir, "fp.vcf.gz"),
+                       os.path.join(in_vcfeval_dir, "tp.vcf.gz"))
+            if all(os.path.exists(x) for x in results):
+                in_vcfs.append(results)
+            else:
+                RealTimeLogger.get().warning("Missing vcfeval result for {}".format(graph))
+
+    # if we have a fn/fp/tp vcf for each sample to combine, then merge them
+    # all up into the COMBINED output directory
+    if len(in_vcfs) == len(comb_samples):
+        out_vcfs = (os.path.join(out_vcfeval_dir, "fn.vcf"),
+                    os.path.join(out_vcfeval_dir, "fp.vcf"),
+                    os.path.join(out_vcfeval_dir, "tp.vcf"))
+            
+        if options.overwrite or not all(os.path.isfile(ov + ".gz") for ov in out_vcfs):
+
+            RealTimeLogger.get().info("Making combined sample {}".format(out_vcfeval_dir))
+
+            # paste together all the vcfs and sort
+            robust_makedirs(out_vcfeval_dir)
+            for i in range(3):
+                run("bcftools view {} > {}".format(in_vcfs[0][i], out_vcfs[i]))
+                for j in range(1, len(in_vcfs)):
+                    run("bcftools view -H {} >> {}".format(in_vcfs[j][i], out_vcfs[i]))
+
+            for i in range(3):
+                run("vcfsort {} > {}.sort".format(out_vcfs[i], out_vcfs[i]))
+                run("mv {}.sort {}".format(out_vcfs[i], out_vcfs[i]))
+                run("bgzip -f {}".format(out_vcfs[i]))
+                run("tabix -f -p vcf {}.gz".format(out_vcfs[i]))
+
+            # generate the roc tables. 
+            # this is slow if clipping enabled, and would ideally get moved under toil
+            fn_table = vcf_qual_stats(out_vcfs[0] + ".gz", options.clip, ignore_keywords = ["OverlapConflict"])
+            fp_table = vcf_qual_stats(out_vcfs[1] + ".gz", options.clip_fp if options.clip_fp else options.clip)
+            tp_table = vcf_qual_stats(out_vcfs[2] + ".gz", options.clip)
+            save_vcfeval_stats(out_vcfeval_dir, fn_table, fp_table, tp_table)
+
+        # now we stick a new entry back in options tables so COMBINED gets iterated over
+        # in the table generation.
+        comb_graph = graph.replace(sample, options.combined_name)
+        assert comb_graph != graph
+        options.sample_graphs[region][options.combined_name].add(comb_graph)
+        options.tags[comb_graph] = (region, options.combined_name, method)
+        
+        comb_baseline = baseline.replace(sample_baseline, options.combined_name)
+        assert comb_baseline != baseline
+        options.baseline_graphs[region][options.combined_name].add(comb_baseline)
+        options.tags[comb_baseline] = (region, options.combined_name, baseline_method)                    
+                            
+    else:
+        RealTimeLogger.get().warning("Failed to combine samples for {} vs {} in {}".format(method, baseline_method, region))
+        RealTimeLogger.get().warning("{}".format(str(in_vcfs)))
+
+                    
 def make_tsvs(options):
     """ make some tsv files in the output dir
     """
@@ -1177,7 +1264,7 @@ def compute_vcf_comparisons(job, options):
             cores = options.vg_cores if options.comp_type == "happy" else 1
             job.addChildJobFn(compute_vcf_comparison, graph1, graph2, options,
                                           cores=cores)
-
+        
 def compute_kmer_indexes(job, options):
     """ run everything (root toil job)
     first all indexes are computed,
@@ -1371,6 +1458,11 @@ def main(args):
     
     # Run it and see how many jobs fail
     Job.Runner.startToil(root_job,  options)
+
+    # combine up some output across all samples, making a dummy
+    # combined sample for make_tsvs to iterate over
+    if options.combine_samples is not None:
+        generate_combined_samples(options)
                                    
     # munge through results to make a matrix (saved to tsv file)
     make_tsvs(options)

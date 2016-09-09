@@ -88,7 +88,7 @@ CLASSIC_PATH=/cluster/home/hickey/ga4gh/hgvm-graph-bakeoff-evalutations/platinum
 QF_TYPE="ad"
 # see also --dedupe --genotype --vroc --clip 
 
-COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path ${CLASSIC_PATH}/freebayes --platypus_path ${CLASSIC_PATH}/platypus --samtools_path ${CLASSIC_PATH}/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH}"
+COMP_OPTS="--vg_cores 6 --maxCores 30 --freebayes_path ${CLASSIC_PATH}/freebayes --platypus_path ${CLASSIC_PATH}/platypus --samtools_path ${CLASSIC_PATH}/samtools --gatk3_path null --g1kvcf_path null --filter_type ${QF_TYPE} --normalize --platinum_path ${PLAT_PATH} --combine_samples NA12877,NA12878"
 
 STATS_OPTS=""
 
@@ -151,7 +151,7 @@ secscore=10000
 
 ROC_FLAG="--qpct ${qual} --roc --qgraph"
 DO_CALL=true
-CALL_OPTS="" # Use the defaults that Glenn coded in as the best parameter set
+CALL_OPTS=""  # Use the defaults that Glenn coded in as the best parameter set
 #CALL_OPTS="-d 0 -e 5000 -s 3 -D 20 -n 0 -F 0.2 -B 250 -H 3 -R 4"
 # Defray all the way (as reads are << 999 bases long)
 FILTER_OPTS="-r ${ident} -d ${delta} -e ${delta} -afu -s ${secscore} -q 15 -o 0 --defray-ends 999"
@@ -160,20 +160,23 @@ COMP_OUT_DIR=${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.
 run_pipeline $VAR_OUT_DIR $COMP_OUT_DIR "$CALL_OPTS" "$PILEUP_OPTS" "$FILTER_OPTS" "$ROC_FLAG" $DO_CALL
 
 # scrape together all results into one tsv / region / comp type
-scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy
+# note this script doesn't do much of anythign now that we rely on vcfeval to make rocs
+# but we keep old logic of copying stuff to pr_directories
+scripts/rocDistances.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --best_comp happy 2>> ${OUT_DIR}/roc_cp.log
 
 
 echo ""
 echo "scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log"
 echo "scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log"
-echo "scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top 2>> ${OUT_DIR}/plots.log "
+#echo "scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top 2>> ${OUT_DIR}/plots.log "
 
-scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log &
+#scripts/callStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/call_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/callstats.log &
 # note: triostats.py only runs if there's a dummy platinum directory for NA12879 and the comparison was run on it too
 # todo: fix (note the dummy comparison is never actually used, it's just the vcfs never get preprocessed without it)
-scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log &
+#scripts/trioStats.py ${OUT_DIR}/primary_${qual}_i_${ident}_delt_${delta}_ss_${secscore}.${COMP_TAG} ${OUT_DIR}/trio_stats.${qual}.${COMP_TAG} ${STATS_OPTS} 2>> ${OUT_DIR}/triostats.log &
 
-scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top >> ${OUT_DIR}/plots.log &
+#scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} --top >> ${OUT_DIR}/plots.log &
+scripts/plotVariantsDistances.py ${OUT_DIR}/pr_plots.${qual}.${COMP_TAG} >> ${OUT_DIR}/plots.log 
 
 
 exit 0
