@@ -498,9 +498,10 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                     to_index_filename, kmers_filename))
                 
                 # Deduplicate the graph
+                # Discard warnings about duplicate nodes or edges
                 tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
                     "view", "-v", to_index_filename],
-                    stdout=subprocess.PIPE))
+                    stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb')))
                 
                 # Make the GCSA2 kmers file
                 tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
