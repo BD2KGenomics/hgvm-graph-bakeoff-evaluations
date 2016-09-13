@@ -346,16 +346,41 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 # Make the real URL with the version
                 versioned_url = url + options.server_version
                 
+                # We'll download to this JSON file, and then run the rest of the
+                # pipeline
+                graph_json = "{}/graph.json".format(
+                    job.fileStore.getLocalTempDir())
+                
                 RealTimeLogger.get().info("Downloading {} to {}".format(
-                    versioned_url, graph_filename))
+                    versioned_url, graph_json))
+                
+                @backoff
+                def try_download(url, filename):
+                    """
+                    Try downloading the URL to the file with sg2vg. Annotated
+                    with randomized exponential backoff from toillib.
+                    """
+                    
+                    RealTimeLogger.get().info("Trying to download {}".format(
+                        url))
+                    
+                    handle = open(filename, 'w')
+                    subprocess.check_call(["{}sg2vg".format(bin_prefix),
+                        url, "-u"], stdout=handle)
+                    # We sometimes manage not to be able to read our children's
+                    # writes for some reason.
+                    time.sleep(10)
+                    handle.close()
                 
                 # Do the download
-                tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
-                    versioned_url, "-u"], stdout=subprocess.PIPE))
+                try_download(versioned_url, graph_json)
+                
+                RealTimeLogger.get().info("Converting {} to {}".format(
+                    versioned_url, graph_filename))
                 
                 # Convert to vg
                 tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "view", "-Jv", "-"], stdin=tasks[-1].stdout,
+                    "view", "-Jv", "-"], stdin=open(graph_json),
                     stdout=subprocess.PIPE))
             
             # And cut nodes
@@ -535,7 +560,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             # around <https://github.com/vgteam/vg/issues/301>
             subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
                 str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
-                "-X", "3"])
+                "-X", "3", "-Z", "2000"])
                 
             # Where do we put the XG index?
             xg_filename = graph_filename + ".xg"
