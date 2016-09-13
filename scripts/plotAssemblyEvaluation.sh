@@ -4,7 +4,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -72,7 +72,7 @@ PLOT_PARAMS=(
     Platypus
     Freebayes
     Samtools
-    Empty
+    "GRCh38"
     --colors
     "#fb9a99"
     "#fb9a99"
@@ -148,14 +148,16 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv"
 
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
+true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv"
 
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv"
 
-
-for REGION in  lrc_kir brca1 brca2 mhc; do
+# Regions with good assembly coverage:
+# brca1 brca2 lrc_kir mhc
+for REGION in  brca1 brca2; do
       
     # Clear out old stats
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv"
@@ -164,6 +166,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
     
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv"
     
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv"
@@ -171,7 +174,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
 
 
-    for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
+    for GRAPH in empty snp1kg refonly shifted1kg cactus freebayes platypus samtools; do
     
         # Parse all the counts from the stats files
         
@@ -263,6 +266,13 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
             # Prepare the plot file for a precision vs. recall plot (where precision is Y)
             printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
                 "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
+                
+            # Calculate an F1 score
+            F1_SCORE=$(echo " 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
+            
+            # Prepare the plot file for an F1 bar chart
+            printf "${GRAPH}\t${F1_SCORE}\n" >> \
+                "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv"
             
         fi
 
@@ -273,6 +283,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Inserted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Inserted bases in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -280,6 +291,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Deleted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Deleted bases in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -287,6 +299,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Substituted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Substituted bases in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -294,6 +307,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Unvisited node length in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Length of unvisited called nodes" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -305,11 +319,21 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv" \
+        --title "F1 score in ${REGION^^} ($PARAM_SET)" \
+        --x_label "Graph" \
+        --y_label "F1" \
+        --min 0.992 --max 1 \
+        --x_sideways \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/F1-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
+        "${PLOT_PARAMS[@]}"
+        
     # Plot by event count
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv" \
         --title "Insertion events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Insertions in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -317,6 +341,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Deletion events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Deletions in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -324,6 +349,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Substitution events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Substitutions in assembly re-alignment" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -331,6 +357,7 @@ for REGION in  lrc_kir brca1 brca2 mhc; do
         --title "Unvisited nodes in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
         --y_label "Number of unvisited called nodes" \
+        --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
     
@@ -364,6 +391,13 @@ for GRAPH in "${!ALL_INSERT_BASES[@]}"; do
     # Prepare the plot file for a precision vs. recall plot (where precision is Y)
     printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
         "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
+        
+    # Calculate an F1 score
+    F1_SCORE=$(echo " 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
+    
+    # Prepare the plot file for an F1 bar chart
+    printf "${GRAPH}\t${F1_SCORE}\n" >> \
+        "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv"
 
 done
 
@@ -372,6 +406,7 @@ done
     --title "Inserted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Inserted bases in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -379,6 +414,7 @@ done
     --title "Deleted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Deleted bases in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -386,6 +422,7 @@ done
     --title "Substituted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Substituted bases in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -393,6 +430,7 @@ done
     --title "Unvisited node length in sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Length of unvisited called nodes" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -404,12 +442,23 @@ done
     --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 --legend_overlay "lower right" \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
+
+# Plot total F1
+./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv" \
+    --title "F1 score overall ($PARAM_SET)" \
+    --x_label "Graph" \
+    --y_label "F1" \
+    --min 0.992 --max 1 \
+    --x_sideways \
+    --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/F1-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
+    "${PLOT_PARAMS[@]}"
     
 # Plot totals by event count
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv" \
     --title "Insertion events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Insertions in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -417,6 +466,7 @@ done
     --title "Deletion events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Deletions in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -424,6 +474,7 @@ done
     --title "Substitution events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Substitutions in assembly re-alignment" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
@@ -431,6 +482,7 @@ done
     --title "Unvisited nodes in sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
     --y_label "Number of unvisited called nodes" \
+    --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     

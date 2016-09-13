@@ -72,7 +72,9 @@ for PARAM_SET in defray; do
             cat "${RTEMP}/relevant.fa" | ./scripts/fasta2reads.py --uppercase >> "${RTEMP}/reads.txt"
         done
 
-        for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
+        # Graphs we like:
+        # empty snp1kg refonly shifted1kg cactus freebayes platypus samtools
+        for GRAPH in empty snp1kg refonly shifted1kg cactus freebayes platypus samtools; do
 
             # This holds all the temporary files for this graph for this region.
             TEMP="${RTEMP}/graph/${GRAPH}"
