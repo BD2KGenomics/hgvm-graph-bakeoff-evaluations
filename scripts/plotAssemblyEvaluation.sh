@@ -267,11 +267,11 @@ for REGION in  brca1 brca2; do
             printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
                 "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
                 
-            # Calculate an F1 score
-            F1_SCORE=$(echo " 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
+            # Calculate an inverse F1 score
+            F1_SCORE_INV=$(echo "1 - 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
             
             # Prepare the plot file for an F1 bar chart
-            printf "${GRAPH}\t${F1_SCORE}\n" >> \
+            printf "${GRAPH}\t${F1_SCORE_INV}\n" >> \
                 "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv"
             
         fi
@@ -322,8 +322,7 @@ for REGION in  brca1 brca2; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv" \
         --title "F1 score in ${REGION^^} ($PARAM_SET)" \
         --x_label "Graph" \
-        --y_label "F1" \
-        --min 0.992 --max 1 \
+        --y_label "1 - F1" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/F1-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -392,11 +391,11 @@ for GRAPH in "${!ALL_INSERT_BASES[@]}"; do
     printf "${GRAPH}\t${RECALL}\t${PRECISION}\n" >> \
         "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
         
-    # Calculate an F1 score
-    F1_SCORE=$(echo " 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
+    # Calculate an inverse F1 score
+    F1_SCORE_INV=$(echo "1 - 2 * ( ${PRECISION} * ${RECALL} ) / ( ${PRECISION} + ${RECALL} )" | bc -l)
     
     # Prepare the plot file for an F1 bar chart
-    printf "${GRAPH}\t${F1_SCORE}\n" >> \
+    printf "${GRAPH}\t${F1_SCORE_INV}\n" >> \
         "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv"
 
 done
@@ -447,8 +446,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv" \
     --title "F1 score overall ($PARAM_SET)" \
     --x_label "Graph" \
-    --y_label "F1" \
-    --min 0.992 --max 1 \
+    --y_label "1 - F1" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/F1-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
