@@ -78,6 +78,8 @@ def parse_args(args):
         help="use the pruned graph in the index")
     parser.add_argument("--include_primary", action="store_true",
         help="use the primary path in the index")
+    parser.add_argument("--serialize_downloads", action="store_true",
+        help="download and index graphs one at a time")
     
     
     # The command line arguments start with the program name, which we don't
@@ -152,6 +154,12 @@ def run_all_alignments(job, options):
     # Make sure we skip the header
     is_first = True
     
+    # We may want to run all the download-and-index jobs as children of this
+    # job, or we may want to run them ins erial, so as to not overload the
+    # location we're downloading from. So each next download job is added as a
+    # child of this one.
+    download_parent_job = job
+    
     for line in options.server_list:
         if is_first:
             # This is the header, skip it.
@@ -174,12 +182,21 @@ def run_all_alignments(job, options):
         # Pull out the first 3 fields
         region, url, generator = parts[0:3]
         
-        # We cleverly just split the lines out to different nodes
-        job.addChildJobFn(run_region_alignments, options, bin_dir_id, region,
-            url, cores=16, memory="100G", disk="50G")
+        # We cleverly just split the lines out to different nodes. We use
+        # follow-ons instead of children so we can keep things downloading one
+        # at a time if we're serializing downloads. These jobs add more follow-
+        # ons to themselves to actually do all the work after downloading, so
+        # everything should work out fine.
+        download_child_job = download_parent_job.addFollowOnJobFn(
+            run_region_alignments, options, bin_dir_id, region, url,
+            cores=16, memory="100G", disk="50G")
             
         # Say what we did
-        RealTimeLogger.get().info("Running child for {}".format(parts[1]))
+        RealTimeLogger.get().info("Adding downloader for {}".format(parts[1]))
+        
+        if options.serialize_downloads:
+            # The next download job needs to be a child of this download job
+            download_parent_job = download_child_job
         
 
 def run_region_alignments(job, options, bin_dir_id, region, url):
@@ -279,6 +296,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Nothing to align to {}".format(basename))
         return
     
+    
     # Where will the indexed graph go in the output
     index_key = "indexes/{}-{}-{}/{}/{}.tar.gz".format(options.index_mode,
         options.kmer_size, options.edge_max, region, graph_name)
@@ -301,8 +319,21 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Index for {} retrieved "
             "successfully".format(basename))
         
+        # We already have the index, so we can move straight on to the actual
+        # running of samples, after this job ends. Don't make them children as
+        # other jobs may be waiting on this download to finish.
+        RealTimeLogger.get().info("Queueing alignment of {} samples to "
+        "{} {}".format(len(samples_to_run), graph_name, region))
+            
+        job.addFollowOnJobFn(recursively_run_samples, options, bin_dir_id, 
+            graph_name, region, index_dir_id, samples_to_run,
+            cores=1, memory="4G", disk="4G")
+                
+        RealTimeLogger.get().info("Done making children for {}".format(basename))
+        
     else:
-        # Download the graph, build the index, and store it in the output store
+        # Download the graph, put it in the file store, and queue up a job to
+        # index it and then queue up children.
     
         # Work out where the graph goes
         # it will be graph.vg in here
@@ -402,197 +433,260 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # for them to be on disk and readable.
         time.sleep(1)
         
+        # Put graph in file store
+        graph_id = job.fileStore.writeGlobalFile(graph_filename)   
         
+        # Queue an indexing follow-on
+        job.addFollowOnJobFn(index_region_and_run_samples, options, bin_dir_id,
+            region, url, graph_id, samples_to_run,
+            cores=16, memory="100G", disk="50G")
         
-        # Now run the indexer.
-        # TODO: support both indexing modes
-        RealTimeLogger.get().info("Indexing {}".format(graph_filename))
+def index_region_and_run_samples(job, options, bin_dir_id, region, url,
+    graph_id, samples_to_run):
+    """
+    For a region whose graph has already been downloaded, create and save the
+    index.
+    """
+    
+    RealTimeLogger.get().info("Indexing {} for {}".format(url, region))
+    
+    # Set up the IO stores each time, since we can't unpickle them on Azure for
+    # some reason.
+    sample_store = IOStore.get(options.sample_store)
+    out_store = IOStore.get(options.out_store)
+    
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get
+        # either the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
         
-        if options.index_mode == "rocksdb":
-            # Make the RocksDB index
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
-                str(options.kmer_size), "-e", str(options.edge_max),
-                "-t", str(job.cores), graph_filename, "-d",
-                graph_filename + ".index"])
-                
-        elif (options.index_mode == "gcsa-kmer" or
-            options.index_mode == "gcsa-mem"):
-            # We want a GCSA2/xg index. We have to prune the graph ourselves.
-            # See <https://github.com/vgteam/vg/issues/286>.
+    # Work out where the graph goes
+    # it will be graph.vg in here
+    # This whole directory will get tar-ed up as an index tarball
+    graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
+    robust_makedirs(graph_dir)
+    
+    # Where will we keep the graph in that index tarball?"
+    graph_filename = "{}/graph.vg".format(graph_dir)
+    
+    # Parse the graph URL. It may be either an http(s) URL to a GA4GH server, or
+    # a direct file: URL to a vg graph.
+    url_parts = urlparse.urlparse(url, "file")
+    
+    # Either way, it has to include the graph base name, which we use to
+    # identify the graph, and which has to contain the region name (like brca2)
+    # and the graph type name (like cactus). For a server it's the last folder
+    # in the YURL, with a trailing slash, and for a file it's the name of the
+    # .vg file.
+    basename = re.match('.*/(.*)(/|\.vg)$', url_parts.path).group(1)
+        
+    # Get graph name (without region and its associated dash) from basename
+    graph_name = basename.replace("-{}".format(region), "").replace(
+        "{}-".format(region), "")
+    
+    # Download the graph
+    job.fileStore.readGlobalFile(graph_id, graph_filename)    
+        
+    # Now run the indexer.
+    # TODO: support both indexing modes
+    RealTimeLogger.get().info("Indexing {}".format(graph_filename))
+    
+    if options.index_mode == "rocksdb":
+        # Make the RocksDB index
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
+            str(options.kmer_size), "-e", str(options.edge_max),
+            "-t", str(job.cores), graph_filename, "-d",
+            graph_filename + ".index"])
             
-            # What will we use as our temp combined graph file (containing only
-            # the bits of the graph we want to index, used for deduplication)?
-            to_index_filename = "{}/to_index.vg".format(
-                job.fileStore.getLocalTempDir())
+    elif (options.index_mode == "gcsa-kmer" or
+        options.index_mode == "gcsa-mem"):
+        # We want a GCSA2/xg index. We have to prune the graph ourselves.
+        # See <https://github.com/vgteam/vg/issues/286>.
+        
+        # What will we use as our temp combined graph file (containing only
+        # the bits of the graph we want to index, used for deduplication)?
+        to_index_filename = "{}/to_index.vg".format(
+            job.fileStore.getLocalTempDir())
+        
+        # Where will we save the kmers?
+        kmers_filename = "{}/index.graph".format(
+            job.fileStore.getLocalTempDir())
             
-            # Where will we save the kmers?
-            kmers_filename = "{}/index.graph".format(
-                job.fileStore.getLocalTempDir())
-                
-            with open(to_index_filename, "w") as to_index_file:
-                
-                if options.include_pruned:
-                
-                    RealTimeLogger.get().info("Pruning {} to {}".format(
-                        graph_filename, to_index_filename))
-                    
-                    # Prune out hard bits of the graph
-                    tasks = []
-                    
-                    # Prune out complex regions
-                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                        "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
-                        "-e", str(options.edge_max), graph_filename],
-                        stdout=subprocess.PIPE))
-                        
-                    # Throw out short disconnected chunks
-                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                        "-S", "-l", str(options.kmer_size * 2),
-                        "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                        stdout=to_index_file))
-                        
-                    # Did we make it through all the tasks OK?
-                    for task in tasks:
-                        if task.wait() != 0:
-                            raise RuntimeError("Pipeline step returned {}".format(
-                                task.returncode))
-                                
-                    time.sleep(1)
-                    
-                if options.include_primary:
-                
-                    # Then append in the primary path. Since we don't knoiw what
-                    # "it's called, we retain "ref" and all the 19", "6", etc paths
-                    # "from 1KG.
-                    
-                    RealTimeLogger.get().info(
-                        "Adding primary path to {}".format(to_index_filename))
-                    
-                    # See
-                    # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
-                    
-                    # Generate all the paths names we might have for primary paths.
-                    # It should be "ref" but some graphs don't listen
-                    ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
-                        [str(x) for x in xrange(1, 23)])
-                        
-                    ref_options = []
-                    for name in ref_names:
-                        # Put each in a -r option to retain the path
-                        ref_options.append("-r")
-                        ref_options.append(name)
-
-                    tasks = []
-
-                    # Retain only the specified paths (only one should really exist)
-                    tasks.append(subprocess.Popen(
-                        ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
-                        ["-t", str(job.cores), graph_filename], 
-                        stdout=to_index_file))
-                        
-                    # TODO: if we merged the primary path back on itself, it's
-                    # possible for it to braid with itself. Right now we just ignore
-                    # this and let those graphs take a super long time to index.
-                        
-                    # Wait for this second pipeline. We don't parallelize with the
-                    # first one so we don't need to use an extra cat step.
-                    for task in tasks:
-                        if task.wait() != 0:
-                            raise RuntimeError("Pipeline step returned {}".format(
-                                task.returncode))
-                             
-                    # Wait to make sure no weird file-not-being-full bugs happen
-                    # TODO: how do I wait on child process output?
-                    time.sleep(1)
-                
-            time.sleep(1)
-                
-            # Now we have the combined to-index graph in one vg file. We'll load
-            # it (which deduplicates nodes/edges) and then find kmers.
-                
-            # Save the problematic file
-            out_store.write_output_file(to_index_filename,
-                "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
-                options.kmer_size, options.edge_max, region, graph_name))
-                
-            with open(kmers_filename, "w") as kmers_file:
+        with open(to_index_filename, "w") as to_index_file:
             
+            if options.include_pruned:
+            
+                RealTimeLogger.get().info("Pruning {} to {}".format(
+                    graph_filename, to_index_filename))
+                
+                # Prune out hard bits of the graph
                 tasks = []
                 
-                RealTimeLogger.get().info("Finding kmers in {} to {}".format(
-                    to_index_filename, kmers_filename))
-                
-                # Deduplicate the graph
-                # Discard warnings about duplicate nodes or edges
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "view", "-v", to_index_filename],
-                    stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb')))
-                
-                # Make the GCSA2 kmers file
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "kmers", "-g", "-B", "-k", str(options.kmer_size),
-                    "-H", "1000000000", "-T", "1000000001",
+                # Prune out complex regions
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
+                    "-e", str(options.edge_max), graph_filename],
+                    stdout=subprocess.PIPE))
+                    
+                # Throw out short disconnected chunks
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-S", "-l", str(options.kmer_size * 2),
                     "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                    stdout=kmers_file))
+                    stdout=to_index_file))
                     
                 # Did we make it through all the tasks OK?
-                task_number = 0
                 for task in tasks:
                     if task.wait() != 0:
-                        raise RuntimeError(
-                            "Pipeline step {} returned {}".format(
-                            task_number, task.returncode))
-                    task_number += 1
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
                             
+                time.sleep(1)
+                
+            if options.include_primary:
+            
+                # Then append in the primary path. Since we don't knoiw what
+                # "it's called, we retain "ref" and all the 19", "6", etc paths
+                # "from 1KG.
+                
+                RealTimeLogger.get().info(
+                    "Adding primary path to {}".format(to_index_filename))
+                
+                # See
+                # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
+                
+                # Generate all the paths names we might have for primary paths.
+                # It should be "ref" but some graphs don't listen
+                ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
+                    [str(x) for x in xrange(1, 23)])
+                    
+                ref_options = []
+                for name in ref_names:
+                    # Put each in a -r option to retain the path
+                    ref_options.append("-r")
+                    ref_options.append(name)
+
+                tasks = []
+
+                # Retain only the specified paths (only one should really exist)
+                tasks.append(subprocess.Popen(
+                    ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
+                    ["-t", str(job.cores), graph_filename], 
+                    stdout=to_index_file))
+                    
+                # TODO: if we merged the primary path back on itself, it's
+                # possible for it to braid with itself. Right now we just ignore
+                # this and let those graphs take a super long time to index.
+                    
+                # Wait for this second pipeline. We don't parallelize with the
+                # first one so we don't need to use an extra cat step.
+                for task in tasks:
+                    if task.wait() != 0:
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
+                         
                 # Wait to make sure no weird file-not-being-full bugs happen
                 # TODO: how do I wait on child process output?
                 time.sleep(1)
-                
-            time.sleep(1)
-                            
-            # Where do we put the GCSA2 index?
-            gcsa_filename = graph_filename + ".gcsa"
             
-            RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
-                    kmers_filename, gcsa_filename))
+        time.sleep(1)
             
-            # Make the gcsa2 index. Make sure to use 3 doubling steps to work
-            # around <https://github.com/vgteam/vg/issues/301>
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
-                str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
-                "-X", "3", "-Z", "2000"])
-                
-            # Where do we put the XG index?
-            xg_filename = graph_filename + ".xg"
+        # Now we have the combined to-index graph in one vg file. We'll load
+        # it (which deduplicates nodes/edges) and then find kmers.
             
-            RealTimeLogger.get().info("XG-indexing {} to {}".format(
-                    graph_filename, xg_filename))
-                    
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
-                str(job.cores), "-x", xg_filename, graph_filename])
+        # Save the intermediate vg file, in case we want to look at it
+        out_store.write_output_file(to_index_filename,
+            "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
+            options.kmer_size, options.edge_max, region, graph_name))
+            
+        with open(kmers_filename, "w") as kmers_file:
         
-        else:
-            raise RuntimeError("Invalid indexing mode: " + options.index_mode)
+            tasks = []
             
-        # Define a file to keep the compressed index in, so we can send it to
-        # the output store.
-        index_dir_tgz = "{}/index.tar.gz".format(
-            job.fileStore.getLocalTempDir())
+            RealTimeLogger.get().info("Finding kmers in {} to {}".format(
+                to_index_filename, kmers_filename))
             
-        # Now save the indexed graph directory to the file store. It can be
-        # cleaned up since only our children use it.
-        RealTimeLogger.get().info("Compressing index of {}".format(
-            graph_filename))
-        index_dir_id = write_global_directory(job.fileStore, graph_dir,
-            cleanup=True, tee=index_dir_tgz)
+            # Deduplicate the graph
+            # Discard warnings about duplicate nodes or edges
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                "view", "-v", to_index_filename],
+                stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb')))
             
-        # Save it as output
-        RealTimeLogger.get().info("Uploading index of {}".format(
-            graph_filename))
-        out_store.write_output_file(index_dir_tgz, index_key)
-        RealTimeLogger.get().info("Index {} uploaded successfully".format(
-            index_key))
+            # Make the GCSA2 kmers file
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                "kmers", "-g", "-B", "-k", str(options.kmer_size),
+                "-H", "1000000000", "-T", "1000000001",
+                "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                stdout=kmers_file))
+                
+            # Did we make it through all the tasks OK?
+            task_number = 0
+            for task in tasks:
+                if task.wait() != 0:
+                    raise RuntimeError(
+                        "Pipeline step {} returned {}".format(
+                        task_number, task.returncode))
+                task_number += 1
+                        
+            # Wait to make sure no weird file-not-being-full bugs happen
+            # TODO: how do I wait on child process output?
+            time.sleep(1)
             
+        time.sleep(1)
+                        
+        # Where do we put the GCSA2 index?
+        gcsa_filename = graph_filename + ".gcsa"
+        
+        RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
+                kmers_filename, gcsa_filename))
+        
+        # Make the gcsa2 index. Make sure to use 3 doubling steps to work
+        # around <https://github.com/vgteam/vg/issues/301>
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+            str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
+            "-X", "3", "-Z", "2000"])
+            
+        # Where do we put the XG index?
+        xg_filename = graph_filename + ".xg"
+        
+        RealTimeLogger.get().info("XG-indexing {} to {}".format(
+                graph_filename, xg_filename))
+                
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+            str(job.cores), "-x", xg_filename, graph_filename])
+    
+    else:
+        raise RuntimeError("Invalid indexing mode: " + options.index_mode)
+        
+    # Define a file to keep the compressed index in, so we can send it to
+    # the output store.
+    index_dir_tgz = "{}/index.tar.gz".format(
+        job.fileStore.getLocalTempDir())
+        
+    # Now save the indexed graph directory to the file store. It can be
+    # cleaned up since only our children use it.
+    RealTimeLogger.get().info("Compressing index of {}".format(
+        graph_filename))
+    index_dir_id = write_global_directory(job.fileStore, graph_dir,
+        cleanup=True, tee=index_dir_tgz)
+        
+    # Where will the indexed graph go in the output
+    index_key = "indexes/{}-{}-{}/{}/{}.tar.gz".format(options.index_mode,
+        options.kmer_size, options.edge_max, region, graph_name)
+        
+    # Save it as output
+    RealTimeLogger.get().info("Uploading index of {}".format(
+        graph_filename))
+    out_store.write_output_file(index_dir_tgz, index_key)
+    RealTimeLogger.get().info("Index {} uploaded successfully".format(
+        index_key))
+        
+        
+    # Now that we have the index, make the actual alignment children.        
     RealTimeLogger.get().info("Queueing alignment of {} samples to "
         "{} {}".format(len(samples_to_run), graph_name, region))
             
