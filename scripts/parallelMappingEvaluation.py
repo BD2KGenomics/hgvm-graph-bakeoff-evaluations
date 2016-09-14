@@ -154,11 +154,11 @@ def run_all_alignments(job, options):
     # Make sure we skip the header
     is_first = True
     
-    # We may want to run all the download-and-index jobs as children of this
-    # job, or we may want to run them ins erial, so as to not overload the
+    # We may want to run all the download-and-index jobs as follow-ons of this
+    # job, or we may want to run them in serial, so as to not overload the
     # location we're downloading from. So each next download job is added as a
-    # child of this one.
-    download_parent_job = job
+    # follow on of this one.
+    download_predecessor_job = job
     
     for line in options.server_list:
         if is_first:
@@ -182,12 +182,8 @@ def run_all_alignments(job, options):
         # Pull out the first 3 fields
         region, url, generator = parts[0:3]
         
-        # We cleverly just split the lines out to different nodes. We use
-        # follow-ons instead of children so we can keep things downloading one
-        # at a time if we're serializing downloads. These jobs add more follow-
-        # ons to themselves to actually do all the work after downloading, so
-        # everything should work out fine.
-        download_child_job = download_parent_job.addFollowOnJobFn(
+        # We cleverly just split the lines out to different nodes.
+        download_successor_job = download_predecessor_job.addFollowOnJobFn(
             run_region_alignments, options, bin_dir_id, region, url,
             cores=16, memory="100G", disk="50G")
             
@@ -195,8 +191,8 @@ def run_all_alignments(job, options):
         RealTimeLogger.get().info("Adding downloader for {}".format(parts[1]))
         
         if options.serialize_downloads:
-            # The next download job needs to be a child of this download job
-            download_parent_job = download_child_job
+            # The next download job needs to be a follow-on of this download job
+            download_predecessor_job = download_successor_job
         
 
 def run_region_alignments(job, options, bin_dir_id, region, url):
