@@ -768,7 +768,12 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
             # If the alignment exists and is OK, we can skip the alignment
             
             mtime = out_store.get_mtime(stats_file_key)
-            if mtime is None or mtime < options.too_old or options.restat:
+            if (mtime is None or
+                (options.too_old is not None and mtime < options.too_old) or
+                options.restat):
+                # Stats file doesn't exist, or it exists and is older than it
+                # needs to be, or we decided to restat everybody.
+                
                 # All we need to do for this sample is run stats
                 RealTimeLogger.get().info("Queueing stat recalculation"
                     " of {} on {} {}".format(sample, graph_name, region))
@@ -1080,6 +1085,29 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         # Parse the alignment JSON
         alignment = json.loads(line)
         
+        if alignment.get("is_secondary", False):
+            # It's a multimapping.
+            
+            if (last_alignment is None or 
+                last_alignment.get("name") != alignment.get("name") or 
+                last_alignment.get("is_secondary", False)):
+            
+                # This is a secondary alignment without a corresponding primary
+                # alignment (which would have to be right before it in GAM
+                # format with up to 2 mappings per read)
+                raise RuntimeError("{} secondary alignment comes after "
+                    "alignment of {} instead of corresponding primary "
+                    "alignment\n".format(alignment.get("name"), 
+                    last_alignment.get("name") if last_alignment is not None 
+                    else "nothing"))
+                    
+            if alignment.get("path", {}) == last_alignment.get("path", {}):
+                # This secondary takes the same path as the primary, so we don't
+                # want to consider it as a separate alignment. It's just there
+                # to even things up for the secondary alignment of the other end
+                # of the read.
+                continue
+        
         # How long is this read?
         length = len(alignment["sequence"])
         
@@ -1233,19 +1261,6 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
                 # multimapped read.
-                
-                if (last_alignment is None or 
-                    last_alignment.get("name") != alignment.get("name") or 
-                    last_alignment.get("is_secondary", False)):
-                
-                    # This is a secondary alignment without a corresponding primary
-                    # alignment (which would have to be right before it given the
-                    # way vg dumps buffers
-                    raise RuntimeError("{} secondary alignment comes after "
-                        "alignment of {} instead of corresponding primary "
-                        "alignment\n".format(alignment.get("name"), 
-                        last_alignment.get("name") if last_alignment is not None 
-                        else "nothing"))
                 
                 # Log its stats as multimapped
                 stats["total_multimapped"] += 1
