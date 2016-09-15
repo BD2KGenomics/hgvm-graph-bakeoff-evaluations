@@ -216,8 +216,16 @@ def collate_region(job, options, region):
                     (stats["primary_substitutions"].get(str(x), 0)
                     for x in xrange(1)))
                     
-                
+                # What's the total matches per column for primary mappings
+                total_matches_per_column = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_matches_per_column"].iteritems()))
                     
+                # What's the total score?
+                total_score = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_score"].iteritems()))
+                
                 # How many reads are there overall for this sample?
                 total_reads = stats["total_reads"]
                 
@@ -265,6 +273,14 @@ def collate_region(job, options, region):
                 # And the portion with no substitutions
                 sample_stats["portion_no_substitutions"] = \
                     (total_no_substitutions / float(total_reads))
+                # What's the average matches per column for primary alignments
+                # for reads that actually aligned?
+                sample_stats["mean_matches_per_column"] = \
+                    (total_matches_per_column / float(total_mapped_at_all))
+                # What's the average score for primary alignments of reads that
+                # actually aligned?
+                sample_stats["mean_score"] = \
+                    (total_score / float(total_mapped_at_all))
                 # What was the runtime?
                 sample_stats["runtime"] = runtime
                 
@@ -369,7 +385,10 @@ def collate_region(job, options, region):
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
                 region),
             "indel_rate": "plots/{}/indelrate.{}.tsv".format(mode,
-                region)
+                region),
+            "mean_matches_per_column": "plots/{}/matches.{}.tsv".format(mode,
+                region),
+            "mean_score": "plots/{}/score.{}.tsv".format(mode, region)
         }
         
         # Make a local temp file for each (dict from stat name to file object
