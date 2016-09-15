@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -121,8 +121,10 @@ do
     OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.${PLOT_FILETYPE}"
     OVERALL_PERFECT_FILE="${PLOTS_DIR}/perfect.tsv"
     OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.${PLOT_FILETYPE}"
-    OVERALL_SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.tsv"
-    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
+    OVERALL_SINGLE_MAPPING_WELL_FILE="${PLOTS_DIR}/singlemapping.tsv"
+    OVERALL_SINGLE_MAPPING_WELL_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
+    OVERALL_SINGLE_MAPPING_AT_ALL_FILE="${PLOTS_DIR}/singlemappingatall.tsv"
+    OVERALL_SINGLE_MAPPING_AT_ALL_PLOT="${PLOTS_DIR}/${MODE}-singlemappingatall.ALL.${PLOT_FILETYPE}"
 
     for REGION in `ls ${PLOTS_DIR}/mapping.*.tsv | xargs -n 1 basename | sed 's/mapping.\(.*\).tsv/\1/'`
     do
@@ -133,8 +135,10 @@ do
         MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.${PLOT_FILETYPE}"
         PERFECT_FILE="${PLOTS_DIR}/perfect.${REGION}.tsv"
         PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.${PLOT_FILETYPE}"
-        SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
-        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
+        SINGLE_MAPPING_WELL_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
+        SINGLE_MAPPING_WELL_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
+        SINGLE_MAPPING_AT_ALL_FILE="${PLOTS_DIR}/singlemappingatall.${REGION}.tsv"
+        SINGLE_MAPPING_AT_ALL_PLOT="${PLOTS_DIR}/${MODE}-singlemappingatall.${REGION}.${PLOT_FILETYPE}"
         ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
         ANY_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-anymapping.${REGION}.${PLOT_FILETYPE}"
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
@@ -160,7 +164,7 @@ do
         # overall files and make the plots.
         
         ./scripts/boxplot.py "${MAPPING_FILE}" \
-            --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
@@ -181,15 +185,22 @@ do
             SINGLE_MAPPING_MIN=0.8
         fi
             
-        ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
-            --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_PLOT}" \
+        ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
+            --title "$(printf "Uniquely mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
             --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
+        ./scripts/boxplot.py "${SINGLE_MAPPING_AT_ALL_FILE}" \
+            --title "$(printf "Uniquely mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_AT_ALL_PLOT}" \
+            --x_sideways --hline_median refonly \
+            --range --sparse_ticks --sparse_axes \
+            "${PLOT_PARAMS[@]}"
+            
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
-            --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
@@ -275,10 +286,7 @@ do
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
-        if [ "${REGION^^}" == "BRCA2" ]
-        then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.915 --min_y 0.74 --max_x 0.930 --max_y 0.80"
-        elif [ "${REGION^^}" == "MHC" ]
+        if [ "${REGION^^}" == "MHC" ]
         then
             PERFECT_UNIQUE_LIMITS="--min_x 0.75 --min_y 0.55 --max_x 0.9 --max_y 0.75"
         else
@@ -301,11 +309,12 @@ do
     # Aggregate the overall files
     cat "${PLOTS_DIR}"/mapping.*.tsv > "${OVERALL_MAPPING_FILE}"
     cat "${PLOTS_DIR}"/perfect.*.tsv > "${OVERALL_PERFECT_FILE}"
-    cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_FILE}"
+    cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_WELL_FILE}"
+    cat "${PLOTS_DIR}"/singlemappingatall.*.tsv > "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}"
 
     # Make the overall plots
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
-        --title "$(printf "Mapped (<=2 mismatches)\nreads (${MODE})")" \
+        --title "$(printf "Mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         --x_sideways  --hline_median trivial \
         --range --sparse_ticks --sparse_axes \
@@ -318,9 +327,16 @@ do
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
-        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
-        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
+    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_WELL_FILE}" \
+        --title "$(printf "Uniquely mapped (0.98 match)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
+        --x_sideways --hline_median refonly \
+        --range --sparse_ticks --sparse_axes \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}" \
+        --title "$(printf "Uniquely mapped (any number of matches)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_AT_ALL_PLOT}" \
         --x_sideways --hline_median refonly \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"

@@ -171,13 +171,17 @@ def collate_region(job, options, region):
                 total_mapped_well = sum((
                     stats["primary_matches_per_column"].get(x)
                     for x in stats["primary_matches_per_column"].iterkeys()
-                    if float(x) > 0.95))
+                    if float(x) >= 0.98))
                     
                 # How many reads are multimapped well enough?
-                total_multimapped = sum((
+                total_multimapped_well = sum((
                     stats["secondary_matches_per_column"].get(x)
                     for x in stats["secondary_matches_per_column"].iterkeys()
-                    if float(x) > 0.95))
+                    if float(x) >= 0.98))
+                # How many reads multimapped at all?
+                total_multimapped_at_all = sum((
+                    stats["secondary_matches_per_column"].get(x)
+                    for x in stats["secondary_matches_per_column"].iterkeys()))
                     
                 # How many reads are perfect?
                 total_perfect = sum((
@@ -255,9 +259,14 @@ def collate_region(job, options, region):
                 # Get the dict we want to put the computed stats in
                 sample_stats = stats_cache[graph][sample_name]
                 
-                # What portion are single-mapped?
-                sample_stats["portion_single_mapped"] = (total_mapped_well - 
-                    total_multimapped) / float(total_reads)
+                # What portion have one good mapping?
+                sample_stats["portion_single_mapped_well"] = \
+                    ((total_mapped_well - total_multimapped_well) / 
+                    float(total_reads))
+                # What portion only have one mapping at all?
+                sample_stats["portion_single_mapped_at_all"] = \
+                    ((total_mapped_at_all - total_multimapped_at_all) / 
+                    float(total_reads))
                 # What portion are mapped well?
                 sample_stats["portion_mapped_well"] = (total_mapped_well /
                     float(total_reads))
@@ -387,8 +396,10 @@ def collate_region(job, options, region):
             "portion_mapped_well": "plots/{}/mapping.{}.tsv".format(mode,
                 region),
             "portion_perfect": "plots/{}/perfect.{}.tsv".format(mode, region),
-            "portion_single_mapped": "plots/{}/singlemapping.{}.tsv".format(
-                mode, region),
+            "portion_single_mapped_well":
+                "plots/{}/singlemapping.{}.tsv".format(mode, region),
+            "portion_single_mapped_at_all":
+                "plots/{}/singlemappingatall.{}.tsv".format(mode, region),
             "portion_mapped_at_all": "plots/{}/anymapping.{}.tsv".format(mode,
                 region),
             "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
@@ -454,7 +465,7 @@ def collate_region(job, options, region):
                 
                 # Get the prefect and unique stats
                 perfect = stats_by_name["portion_perfect"]
-                unique = stats_by_name["portion_single_mapped"]
+                unique = stats_by_name["portion_single_mapped_well"]
                 
                 all_perfect.append(perfect)
                 all_unique.append(unique)
