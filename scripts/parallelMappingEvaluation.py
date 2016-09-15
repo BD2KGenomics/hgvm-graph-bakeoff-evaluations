@@ -80,6 +80,8 @@ def parse_args(args):
         help="use the primary path in the index")
     parser.add_argument("--serialize_downloads", action="store_true",
         help="download and index graphs one at a time")
+    parser.add_argument("--min_gam_size", type=int, default=1024, 
+        help="minimum size of a legitimate GAM file to accept")
     
     
     # The command line arguments start with the program name, which we don't
@@ -255,16 +257,40 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # See if every file is a stats file
         match = re.match("(.*)\.json$", filename)
     
-        if match and (options.too_old is None or mtime > options.too_old):
-            # We found a sample's stats file, and it's new enough.
-            completed_samples[match.group(1)] = mtime
+        if not match:
+            # Skip random extra files
+            continue
         
-        if match and (options.too_old is not None and mtime < options.too_old):
-            # Say we hit an mtime thing
-            RealTimeLogger.get().info("Need to re-run {} because "
-                "{} < {}".format(match.group(1), mtime.ctime(),
-                options.too_old.ctime()))
-            
+        # Get the size of the corresponding GAM, if it exists
+        gam_size = out_store.get_size("{}/{}.gam".format(alignment_dir,
+            match.group(1)))
+    
+        if gam_size is None or gam_size < options.min_gam_size:
+            # Something went wrong and produced a tiny GAM. We need to rerun
+            # this sample even if the GAM is new enough.
+            RealTimeLogger.get().warning(
+                "Need to re-run {} because GAM is too small ({})!".format(
+                match.group(1), gam_size))
+            continue
+    
+        if options.too_old is not None:
+            if mtime < options.too_old:
+                # Say we hit an mtime thing
+                RealTimeLogger.get().info("Need to re-run {} because "
+                    "{} < {}".format(match.group(1), mtime.ctime(),
+                    options.too_old.ctime()))
+                
+                # Rerun the sample. Don't mark it complete
+                continue
+            else:
+                # This stats file was modified recently enough. Don't redo it
+                # Mark the sample as already complete        
+                completed_samples[match.group(1)] = mtime
+        else:
+            # If no too-old time is specified, mark samples that aren't broken
+            # for other reasons complete.
+            completed_samples[match.group(1)] = mtime
+                
     RealTimeLogger.get().info("Already have {}/{} completed samples for {} in "
         "{}".format(len(completed_samples), len(input_samples), basename,
         stats_dir))
@@ -880,7 +906,12 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     
     # Also we need the sample fastq
     fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
+    RealTimeLogger.get().info("Downloading FASTQ {} to {}".format(
+        sample_fastq_key, fastq_file))
     sample_store.read_input_file(sample_fastq_key, fastq_file)
+    
+    # The FASTQ really should not be empty
+    assert(os.stat(fastq_file).st_size > 0)
     
     # And a temp file for our aligner output
     output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())

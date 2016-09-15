@@ -38,9 +38,9 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to find stats files in (under /stats)")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put collated plotting files in (under /plots)")
     parser.add_argument("--blacklist", action="append", default=[],
         help="ignore the specified region:graph pairs")
@@ -224,10 +224,18 @@ def collate_region(job, options, region):
                 # What's the total score?
                 total_score = sum((count * float(weight)
                     for weight, count in 
-                    stats["primary_score"].iteritems()))
+                    stats["primary_scores"].iteritems()))
                 
                 # How many reads are there overall for this sample?
                 total_reads = stats["total_reads"]
+                
+                # If no reads got aligned, the sample is broken and we want to
+                # skip it (and make the user fix it).
+                if total_reads == 0:
+                    RealTimeLogger.get().warning(
+                        "No reads available for {} {} {}".format(
+                        region, graph, sample_name))
+                    continue
                 
                 # How many reads are mapped at all for this sample (not just good
                 # enough)?
@@ -273,14 +281,24 @@ def collate_region(job, options, region):
                 # And the portion with no substitutions
                 sample_stats["portion_no_substitutions"] = \
                     (total_no_substitutions / float(total_reads))
-                # What's the average matches per column for primary alignments
-                # for reads that actually aligned?
-                sample_stats["mean_matches_per_column"] = \
-                    (total_matches_per_column / float(total_mapped_at_all))
-                # What's the average score for primary alignments of reads that
-                # actually aligned?
-                sample_stats["mean_score"] = \
-                    (total_score / float(total_mapped_at_all))
+                
+                if total_mapped_at_all > 0:
+                    # Some things we want to divide by the mapped reads
+                
+                    # What's the average matches per column for primary alignments
+                    # for reads that actually aligned?
+                    sample_stats["mean_matches_per_column"] = \
+                        (total_matches_per_column / float(total_mapped_at_all))
+                    # What's the average score for primary alignments of reads that
+                    # actually aligned?
+                    sample_stats["mean_score"] = \
+                        (total_score / float(total_mapped_at_all))
+                else:
+                    # If no reads actually mapped we can just put 0
+                    
+                    sample_stats["mean_matches_per_column"] = 0
+                    sample_stats["mean_score"] = 0
+                    
                 # What was the runtime?
                 sample_stats["runtime"] = runtime
                 

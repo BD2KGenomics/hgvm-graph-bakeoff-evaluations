@@ -392,7 +392,16 @@ class IOStore(object):
         
     def get_mtime(self, path):
         """
-        Returns the modification time of the given gile if it exists, or None
+        Returns the modification time of the given file if it exists, or None
+        otherwise.
+        
+        """
+        
+        raise NotImplementedError()
+        
+    def get_size(self, path):
+        """
+        Returns the size in bytes of the given file if it exists, or None
         otherwise.
         
         """
@@ -712,6 +721,19 @@ class FileIOStore(IOStore):
             
         # Return the modification time, timezoned, in UTC
         return mtime_datetime
+        
+    def get_size(self, path):
+        """
+        Returns the size in bytes of the given file if it exists, or None
+        otherwise.
+        
+        """
+        
+        if not self.exists(path):
+            return None
+            
+        # Return the size in bytes of the backing file
+        return os.stat(os.path.join(self.path_prefix, path)).st_size
 
 class BackoffError(RuntimeError):
     """
@@ -1053,6 +1075,41 @@ class AzureIOStore(IOStore):
                             tzinfo=dateutil.tz.tzutc())
                             
                     return mtime
+                
+            # Save the marker
+            marker = result.next_marker
+                
+            if not marker:
+                break 
+        
+        return None
+        
+    @backoff        
+    def get_size(self, path):
+        """
+        Returns the size in bytes of the given blob if it exists, or None
+        otherwise.
+        
+        """
+        
+        self.__connect()
+        
+        marker = None
+        
+        while True:
+        
+            # Get the results from Azure.
+            result = self.connection.list_blobs(self.container_name, 
+                prefix=self.name_prefix + path, marker=marker)
+                
+            for blob in result:
+                # Look at each blob
+                
+                if blob.name == self.name_prefix + path:
+                    # Found it
+                    size = blob.properties.content_length
+                    
+                    return size
                 
             # Save the marker
             marker = result.next_marker
