@@ -1,66 +1,66 @@
 region	url	algorithm	source	contributor	updated_yyyy-mm-dd
-brca1	http://ga4gh-test1.cloudapp.net/trivial-brca1/	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
-brca2	http://ga4gh-test1.cloudapp.net/trivial-brca2/	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
-sma	http://ga4gh-test1.cloudapp.net/trivial-sma/	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
-lrc_kir	http://ga4gh-test1.cloudapp.net/trivial-lrc_kir/	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
-mhc	http://ga4gh-test1.cloudapp.net/trivial-mhc/	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
-brca1	http://ga4gh-test1.cloudapp.net/refonly-brca1/	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
-brca2	http://ga4gh-test1.cloudapp.net/refonly-brca2/	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
-sma	http://ga4gh-test1.cloudapp.net/refonly-sma/	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
-lrc_kir	http://ga4gh-test1.cloudapp.net/refonly-lrc_kir/	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
-mhc	http://ga4gh-test1.cloudapp.net/refonly-mhc/	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
-brca1	http://ga4gh-test1.cloudapp.net/cactus-brca1/	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
-brca2	http://ga4gh-test1.cloudapp.net/cactus-brca2/	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
-sma	http://ga4gh-test1.cloudapp.net/cactus-sma/	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
-lrc_kir	http://ga4gh-test1.cloudapp.net/cactus-lrc_kir/	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
-mhc	http://ga4gh-test1.cloudapp.net/cactus-mhc/	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-23
-brca1	http://ga4gh-test1.cloudapp.net/camel-brca1/	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-23
-brca2	http://ga4gh-test1.cloudapp.net/camel-brca2/	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
-sma	http://ga4gh-test1.cloudapp.net/camel-sma/	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-23
-lrc_kir	http://ga4gh-test1.cloudapp.net/camel-lrc_kir/	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
-mhc	http://ga4gh-test1.cloudapp.net/camel-mhc/	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
-brca1	http://ga4gh-test1.cloudapp.net/curoverse-brca1/	curoverse	GRCh38	abram@curoverse.com	2015-09-18
-brca2	http://ga4gh-test1.cloudapp.net/curoverse-brca2/	curoverse	GRCh38	abram@curoverse.com	2015-09-18
-cenx	http://ga4gh-test1.cloudapp.net/cenx-level1/	karen	GRCh38_refonly	khmiga@soe.ucsc.edu	2015-07-31
-#cenx	http://ga4gh-test1.cloudapp.net/cenx-level2/	karen	?	khmiga@soe.ucsc.edu	2015-08-31
-cenx	http://ga4gh-test1.cloudapp.net/cenx-level3/	karen	?	khmiga@soe.ucsc.edu	2015-09-09
-brca1	http://ga4gh-test1.cloudapp.net/debruijn-brca1-k31/	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-brca1	http://ga4gh-test1.cloudapp.net/debruijn-brca1-k63/	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-brca2	http://ga4gh-test1.cloudapp.net/debruijn-brca2-k31/	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-brca2	http://ga4gh-test1.cloudapp.net/debruijn-brca2-k63/	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-sma	http://ga4gh-test1.cloudapp.net/debruijn-sma-k31/	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-sma	http://ga4gh-test1.cloudapp.net/debruijn-sma-k63/	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-mhc	http://ga4gh-test1.cloudapp.net/debruijn-mhc-k31/	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-mhc	http://ga4gh-test1.cloudapp.net/debruijn-mhc-k63/	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-lrc_kir	http://ga4gh-test1.cloudapp.net/debruijn-lrc_kir-k31/	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-lrc_kir	http://ga4gh-test1.cloudapp.net/debruijn-lrc_kir-k63/	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
-brca1	http://ga4gh-test1.cloudapp.net/prg-brca1/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
-brca2	http://ga4gh-test1.cloudapp.net/prg-brca2/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
-sma	http://ga4gh-test1.cloudapp.net/prg-sma/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
-lrc_kir	http://ga4gh-test1.cloudapp.net/prg-lrc_kir/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-11-18
-mhc	http://ga4gh-test1.cloudapp.net/prg-mhc/	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-10
-brca1	http://ga4gh-test1.cloudapp.net/simons-brca1/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
-brca2	http://ga4gh-test1.cloudapp.net/simons-brca2/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
-sma	http://ga4gh-test1.cloudapp.net/simons-sma/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
-mhc	http://ga4gh-test1.cloudapp.net/simons-mhc/	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
-brca1	http://ga4gh-test1.cloudapp.net/sbg-brca1/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-brca2	http://ga4gh-test1.cloudapp.net/sbg-brca2/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-sma	http://ga4gh-test1.cloudapp.net/sbg-sma/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-lrc_kir	http://ga4gh-test1.cloudapp.net/sbg-lrc_kir/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-mhc	http://ga4gh-test1.cloudapp.net/sbg-mhc/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-cenx	http://ga4gh-test1.cloudapp.net/sbg-cenx/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-#cenx	http://ga4gh-test1.cloudapp.net/sbg-cenx-25r/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-#cenx	http://ga4gh-test1.cloudapp.net/sbg-cenx-2r/	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
-brca1	http://ga4gh-test1.cloudapp.net/vglr-brca1/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-brca2	http://ga4gh-test1.cloudapp.net/vglr-brca2/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-sma	http://ga4gh-test1.cloudapp.net/vglr-sma/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-lrc_kir	http://ga4gh-test1.cloudapp.net/vglr-lrc_kir/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-mhc	http://ga4gh-test1.cloudapp.net/vglr-mhc/	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
-brca1	http://ga4gh-test1.cloudapp.net/shifted1kg-brca1/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
-brca2	http://ga4gh-test1.cloudapp.net/shifted1kg-brca2/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
-sma	http://ga4gh-test1.cloudapp.net/shifted1kg-sma/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
-lrc_kir	http://ga4gh-test1.cloudapp.net/shifted1kg-lrc_kir/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
-mhc	http://ga4gh-test1.cloudapp.net/shifted1kg-mhc/	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/trivial-brca1.vg	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/trivial-brca2.vg	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/trivial-sma.vg	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/trivial-lrc_kir.vg	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/trivial-mhc.vg	trivial	GRCh38	maciek@soe.ucsc.edu	2015-08-04
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/refonly-brca1.vg	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/refonly-brca2.vg	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/refonly-sma.vg	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/refonly-lrc_kir.vg	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/refonly-mhc.vg	trivial	GRCh38_refonly	maciek@soe.ucsc.edu	2015-08-04
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/cactus-brca1.vg	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/cactus-brca2.vg	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/cactus-sma.vg	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/cactus-lrc_kir.vg	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-20
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/cactus-mhc.vg	cactus	GRCh38	glenn.hickey@gmail.com	2015-07-23
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/camel-brca1.vg	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-23
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/camel-brca2.vg	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/camel-sma.vg	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-23
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/camel-lrc_kir.vg	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/camel-mhc.vg	camel	GRCh38	anovak@soe.ucsc.edu	2015-07-20
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/curoverse-brca1.vg	curoverse	GRCh38	abram@curoverse.com	2015-09-18
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/curoverse-brca2.vg	curoverse	GRCh38	abram@curoverse.com	2015-09-18
+cenx	https://hgwdev.sdsc.edu/~anovak/graphs/cenx-level1.vg	karen	GRCh38_refonly	khmiga@soe.ucsc.edu	2015-07-31
+#cenx	https://hgwdev.sdsc.edu/~anovak/graphs/cenx-level2.vg	karen	?	khmiga@soe.ucsc.edu	2015-08-31
+cenx	https://hgwdev.sdsc.edu/~anovak/graphs/cenx-level3.vg	karen	?	khmiga@soe.ucsc.edu	2015-09-09
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-brca1-k31.vg	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-brca1-k63.vg	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-brca2-k31.vg	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-brca2-k63.vg	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-sma-k31.vg	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-sma-k63.vg	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-mhc-k31.vg	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-mhc-k63.vg	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-lrc_kir-k31.vg	debruijn_31k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/debruijn-lrc_kir-k63.vg	debruijn_63k	GRCh38	akahles@cbio.mskcc.org	2015-11-05
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/prg-brca1.vg	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/prg-brca2.vg	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/prg-sma.vg	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-14
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/prg-lrc_kir.vg	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-11-18
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/prg-mhc.vg	prg	GRCh38	jerome.kelleher@well.ox.ac.uk	2015-09-10
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/simons-brca1.vg	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/simons-brca2.vg	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2016-01-08
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/simons-sma.vg	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/simons-mhc.vg	vg	GRCh37 ref + simons VCFs	glenn.hickey@gmail.com	2015-12-21
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-brca1.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-brca2.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-sma.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-lrc_kir.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-mhc.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+cenx	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-cenx.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+#cenx	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-cenx-25r.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+#cenx	https://hgwdev.sdsc.edu/~anovak/graphs/sbg-cenx-2r.vg	sbg	GRCh38	goran.rakocevic@sbgenomics.com	2015-11-05
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/vglr-brca1.vg	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/vglr-brca2.vg	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/vglr-sma.vg	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/vglr-lrc_kir.vg	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/vglr-mhc.vg	vg	GRCh38	glenn.hickey@gmail.com	2015-11-06
+brca1	https://hgwdev.sdsc.edu/~anovak/graphs/shifted1kg-brca1.vg	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
+brca2	https://hgwdev.sdsc.edu/~anovak/graphs/shifted1kg-brca2.vg	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2016-01-08
+sma	https://hgwdev.sdsc.edu/~anovak/graphs/shifted1kg-sma.vg	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/shifted1kg-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
+mhc	https://hgwdev.sdsc.edu/~anovak/graphs/shifted1kg-mhc.vg	vg	GRCh38 ref + 1000g VCFs	srblum@ucsc.edu	2015-12-21
 brca1	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_kp-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 brca2	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_kp-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 sma	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_kp-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
