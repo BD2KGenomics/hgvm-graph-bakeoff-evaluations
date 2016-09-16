@@ -42,6 +42,11 @@ def parse_args(args):
                         help="options for vg filter")
     parser.add_argument("--gam_view", action="store_true",
                         help="use vg view -A to view gams (instead of embedding as paths)")
+    parser.add_argument("--snp_only", action="store_true",
+                        help="only snps")
+    parser.add_argument("--indel_only", action="store_true",
+                        help="only indels")
+
     args = args[1:]
         
     return parser.parse_args(args)
@@ -88,6 +93,8 @@ def main(args):
     if not os.path.isdir(options.out_dir):
         os.makedirs(options.out_dir)
 
+    assert not options.snp_only or not options.indel_only
+
     # make the xg index in our output folder
     xg_path = os.path.join(options.out_dir, os.path.basename(options.vg_path) + ".xg")
     index_graph(options.vg_path, xg_path)
@@ -96,7 +103,7 @@ def main(args):
     vcf_path = os.path.join(options.out_dir, os.path.basename(options.vcf_path))
     if options.delta is not None:
         tmp_path = vcf_path + ".pre_delta"
-        run("scripts/vcfDelta.py {} {} > {}".format(options.vcf_path, options.delta, tmp_path))
+        run("scripts/vcfDelta.py {} {} -p > {}".format(options.vcf_path, options.delta, tmp_path))
         run("bgzip -f {}".format(tmp_path))
         run("tabix -f -p vcf {}.gz".format(tmp_path))
         input_vcf = tmp_path + ".gz"
@@ -105,6 +112,10 @@ def main(args):
     cmd = "bcftools view {}".format(input_vcf)
     if options.clip is not None:
         cmd += " -R {}".format(options.clip)
+    if options.snp_only is True:
+        cmd += " -v snps,mnps"
+    if options.indel_only is True:
+        cmd += " -V snps,mnps"        
     if options.qual is not None:
         cmd += " | vcfFilterQuality.py - {}".format(options.qual)
     run(cmd + " > {}".format(vcf_path))

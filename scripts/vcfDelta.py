@@ -21,6 +21,8 @@ def parse_args(args):
                         help="Do vcf2 - vcf1 instead of vcf1 - vcf2")
     parser.add_argument("-a", action="store_true", default=False,
                         help="Do intersection of vcf1 AND vcf2")
+    parser.add_argument("-p", action="store_true", default=False,
+                        help="Compare by position only")
         
     args = args[1:]
     options = parser.parse_args(args)
@@ -44,8 +46,8 @@ def main(args):
 
     os.system("tabix -p vcf {}".format(vcf1))
     os.system("tabix -p vcf {}".format(vcf2))
-
-    os.system("bcftools isec {} {} -p vcfd_".format(vcf1, vcf2))
+    isec_opts = "-c all" if options.p is True else ""
+    os.system("bcftools isec {} {} {} -p vcfd_".format(vcf1, vcf2, isec_opts))
 
     if options.a:
         os.system("cat vcfd_/0002.vcf")
