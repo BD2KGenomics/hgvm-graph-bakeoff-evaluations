@@ -102,12 +102,12 @@ do
     
     # We want to write different axis labels in different modes
     PORTION="Portion"
-    SECONDS=" (seconds)"
+    SECONDS_WORD=" (seconds)"
     RATE="rate"
     if [ "${MODE}" == "normalized" ]
     then
         PORTION="Relative portion"
-        SECONDS=" (relative)"
+        SECONDS_WORD=" (relative)"
         RATE=" relative rate"
     fi
 
@@ -177,18 +177,10 @@ do
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
-        if [ "${HR_REGION}" == "CENX" ]
-        then
-            # There's hardly any single mapping in CENX, so we need to go down all the way.
-            SINGLE_MAPPING_MIN=0
-        else
-            SINGLE_MAPPING_MIN=0.8
-        fi
-            
         ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
             --title "$(printf "Uniquely mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
-            --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
+            --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
@@ -208,7 +200,7 @@ do
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Runtime per read${SECONDS}" --save "${RUNTIME_PLOT}" \
+            --x_label "Graph" --y_label "Runtime per read${SECONDS_WORD}" --save "${RUNTIME_PLOT}" \
             --x_sideways --max_max 0.006 \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"

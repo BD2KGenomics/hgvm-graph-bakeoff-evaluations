@@ -764,34 +764,21 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
         stats_file_key = "{}/{}.json".format(stats_dir, sample)
         
-        if (not options.overwrite and out_store.exists(alignment_file_key)):
-            # If the alignment exists and is OK, we can skip the alignment
-            
-            mtime = out_store.get_mtime(stats_file_key)
-            if (mtime is None or
-                (options.too_old is not None and mtime < options.too_old) or
-                options.restat):
-                # Stats file doesn't exist, or it exists and is older than it
-                # needs to be, or we decided to restat everybody.
-                
-                # All we need to do for this sample is run stats
-                RealTimeLogger.get().info("Queueing stat recalculation"
-                    " of {} on {} {}".format(sample, graph_name, region))
-                
-                job.addFollowOnJobFn(run_stats, options, bin_dir_id,
-                    index_dir_id, alignment_file_key, stats_file_key,
-                    run_time=None, cores=2, memory="4G", disk="10G")
-                    
-            else:
-                # The stats are up to date and the alignment doesn't need
-                # rerunning. This shouldn't happen because this sample shouldn't
-                # be on the todo list. But it means we can just skip the sample.
-                RealTimeLogger.get().warning("SKIPPING sample "
-                    "{} on {} {}".format(sample, graph_name, region))
-                    
-        else:
+        # How big is the GAM file (or None if it's not made yet):
+        gam_size = out_store.get_size(alignment_file_key)
+        # And when was it made (or None if it's not made yet)?
+        gam_mtime = out_store.get_mtime(alignment_file_key)
         
-            # Otherwise we need to do an alignment, and then stats.
+        # And the same for the stats file. We don't care about its size though.
+        stats_mtime = out_store.get_mtime(stats_file_key)
+        
+        if (options.overwrite or
+            gam_mtime is None or
+            (options.too_old is not None and gam_mtime < options.too_old) or
+            gam_size < options.min_gam_size):
+            
+            # We're overwriting everything, or the GAM doesn't exist, or it's
+            # too old, or it's too small. We have to remake it.
             
             RealTimeLogger.get().info("Queueing alignment"
                 " of {} to {} {}".format(sample, graph_name, region))
@@ -802,7 +789,29 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
                 graph_name, region, index_dir_id, sample_fastq,
                 alignment_file_key, stats_file_key, 
                 cores=16, memory="100G", disk="50G")
+        
+        elif (options.restat or
+            stats_mtime is None or
+            (options.too_old is not None and stats_mtime < options.too_old)):
             
+            # We can use the existing GAM, but the stats file doesn't exist, or
+            # is too old, or we're just re-doing them all.
+            
+            # All we need to do for this sample is run stats
+            RealTimeLogger.get().info("Queueing stat recalculation"
+                " of {} on {} {}".format(sample, graph_name, region))
+            
+            job.addFollowOnJobFn(run_stats, options, bin_dir_id,
+                index_dir_id, alignment_file_key, stats_file_key,
+                run_time=None, cores=2, memory="4G", disk="10G")
+                    
+        else:
+            # The stats are up to date and the alignment doesn't need
+            # rerunning. This shouldn't happen because this sample shouldn't
+            # be on the todo list. But it means we can just skip the sample.
+            RealTimeLogger.get().warning("SKIPPING sample "
+                "{} on {} {}".format(sample, graph_name, region))
+                    
     if len(samples_to_run_later) > 0:
         # We need to recurse and run more later.
         RealTimeLogger.get().debug("Postponing queueing {} samples".format(

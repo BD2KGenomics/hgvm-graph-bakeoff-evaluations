@@ -73,8 +73,8 @@ for PARAM_SET in defray; do
         done
 
         # Graphs we like:
-        # empty snp1kg refonly shifted1kg cactus freebayes platypus samtools
-        for GRAPH in empty snp1kg refonly shifted1kg cactus freebayes platypus samtools; do
+        # empty snp1kg refonly shifted1kg cactus prg freebayes platypus samtools
+        for GRAPH in empty snp1kg refonly shifted1kg cactus prg freebayes platypus samtools; do
 
             # This holds all the temporary files for this graph for this region.
             TEMP="${RTEMP}/graph/${GRAPH}"

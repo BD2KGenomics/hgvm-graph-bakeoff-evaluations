@@ -157,7 +157,7 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.
 
 # Regions with good assembly coverage:
 # brca1 brca2 lrc_kir mhc
-for REGION in  brca1 brca2; do
+for REGION in  brca1 brca2 mhc lrc_kir; do
       
     # Clear out old stats
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv"
@@ -174,7 +174,7 @@ for REGION in  brca1 brca2; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
 
 
-    for GRAPH in empty snp1kg refonly shifted1kg cactus freebayes platypus samtools; do
+    for GRAPH in empty snp1kg refonly shifted1kg cactus prg freebayes platypus samtools; do
     
         # Parse all the counts from the stats files
         
