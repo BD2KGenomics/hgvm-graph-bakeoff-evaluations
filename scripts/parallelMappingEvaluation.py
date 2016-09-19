@@ -803,8 +803,25 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
             # We're overwriting everything, or the GAM doesn't exist, or it's
             # too old, or it's too small. We have to remake it.
             
-            RealTimeLogger.get().info("Queueing alignment"
-                " of {} to {} {}".format(sample, graph_name, region))
+            # We want to let the user know why
+            
+            if gam_mtime is None:
+                RealTimeLogger.get().info("Queueing undone alignment"
+                    " of {} to {} {}".format(sample, graph_name, region))
+            elif (options.alignments_too_old is not None and 
+                gam_mtime < options.alignments_too_old):
+                RealTimeLogger.get().info("Queueing too-old ({}<{}) alignment"
+                    " of {} to {} {}".format(gam_mtime.ctime(),
+                    options.alignments_too_old.ctime(), sample, graph_name,
+                    region))
+            elif gam_size < options.min_gam_size:
+                RealTimeLogger.get().info("Queueing too-small ({}) alignment"
+                    " of {} to {} {}".format(gam_size, sample, graph_name,
+                    region))
+            else:
+                RealTimeLogger.get().info("Queueing overwrite alignment"
+                    " of {} to {} {}".format(sample, graph_name, region))
+            
             
             # Go and bang that input fastq against the correct indexed graph.
             # Its output will go to the right place in the output store.
