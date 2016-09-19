@@ -69,7 +69,9 @@ def parse_args(args):
         help="recompute and overwrite existing stats files")
     parser.add_argument("--reindex", default=False, action="store_true",
         help="don't re-use existing indexed graphs")
-    parser.add_argument("--too_old", default=None, type=str,
+    parser.add_argument("--alignments_too_old", default=None, type=str,
+        help="recompute alignments older than this date")
+    parser.add_argument("--stats_too_old", default=None, type=str,
         help="recompute stats files older than this date")
     parser.add_argument("--index_mode", choices=["rocksdb", "gcsa-kmer",
         "gcsa-mem"], default="gcsa-mem",
@@ -264,21 +266,41 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # Get the size of the corresponding GAM, if it exists
         gam_size = out_store.get_size("{}/{}.gam".format(alignment_dir,
             match.group(1)))
+        # And its mtime
+        gam_mtime = out_store.get_mtime("{}/{}.gam".format(alignment_dir,
+            match.group(1)))
     
-        if gam_size is None or gam_size < options.min_gam_size:
-            # Something went wrong and produced a tiny GAM. We need to rerun
-            # this sample even if the GAM is new enough.
-            RealTimeLogger.get().warning(
-                "Need to re-run {} because GAM is too small ({})!".format(
-                match.group(1), gam_size))
+        if (gam_size is None or
+            gam_size < options.min_gam_size or 
+            (options.stats_too_old is not None and
+            gam_mtime < options.stats_too_old):
+            
+            # Our GAM is too small or too old
+            if gam_size < options.min_gam_size:
+                RealTimeLogger.get().warning(
+                    "Need to re-run {} because GAM is too small ({})!".format(
+                    match.group(1), gam_size))
+            elif (options.stats_too_old is not None and
+                gam_mtime < options.stats_too_old):
+                
+                RealTimeLogger.get().warning(
+                    "Need to re-run {} because GAM is too old!".format(
+                    match.group(1)))
+            
+            else:
+                # Maybe GAM size was None or something?
+                RealTimeLogger.get().warning(
+                    "Need to re-run {}".format(
+                    match.group(1)))
+                
             continue
     
-        if options.too_old is not None:
-            if mtime < options.too_old:
+        if options.stats_too_old is not None:
+            if mtime < options.stats_too_old:
                 # Say we hit an mtime thing
                 RealTimeLogger.get().info("Need to re-run {} because "
                     "{} < {}".format(match.group(1), mtime.ctime(),
-                    options.too_old.ctime()))
+                    options.stats_too_old.ctime()))
                 
                 # Rerun the sample. Don't mark it complete
                 continue
@@ -774,7 +796,8 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         
         if (options.overwrite or
             gam_mtime is None or
-            (options.too_old is not None and gam_mtime < options.too_old) or
+            (options.alignments_too_old is not None and 
+            gam_mtime < options.alignments_too_old) or
             gam_size < options.min_gam_size):
             
             # We're overwriting everything, or the GAM doesn't exist, or it's
@@ -792,7 +815,8 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         
         elif (options.restat or
             stats_mtime is None or
-            (options.too_old is not None and stats_mtime < options.too_old)):
+            (options.stats_too_old is not None and
+            stats_mtime < options.stats_too_old)):
             
             # We can use the existing GAM, but the stats file doesn't exist, or
             # is too old, or we're just re-doing them all.
@@ -1340,10 +1364,16 @@ def main(args):
     
     options = parse_args(args) # This holds the nicely-parsed options object
     
-    if options.too_old is not None:
+    if options.stats_too_old is not None:
         # Parse the too-old date
-        options.too_old = dateutil.parser.parse(options.too_old)
-        assert(options.too_old.tzinfo != None)
+        options.stats_too_old = dateutil.parser.parse(options.stats_too_old)
+        assert(options.stats_too_old.tzinfo != None)
+        
+     if options.alignments_too_old is not None:
+        # Parse the too-old date
+        options.alignments_too_old = \
+            dateutil.parser.parse(options.alignments_too_old)
+        assert(options.alignments_too_old.tzinfo != None)
     
     RealTimeLogger.start_master()
     
