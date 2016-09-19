@@ -272,16 +272,16 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
     
         if (gam_size is None or
             gam_size < options.min_gam_size or 
-            (options.stats_too_old is not None and
-            gam_mtime < options.stats_too_old)):
+            (options.alignments_too_old is not None and
+            gam_mtime < options.alignments_too_old)):
             
             # Our GAM is too small or too old
             if gam_size < options.min_gam_size:
                 RealTimeLogger.get().warning(
                     "Need to re-run {} because GAM is too small ({})!".format(
                     match.group(1), gam_size))
-            elif (options.stats_too_old is not None and
-                gam_mtime < options.stats_too_old):
+            elif (options.alignments_too_old is not None and
+                gam_mtime < options.alignments_too_old):
                 
                 RealTimeLogger.get().warning(
                     "Need to re-run {} because GAM is too old!".format(
@@ -298,8 +298,8 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         if options.stats_too_old is not None:
             if mtime < options.stats_too_old:
                 # Say we hit an mtime thing
-                RealTimeLogger.get().info("Need to re-run {} because "
-                    "{} < {}".format(match.group(1), mtime.ctime(),
+                RealTimeLogger.get().info("Need to re-run {} because stats are "
+                " too old ({} < {})".format(match.group(1), mtime.ctime(),
                     options.stats_too_old.ctime()))
                 
                 # Rerun the sample. Don't mark it complete
