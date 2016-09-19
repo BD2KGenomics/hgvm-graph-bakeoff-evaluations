@@ -273,7 +273,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         if (gam_size is None or
             gam_size < options.min_gam_size or 
             (options.stats_too_old is not None and
-            gam_mtime < options.stats_too_old):
+            gam_mtime < options.stats_too_old)):
             
             # Our GAM is too small or too old
             if gam_size < options.min_gam_size:
@@ -1369,7 +1369,7 @@ def main(args):
         options.stats_too_old = dateutil.parser.parse(options.stats_too_old)
         assert(options.stats_too_old.tzinfo != None)
         
-     if options.alignments_too_old is not None:
+    if options.alignments_too_old is not None:
         # Parse the too-old date
         options.alignments_too_old = \
             dateutil.parser.parse(options.alignments_too_old)
