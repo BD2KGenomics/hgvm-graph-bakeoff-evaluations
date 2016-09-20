@@ -299,7 +299,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
             if mtime < options.stats_too_old:
                 # Say we hit an mtime thing
                 RealTimeLogger.get().info("Need to re-run {} because stats are "
-                " too old ({} < {})".format(match.group(1), mtime.ctime(),
+                "too old ({} < {})".format(match.group(1), mtime.ctime(),
                     options.stats_too_old.ctime()))
                 
                 # Rerun the sample. Don't mark it complete

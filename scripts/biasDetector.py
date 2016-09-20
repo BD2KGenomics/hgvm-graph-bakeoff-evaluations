@@ -42,9 +42,9 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to find stats files in (under /stats)")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put collated plotting files in (under /bias)")
     parser.add_argument("--blacklist", action="append", default=[],
         help="ignore the specified region:graph pairs")
@@ -231,11 +231,19 @@ def scan_graph(job, options, region, graph, pop_by_sample):
             stats = json.load(open(json_filename))
             
             # How many reads are mapped perfectly?
-            total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
-                    for x in xrange(1)))
+            # Perfect = 1 match per alignment column
+            total_perfect = sum((v
+                for (k, v) in stats["primary_matches_per_column"].iteritems()
+                if float(k) == 1.0))
                 
             # How many reads are there overall for this sample?
             total_reads = stats["total_reads"]
+            
+            if total_reads == 0:
+                # Don't forge ahead with samples missing reads.
+                RealTimeLogger.get().warning("No reads for {} in {} {}".format(
+                sample_name, region, graph))
+                continue
             
             # What portion are mapped perfectly?
             portion_perfect = total_perfect / float(total_reads)

@@ -282,7 +282,7 @@ do
         then
             PERFECT_UNIQUE_LIMITS="--min_x 0.75 --min_y 0.55 --max_x 0.9 --max_y 0.75"
         else
-            PERFECT_UNIQUE_LIMITS=""
+            PERFECT_UNIQUE_LIMITS="--min_x 0 --min_y 0"
         fi
 
         # Plot perfect vs unique mapping
