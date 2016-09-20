@@ -87,7 +87,7 @@ def main(args):
 
     print graphs
 
-    # count up samples (that are present in every graph in every region)
+    # count up samples
     samples = set()
     scount = defaultdict(int)
     for region in regions:
@@ -97,8 +97,7 @@ def main(args):
                 scount[sample] = scount[sample] + 1
 
     for sample, count in scount.items():
-        if count == len(regions) * len(graphs):
-            samples.add(sample)
+        samples.add(sample)
 
     print samples
 
@@ -114,9 +113,14 @@ def main(args):
 
             for region in regions:
                 vcf = os.path.join(options.call_dir, region, graph, "{}_sample.vcf".format(sample))
-                assert os.path.isfile(vcf)
-                vcf_files.append((region, vcf))
+                if os.path.isfile(vcf):
+                    vcf_files.append((region, vcf))
 
+            # this sample doesn't span all regions, skip it
+            if len(vcf_files) < len(regions):
+                print "Skipping Sample {} for Graph {}".format(sample, graph)
+                continue
+            
             # output vcf
             merge_vcf_path = os.path.join(out_dir, graph, "{}_sample.vcf".format(sample))
 
