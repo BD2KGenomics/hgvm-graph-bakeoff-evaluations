@@ -115,7 +115,7 @@ def parse_args(args):
     
     return parser.parse_args(args)
     
-def physics_layout_labels(series, other_spring=0.01, other_dist = 0.1,
+def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
     data_spring=0.01, data_dist = 0.1, target_spring=0.05, target_dist=0.1,
     max_steps=1000, min_x = 0, min_y = 0, max_x = 1, max_y = 1):
     """
@@ -495,35 +495,6 @@ def main(args):
             plot_func(series[series_name][0], series[series_name][1],
                 label=category_names[series_name], color=series_color,
                       marker=series_symbol, **plot_opt)
-                      
-        if options.annotate:
-            # We need to annotate every point in every series with its
-            # series name, trying not to overlap points or other annotations.
-            
-            # Pass the whole dict from name and 0/1 to x/y lists. We'll get a
-            # similar dict back with the best label position for each point.
-            label_positions = physics_layout_labels(series)
-            
-            for series_name, series_color in itertools.izip(category_order,
-                series_colors):
-                
-                # For each series
-                for i in xrange(len(series[series_name][0])):
-                    # For each point in the series
-            
-                    # Label the point with an arrow in the correct color
-                    # Make sure to center the text on the text position
-                    pyplot.gca().annotate(category_names[series_name], 
-                        xy=(series[series_name][0][i],
-                        series[series_name][1][i]), 
-                        xytext=(label_positions[series_name][0][i],
-                        label_positions[series_name][1][i]),
-                        color=series_color,
-                        horizontalalignment="center",
-                        verticalalignment="center",
-                        arrowprops=dict(arrowstyle="->", color=series_color))
-            
-                
     else:
         # Just plot the only series in the default color
         pyplot.scatter(series[""][0], series[""][1])
@@ -563,6 +534,47 @@ def main(args):
         pyplot.ylim((options.min_y, pyplot.ylim()[1]))    
     if(options.max_y is not None):
         pyplot.ylim((pyplot.ylim()[0], options.max_y))
+        
+    if use_series and options.annotate:
+        # We need to annotate every point in every series with its
+        # series name, trying not to overlap points or other annotations.
+        
+        # Figure out where to put the labels. We want them clear of the axes.
+        # How wide is the plot?
+        x_width = pyplot.xlim()[1] - pyplot.xlim()[0]
+        y_height = pyplot.ylim()[1] - pyplot.ylim()[0]
+        
+        # Retract a certain distance form the edges
+        min_x = pyplot.xlim()[0] + 0.1 * x_width
+        max_x = pyplot.xlim()[1] - 0.1 * x_width
+        min_y = pyplot.ylim()[0] + 0.1 * y_height
+        max_y = pyplot.ylim()[1] - 0.1 * y_height
+        
+        # Pass the whole dict from name to list of x/y lists into the physics
+        # layout within that box. We'll get a similar dict back with the best
+        # label position for each point.
+        label_positions = physics_layout_labels(series,
+            min_x=min_x, max_x=max_x, min_y=min_y, max_y=max_y)
+        
+        for series_name, series_color in itertools.izip(category_order,
+            series_colors):
+            
+            # For each series
+            for i in xrange(len(series[series_name][0])):
+                # For each point in the series
+        
+                # Label the point with an arrow in the correct color
+                # Make sure to center the text on the text position
+                pyplot.gca().annotate(category_names[series_name], 
+                    xy=(series[series_name][0][i],
+                    series[series_name][1][i]), 
+                    xytext=(label_positions[series_name][0][i],
+                    label_positions[series_name][1][i]),
+                    color=series_color,
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    arrowprops=dict(arrowstyle="->", color=series_color))
+        
         
     if options.sparse_ticks:
         # Set up tickmarks to have only 2 per axis, at the ends
