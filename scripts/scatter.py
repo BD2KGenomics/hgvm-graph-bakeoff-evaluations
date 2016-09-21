@@ -115,8 +115,8 @@ def parse_args(args):
     
     return parser.parse_args(args)
     
-def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
-    data_spring=0.01, data_dist = 0.1, target_spring=0.05, target_dist=0.1,
+def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
+    data_spring=0.01, data_dist = 0.15, target_spring=0.05, target_dist=0.15,
     max_steps=1000, min_x = 0, min_y = 0, max_x = 1, max_y = 1):
     """
     Given a series dict of point values by series name, a list for x or y, and
@@ -144,6 +144,15 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
     # Set up bounds by dimension number
     min_bounds = [min_x, min_y]
     max_bounds = [max_x, max_y]
+    
+    # Compute x and y dimensions
+    x_width = max_x - min_x
+    y_height = max_y - min_y
+    
+    # We're going to do our layout in an imaginary 1 by 1 space within these
+    # bounds, and convert vectors into it (divide by width or height) when doing
+    # spring math and out of it (multiply by width or height) when applying
+    # forces.
     
     def apply_forces():
         """
@@ -220,9 +229,9 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
                     # Don't affect self
                     continue
                 
-                # What's the offset in each dimension
-                x_offset = other_x - point_x
-                y_offset = other_y - point_y
+                # What's the offset in each dimension, in spring space?
+                x_offset = (other_x - point_x) / x_width
+                y_offset = (other_y - point_y) / y_height
                 
                 # And the total offset
                 offset_length = math.pow(math.pow(x_offset, 2) +
@@ -246,7 +255,8 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
                     x_force = -x_offset / offset_length * other_spring * diff
                     y_force = -y_offset / offset_length * other_spring * diff
                     
-                    apply_force(point_series, point_index, x_force, y_force)
+                    apply_force(point_series, point_index, x_force * x_width,
+                        y_force * y_height)
                     
             for data_series, data_index, data_x, data_y in \
                 for_each_point(series):
@@ -254,8 +264,8 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
                 # force when too close
                 
                 # What's the offset in each dimension
-                x_offset = data_x - point_x
-                y_offset = data_y - point_y
+                x_offset = (data_x - point_x) / x_width
+                y_offset = (data_y - point_y) / y_height
                 
                 # And the total offset
                 offset_length = math.pow(math.pow(x_offset, 2) +
@@ -279,15 +289,16 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
                     x_force = -x_offset / offset_length * data_spring * diff
                     y_force = -y_offset / offset_length * data_spring * diff
                     
-                    apply_force(point_series, point_index, x_force, y_force)
+                    apply_force(point_series, point_index, x_force * x_width,
+                        y_force * y_height)
         
             # Get its offset from its data point and apply a toward force
             target_x = series[point_series][0][point_index]
             target_y = series[point_series][1][point_index]
             
             # What's the offset in each dimension
-            x_offset = target_x - point_x
-            y_offset = target_y - point_y
+            x_offset = (target_x - point_x) / x_width
+            y_offset = (target_y - point_y) / y_height
             
             # And the total offset
             offset_length = math.pow(math.pow(x_offset, 2) +
@@ -300,7 +311,8 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.2,
                 x_force = x_offset / offset_length * target_spring * diff
                 y_force = y_offset / offset_length * target_spring * diff
                 
-                apply_force(point_series, point_index, x_force, y_force)
+                apply_force(point_series, point_index, x_force * x_width,
+                    y_force * y_height)
         
         # Apply all the forces
         apply_forces()
