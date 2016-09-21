@@ -125,6 +125,10 @@ do
     OVERALL_SINGLE_MAPPING_WELL_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
     OVERALL_SINGLE_MAPPING_AT_ALL_FILE="${PLOTS_DIR}/singlemappingatall.tsv"
     OVERALL_SINGLE_MAPPING_AT_ALL_PLOT="${PLOTS_DIR}/${MODE}-singlemappingatall.ALL.${PLOT_FILETYPE}"
+    
+    # And for perfect vs unique
+    OVERALL_PERFECT_UNIQUE_FILE="${PLOTS_DIR}/perfect_vs_unique.ALL.tsv"
+    OVERALL_PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.ALL.${PLOT_FILETYPE}"
 
     for REGION in `ls ${PLOTS_DIR}/mapping.*.tsv | xargs -n 1 basename | sed 's/mapping.\(.*\).tsv/\1/'`
     do
@@ -303,6 +307,7 @@ do
     cat "${PLOTS_DIR}"/perfect.*.tsv > "${OVERALL_PERFECT_FILE}"
     cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_WELL_FILE}"
     cat "${PLOTS_DIR}"/singlemappingatall.*.tsv > "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}"
+    cat "${PLOTS_DIR}"/perfect_vs_unique.*.tsv > "${OVERALL_PERFECT_UNIQUE_FILE}"
 
     # Make the overall plots
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
@@ -331,6 +336,15 @@ do
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_AT_ALL_PLOT}" \
         --x_sideways --hline_median refonly \
         --range --sparse_ticks --sparse_axes \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/scatter.py "${OVERALL_PERFECT_UNIQUE_FILE}" \
+        --save "${OVERALL_PERFECT_UNIQUE_PLOT}" \
+        --title "$(printf "Perfect vs. Unique\nMapping (${MODE})")" \
+        --x_label "Portion Uniquely Mapped" \
+        --y_label "Portion Perfectly Mapped" \
+        --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
+        --min_x 0 --min_y 0 \
         "${PLOT_PARAMS[@]}"
         
 done

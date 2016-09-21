@@ -297,7 +297,7 @@ def save_region_stats(job, options, region, graph_stats):
             for pop_name in stats_by_pop.keys():
                 # Normalize each population
                 
-                # Thest teo lists need to correspond
+                # These two lists need to correspond
                 assert(len(stats_by_pop[pop_name]) == len(ref_stats[pop_name]))
                 
                 # Zip the two stats lists together and do the division, and
