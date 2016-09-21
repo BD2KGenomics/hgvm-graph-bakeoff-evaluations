@@ -63,11 +63,19 @@ def collate_all(job, options):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
+    # Holds a dict from region name to absolute stats by graph, sample, and stat
+    # name.
+    stats_by_region = {}
     
     for region in in_store.list_input_directory("stats"):
-        # Collate everything in the region
-        job.addChildJobFn(collate_region, options, region, cores=1, memory="1G",
-            disk="10G")
+        # Collate everything in the region, and capture the returned stats dict
+        # promise
+        stats_by_region[region] = job.addChildJobFn(collate_region, options,
+            region, cores=1, memory="1G", disk="10G").rv()
+    
+    # We also need to merge some overall stats across regions
+    job.addFollowOnJobFn(merge_overall, options, stats_by_region,
+        cores=1, memory="1G", disk="10G")
     
     
 # TODO: use this!        
@@ -241,8 +249,8 @@ def collate_region(job, options, region):
                         region, graph, sample_name))
                     continue
                 
-                # How many reads are mapped at all for this sample (not just good
-                # enough)?
+                # How many reads are mapped at all for this sample (not just
+                # good enough)?
                 total_mapped_at_all = stats["total_mapped"]
                 
                 # What was the runtime?
@@ -258,6 +266,14 @@ def collate_region(job, options, region):
                 
                 # Get the dict we want to put the computed stats in
                 sample_stats = stats_cache[graph][sample_name]
+                
+                # How many reads are mapped well, single-mapped well, and
+                # existing at all? We need these for computing an overall
+                # perfect vs unique plot.
+                sample_stats["perfect"] = total_perfect
+                sample_stats["single_mapped_well"] = (total_mapped_well -
+                    total_multimapped_well)
+                sample_stats["total_reads"] = total_reads
                 
                 # What portion have one good mapping?
                 sample_stats["portion_single_mapped_well"] = \
@@ -433,6 +449,10 @@ def collate_region(job, options, region):
                 for stat_name, stat_value in stats_by_name.iteritems():
                     # For each stat
                     
+                    if not stats_file_temps.has_key(stat_name):
+                        # Skip stats that have nowhere to go
+                        continue
+                    
                     # Write graph and value to the file for the stat, for
                     # plotting
                     stats_file_temps[stat_name].write("{}\t{}\n".format(
@@ -480,13 +500,94 @@ def collate_region(job, options, region):
         perfect_vs_unique.close()
            
         # Save the perfect vs unique data
-        # TODO: mean across samples so we don't plot several thousand points???             
         out_store.write_output_file(perfect_vs_unique.name,
                 "plots/{}/perfect_vs_unique.{}.tsv".format(mode, region))
         
     # Return the cached stats. TODO: break out actual collate and upload into
     # its own function that will also do normalization.
-    return stats_cache
+    # Make sure to use toillib to strip off the defaultdict lambdas
+    return de_defaultdict(stats_cache)
+    
+def merge_overall(job, options, stats_by_region):
+    """
+    Given stats by region, graph, sample, and stat name, produce the data files
+    needed for overall plots that aren't just concatenations of the individual
+    region plots.
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    # Right now all we need to do is the perfect vs unique plot.
+    
+    # Make a file to write the points to plot to.
+    # perfect = precision = y, unique ~= recall = x
+    perfect_vs_unique = tempfile.NamedTemporaryFile(
+        dir=job.fileStore.getLocalTempDir(), delete=False)
+    
+    # For each sample in each graph, we're going to sum total reads, total
+    # perfect, and total unique across all regions. Then we're going to compute
+    # the perfect and unique values for all the samples, find the median in each
+    # dimension, and plot that point. TODO: do a cool cloud instead of a point.
+    
+    # Holds perfect read count by graph and sample
+    perfect_count = collections.defaultdict(collections.Counter)
+    # Holds unique read count by graph and sample
+    unique_count = collections.defaultdict(collections.Counter)
+    # Holds overall read count by graph and sample
+    read_count = collections.defaultdict(collections.Counter)
+    
+    # Keep a set of all observed graph names
+    graph_names = set()
+    
+    for region, stats_by_graph in stats_by_region.iteritems():
+        # For each region and its stats for the graphs
+        for graph, stats_by_sample in stats_by_graph.iteritems():
+            # For each graph and all the stats for that graph
+            
+            # We have a graph with this name
+            graph_names.add(graph)
+            
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                
+                # Add in perfect reads
+                perfect_count[graph][sample] += stats_by_name["perfect"]
+                # And (sufficiently) unbique reads
+                unique_count[graph][sample] += \
+                    stats_by_name["single_mapped_well"]
+                # And total reads
+                read_count[graph][sample] += stats_by_name["total_reads"]
+    
+    for graph in graph_names:           
+        # For every graph under consideration 
+        
+        # We'll fill this with perfect and unique portions for all the samples.
+        perfect_portions = []
+        unique_portions = []
+        
+        for sample in perfect_count[graph].iterkeys():
+            # Now calculate per-sample perfect and unique portions
+            perfect_portions.append(float(perfect_count[graph][sample]) /
+                read_count[graph][sample])
+            unique_portions.append(float(unique_count[graph][sample]) /
+                read_count[graph][sample])
+        
+        # Write them in x, y order
+        perfect_vs_unique.write("{}\t{}\t{}\n".format(graph,
+            numpy.median(unique_portions),
+            numpy.median(perfect_portions)))
+    
+    perfect_vs_unique.flush()            
+    os.fsync(perfect_vs_unique.fileno())
+    perfect_vs_unique.close()
+       
+    # Save the perfect vs unique data
+    # TODO: we don't support normalization for this overall plot
+    out_store.write_output_file(perfect_vs_unique.name,
+            "plots/absolute/perfect_vs_unique.ALL.tsv")
+    
     
 def main(args):
     """

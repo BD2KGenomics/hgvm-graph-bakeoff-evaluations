@@ -23,7 +23,8 @@ declare -A HR_NAMES
 
 HR_NAMES["snp1kg"]="1KG"
 HR_NAMES["snp1000g"]="1KG"
-HR_NAMES["haplo1kg"]="1KG Haplo"
+HR_NAMES["haplo1kg30"]="1KG Haplo 30"
+HR_NAMES["haplo1kg50"]="1KG Haplo"
 HR_NAMES["sbg"]="7BG"
 HR_NAMES["cactus"]="Cactus"
 HR_NAMES["camel"]="Camel"
@@ -38,6 +39,8 @@ HR_NAMES["refonly"]="Reference"
 HR_NAMES["simons"]="SGDP"
 HR_NAMES["trivial"]="Trivial"
 HR_NAMES["vglr"]="VGLR"
+HR_NAMES["shifted1kg"]="Scrambled"
+HR_NAMES["snp1kg_kp"]="1KG KP"
 
 for MODE in normalized_distributions distributions
 do
@@ -45,11 +48,16 @@ do
     # Are we absolute or normalized?
     NORMALIZED="absolute"
 
+    # Do we want portion (default) or absolute deviations
+    DEVIATIONS=""
+
     PORTION="Portion"
     if [ "${MODE}" == "normalized_distributions" ]
     then
         PORTION="Difference in portion"
         NORMALIZED="normalized"
+        # No sense normalizing twice
+        DEVIATIONS="--absolute_deviation"
     fi
 
     # Where are the bias files
@@ -86,6 +94,7 @@ do
                 --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
                 --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
                 --x_sideways --hline_median EUR \
+                "${DEVIATIONS}" \
                 "${PLOT_PARAMS[@]}"
         
         done

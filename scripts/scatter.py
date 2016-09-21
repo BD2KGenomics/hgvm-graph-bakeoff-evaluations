@@ -9,6 +9,7 @@ Re-uses sample code and documentation from
 
 import argparse, sys, os, itertools, math, collections, random, re
 import matplotlib, matplotlib.ticker, matplotlib.cm, numpy
+import copy
 
 # Implementation of "natural" sorting from
 # <http://stackoverflow.com/a/5967539/402891>
@@ -109,8 +110,206 @@ def parse_args(args):
         help="marker size")
     parser.add_argument("--line_width", type=float, default=None,
         help="line_width")
+    parser.add_argument("--annotate", action="store_true",
+        help="annotate every point with its category name")
     
     return parser.parse_args(args)
+    
+def physics_layout_labels(series, other_spring=0.01, other_dist = 0.1,
+    data_spring=0.01, data_dist = 0.1, target_spring=0.05, target_dist=0.1,
+    max_steps=1000, min_x = 0, min_y = 0, max_x = 1, max_y = 1):
+    """
+    Given a series dict of point values by series name, a list for x or y, and
+    then in a list by point number, return a similar dict with the best
+    locations for text to annotate those points.
+    
+    other_spring and other_dist control spring force for avoiding other points
+    being laid out. data_spring and data_dist control spring force for avoiding
+    data points. target_spring and target_dist control spring force for seeking
+    each laid out point's own data point.
+    
+    max_steps controls how many iterations to run for.
+    
+    min_x, min_y, max_x, and max_y set a bounding box that points are forced to
+    stay in.
+    
+    """
+    
+    # Deep copy the whole thing so we can update in place to move things.
+    positions = copy.deepcopy(series)
+    
+    # Keep forces that we accumulate into, organized the same way
+    forces = collections.defaultdict(lambda: [[], []])
+    
+    # Set up bounds by dimension number
+    min_bounds = [min_x, min_y]
+    max_bounds = [max_x, max_y]
+    
+    def apply_forces():
+        """
+        Apply all the forces and make changes in positions. Also enforces the
+        bounding box.
+        
+        """
+        
+        for name, dimensions in forces.iteritems():
+            for dimension, values in enumerate(dimensions):
+                for i in xrange(len(values)):
+                    # Use each force as an offset
+                    
+                    # First make a new number that we'll update
+                    new_pos = positions[name][dimension][i]
+                    
+                    # Update it
+                    new_pos += values[i]
+                    
+                    # Don't let it escape the box
+                    if new_pos < min_bounds[dimension]:
+                        new_pos = min_bounds[dimension]
+                    if new_pos > max_bounds[dimension]:
+                        new_pos = max_bounds[dimension]
+                        
+                    # Apply it
+                    positions[name][dimension][i] = new_pos
+
+    def reset_forces():
+        """
+        Clear all forces to 0 in both dimensions
+        """
+        for name, dimensions in series.iteritems():
+            for dimension, values in enumerate(dimensions):
+                forces[name][dimension] = [0.0] * len(values)
+                
+    def apply_force(name, index, x, y):
+        """
+        Apply the given force in x and y to the given point number in the given
+        series.
+        """
+        
+        forces[name][0][index] += x
+        forces[name][1][index] += y
+                
+    def for_each_point(points_dict):
+        """
+        Go through each point in a positions or forces dict and yield (series,
+        index, x value, y value).
+        
+        """
+        
+        for name, dimensions in points_dict.iteritems():
+            for i in xrange(len(dimensions[0])):
+                yield (name, i, dimensions[0][i], dimensions[1][i])
+        
+    
+    # Start with 0 forces
+    reset_forces()
+    
+    for step in xrange(max_steps):
+        # Do a bunch of steps
+    
+        for point_series, point_index, point_x, point_y in \
+            for_each_point(positions):        
+            # For each text point
+            
+            for other_series, other_index, other_x, other_y in \
+                for_each_point(positions):
+                # Get its offset from each other text point and apply an away
+                # force when too close
+                
+                if point_series == other_series and point_index == other_index:
+                    # Don't affect self
+                    continue
+                
+                # What's the offset in each dimension
+                x_offset = other_x - point_x
+                y_offset = other_y - point_y
+                
+                # And the total offset
+                offset_length = math.pow(math.pow(x_offset, 2) +
+                    math.pow(y_offset, 2), 0.5)
+                
+                if offset_length < other_dist:
+                    # Too close! Spring away!
+                    diff = other_dist - offset_length
+                    
+                    if offset_length == 0:
+                        # Go in a random not-here direction
+                        # TODO: biased towards corners
+                        x_offset = random.random() - 0.5
+                        if x_offset == 0:
+                            # If we actually hit 0, move
+                            x_offset = 0.1
+                        y_offset = random.random() - 0.5
+                        offset_length = math.pow(math.pow(x_offset, 2) +
+                            math.pow(y_offset, 2), 0.5)
+                    
+                    x_force = -x_offset / offset_length * other_spring * diff
+                    y_force = -y_offset / offset_length * other_spring * diff
+                    
+                    apply_force(point_series, point_index, x_force, y_force)
+                    
+            for data_series, data_index, data_x, data_y in \
+                for_each_point(series):
+                # Get its offset from each data point and apply an away
+                # force when too close
+                
+                # What's the offset in each dimension
+                x_offset = data_x - point_x
+                y_offset = data_y - point_y
+                
+                # And the total offset
+                offset_length = math.pow(math.pow(x_offset, 2) +
+                    math.pow(y_offset, 2), 0.5)
+                
+                if offset_length < data_dist:
+                    # Too close! Spring away!
+                    diff = data_dist - offset_length
+                    
+                    if offset_length == 0:
+                        # Go in a random not-here direction
+                        # TODO: biased towards corners
+                        x_offset = random.random()
+                        if x_offset == 0:
+                            # If we actually hit 0, move
+                            x_offset = 0.1
+                        y_offset = random.random()
+                        offset_length = math.pow(math.pow(x_offset, 2) +
+                            math.pow(y_offset, 2), 0.5)
+                    
+                    x_force = -x_offset / offset_length * data_spring * diff
+                    y_force = -y_offset / offset_length * data_spring * diff
+                    
+                    apply_force(point_series, point_index, x_force, y_force)
+        
+            # Get its offset from its data point and apply a toward force
+            target_x = series[point_series][0][point_index]
+            target_y = series[point_series][1][point_index]
+            
+            # What's the offset in each dimension
+            x_offset = target_x - point_x
+            y_offset = target_y - point_y
+            
+            # And the total offset
+            offset_length = math.pow(math.pow(x_offset, 2) +
+                math.pow(y_offset, 2), 0.5)
+            
+            if offset_length > target_dist:
+                # Too far! Spring towards!
+                diff = offset_length - target_dist
+                
+                x_force = x_offset / offset_length * target_spring * diff
+                y_force = y_offset / offset_length * target_spring * diff
+                
+                apply_force(point_series, point_index, x_force, y_force)
+        
+        # Apply all the forces
+        apply_forces()
+        
+        # Zero forces
+        reset_forces()
+    
+    # Return the updated positions
+    return positions
     
 
 def main(args):
@@ -296,6 +495,34 @@ def main(args):
             plot_func(series[series_name][0], series[series_name][1],
                 label=category_names[series_name], color=series_color,
                       marker=series_symbol, **plot_opt)
+                      
+        if options.annotate:
+            # We need to annotate every point in every series with its
+            # series name, trying not to overlap points or other annotations.
+            
+            # Pass the whole dict from name and 0/1 to x/y lists. We'll get a
+            # similar dict back with the best label position for each point.
+            label_positions = physics_layout_labels(series)
+            
+            for series_name, series_color in itertools.izip(category_order,
+                series_colors):
+                
+                # For each series
+                for i in xrange(len(series[series_name][0])):
+                    # For each point in the series
+            
+                    # Label the point with an arrow in the correct color
+                    # Make sure to center the text on the text position
+                    pyplot.gca().annotate(category_names[series_name], 
+                        xy=(series[series_name][0][i],
+                        series[series_name][1][i]), 
+                        xytext=(label_positions[series_name][0][i],
+                        label_positions[series_name][1][i]),
+                        color=series_color,
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        arrowprops=dict(arrowstyle="->", color=series_color))
+            
                 
     else:
         # Just plot the only series in the default color

@@ -298,7 +298,12 @@ def save_region_stats(job, options, region, graph_stats):
                 # Normalize each population
                 
                 # These two lists need to correspond
-                assert(len(stats_by_pop[pop_name]) == len(ref_stats[pop_name]))
+                if len(stats_by_pop[pop_name])!= len(ref_stats[pop_name]):
+                    RealTimeLogger.get().critical("Sample count mismatch for "
+                        "{} {}: {} in {}, {} in ref".format(region, pop_name,
+                        len(stats_by_pop[pop_name]), graph,
+                        len(ref_stats[pop_name])))
+                    raise RuntimeError("Sample count mismatch")
                 
                 # Zip the two stats lists together and do the division, and
                 # replace the non-reference list.

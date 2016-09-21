@@ -74,6 +74,8 @@ def parse_args(args):
     parser.add_argument("--best_low", dest="best_sense", default=1,
         action="store_const", const=-1,
         help="call out the lowest category as best, instead of the highest")
+    parser.add_argument("--absolute_deviation", action="store_true",
+        help="report absolute and not percentage changes")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
     parser.add_argument("--save",
@@ -324,20 +326,39 @@ def main(args):
             
             other_median = numpy.median(categories[category])
             
-            portion = other_median / category_median
+            if options.absolute_deviation:
+                difference = other_median - category_median
+                
+                if best_deviation is None or (difference * options.best_sense > 
+                    best_deviation * options.best_sense):
+                    # We found the best thing
+                    best_category = i
+                    best_deviation = difference
+                
+            else:
+                # Use relative deviation from category_median to other_median
             
-            percent = (portion - 1) * 100
-            
-            if best_deviation is None or (percent * options.best_sense > 
-                best_deviation * options.best_sense):
-                # We found the best thing
-                best_category = i
-                best_deviation = percent
+                portion = other_median / category_median
+                
+                percent = (portion - 1) * 100
+                
+                if best_deviation is None or (percent * options.best_sense > 
+                    best_deviation * options.best_sense):
+                    # We found the best thing
+                    best_category = i
+                    best_deviation = percent
         
         if best_category is not None:
-            # Apply a +/-% label to the best thing
-            category_labels[best_category] += "\n({:+.2f}%)".format(
-                best_deviation)
+            if options.absolute_deviation:
+                # Use a difference
+                # Apply a +/- label to the best thing
+                category_labels[best_category] += "\n({:+.2f})".format(
+                    best_deviation)
+            else:
+                # Use a percentage
+                # Apply a +/-% label to the best thing
+                category_labels[best_category] += "\n({:+.2f}%)".format(
+                    best_deviation)
                 
     # Now that we have our hlines, drop any hidden categories.
     for i in xrange(len(category_order)):
