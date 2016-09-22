@@ -205,9 +205,9 @@ def scan_graph(job, options, region, graph, pop_by_sample):
         # Read all the pop, value pairs from the TSV
         reader = tsv.TsvReader(open(local_filename))
         
-        for pop, stat in reader:
+        for pop, sample_name, stat in reader:
             # Collect all the values and put them in the right populations
-            stats_by_pop[pop].append(float(stat))
+            stats_by_pop[pop].append((sample_name, float(stat)))
         
     else:
         # Look in each sample file, compute the per-sample statistic, and save
@@ -253,18 +253,17 @@ def scan_graph(job, options, region, graph, pop_by_sample):
                 portion_perfect))
                 
         for pop_name in stats_by_pop.keys():
-            # Sort all the distributions by sample name, and throw out the
-            # sample names
-            stats_by_pop[pop_name] = [value for sample_name, value in
-                sorted(stats_by_pop[pop_name])]
+            # Sort all the distributions by sample name
+            stats_by_pop[pop_name] = [(sample_name, value)
+                for sample_name, value in sorted(stats_by_pop[pop_name])]
             
         # Write all the pop, value pairs to the TSV
         writer = tsv.TsvWriter(open(local_filename, "w"))
         
         for pop, list_of_stats in stats_by_pop.iteritems():
-            for stat in list_of_stats:
+            for sample_name, stat in list_of_stats:
                 # Save each sample for its population
-                writer.line(pop, stat)
+                writer.line(pop, sample_name, stat)
                 
         # Close the file and save the results for the next run
         writer.close()
@@ -304,12 +303,24 @@ def save_region_stats(job, options, region, graph_stats):
                         len(stats_by_pop[pop_name]), graph,
                         len(ref_stats[pop_name])))
                     raise RuntimeError("Sample count mismatch")
+                    
+                # Find samples where the stat goes down versus ref and complain
+                # about it
+                for (ref_sample, ref_stat), (graph_sample, graph_stat) in \
+                    itertools.izip(stats_by_pop[pop_name], ref_stats[pop_name]):
+                    
+                    if ref_stat > graph_stat:
+                        RealTimeLogger.get().warning(
+                            "Ref for {} {} got {} but graph {} {} got "
+                            "only {}".format(region, ref_sample, ref_stat,
+                            graph, graph_sample, graph_stat))
                 
-                # Zip the two stats lists together and do the division, and
+                # Zip the two stats lists together and do the subtraction, and
                 # replace the non-reference list.
-                stats_by_pop[pop_name] = [this_stat - ref_stat for 
-                    (this_stat, ref_stat) in itertools.izip(
-                    stats_by_pop[pop_name], ref_stats[pop_name])]
+                stats_by_pop[pop_name] = [(this_name, this_stat - ref_stat) for 
+                    ((this_name, this_stat), (ref_name, ref_stat))
+                    in itertools.izip(stats_by_pop[pop_name],
+                    ref_stats[pop_name])]
                     
             # Save the normalized values
             normed_tsv_key = "bias/normalized_distributions/{}/{}.tsv".format(
@@ -351,8 +362,14 @@ def save_region_stats(job, options, region, graph_stats):
             region, graph))
     
         # Grab all the distributions to compare in a list
-        list_of_distributions = stats_by_pop.values()
-
+        list_of_distributions = []
+        
+        for distribution in stats_by_pop.values():
+            numbers_only_distribution = []
+            for sample_name, sample_value in distribution:
+                numbers_only_distribution.append(sample_value)
+            list_of_distributions.append(numbers_only_distribution)
+                
         RealTimeLogger.get().info("Have {} populations to compare".format(len(
             list_of_distributions)))
         

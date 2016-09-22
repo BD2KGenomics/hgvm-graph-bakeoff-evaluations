@@ -43,7 +43,7 @@ def parse_args(args):
     parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put collated plotting files in (under /plots)")
     parser.add_argument("--blacklist", action="append", default=[],
-        help="ignore the specified region:graph pairs")
+        help="ignore the specified regions, graphs, or region:graph pairs")
     parser.add_argument("--overwrite", action="store_true",
         help="replace cached per-sample statistics with recalculated ones")
     
@@ -149,7 +149,10 @@ def collate_region(job, options, region):
         for graph in in_store.list_input_directory("stats/{}".format(region)):
             # For each graph
         
-            if "{}:{}".format(region, graph) in options.blacklist:
+            if ("{}:{}".format(region, graph) in options.blacklist or 
+                region in options.blacklist or
+                graph in options.blacklist):
+                
                 # We don't want to process this region/graph pair.
                 RealTimeLogger.get().info("Skipping {} graph {}".format(region,
                     graph))

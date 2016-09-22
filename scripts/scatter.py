@@ -116,7 +116,7 @@ def parse_args(args):
     return parser.parse_args(args)
     
 def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
-    data_spring=0.01, data_dist = 0.15, target_spring=0.05, target_dist=0.15,
+    data_spring=0.02, data_dist = 0.2, target_spring=0.05, target_dist=0.15,
     max_steps=1000, min_x = 0, min_y = 0, max_x = 1, max_y = 1):
     """
     Given a series dict of point values by series name, a list for x or y, and

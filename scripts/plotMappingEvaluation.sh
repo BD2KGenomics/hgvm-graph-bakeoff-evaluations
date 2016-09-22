@@ -284,9 +284,9 @@ do
         # Set Perfect/Unique limits by region
         if [ "${REGION^^}" == "MHC" ]
         then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.75 --min_y 0.55 --max_x 0.9 --max_y 0.75"
+            PERFECT_UNIQUE_LIMITS=""
         else
-            PERFECT_UNIQUE_LIMITS="--min_x 0 --min_y 0"
+            PERFECT_UNIQUE_LIMITS=""
         fi
 
         # Plot perfect vs unique mapping
@@ -347,7 +347,6 @@ do
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
             --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
-            --min_x 0 --min_y 0 \
             --annotate --no_legend \
             "${PLOT_PARAMS[@]}"
     fi

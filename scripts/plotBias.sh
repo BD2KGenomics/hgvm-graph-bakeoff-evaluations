@@ -94,7 +94,7 @@ do
                 --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
                 --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
                 --x_sideways --hline_median EUR \
-                "${DEVIATIONS}" \
+                ${DEVIATIONS} \
                 "${PLOT_PARAMS[@]}"
         
         done
