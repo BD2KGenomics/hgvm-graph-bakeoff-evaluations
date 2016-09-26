@@ -282,9 +282,16 @@ do
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
-        if [ "${REGION^^}" == "MHC" ]
-        then
-            PERFECT_UNIQUE_LIMITS=""
+        if [ "${REGION^^}" == "MHC" ]; then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.6 --min_y 0.6"
+        elif [ "${REGION^^}" == "BRCA1" ]; then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.45 --min_y 0.45"
+        elif [ "${REGION^^}" == "BRCA2" ]; then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.70 --min_y 0.70"
+        elif [ "${REGION^^}" == "SMA" ]; then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.2 --min_y 0.2"
+        elif [ "${REGION^^}" == "LRC_KIR" ]; then
+            PERFECT_UNIQUE_LIMITS="--min_x 0.4 --min_y 0.4"
         else
             PERFECT_UNIQUE_LIMITS=""
         fi
@@ -295,6 +302,7 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
+            --max_x 1 --max_y 1 ${PERFECT_UNIQUE_LIMITS} \
             --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
             --annotate --no_legend \
             ${PERFECT_UNIQUE_LIMITS} \
@@ -346,6 +354,7 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping (${MODE})")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
+            --max_x 1 --max_y 1  --min_x 0.4 --min_y 0.4 \
             --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
             --annotate --no_legend \
             "${PLOT_PARAMS[@]}"

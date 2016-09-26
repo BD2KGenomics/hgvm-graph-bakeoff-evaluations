@@ -400,6 +400,10 @@ def collate_region(job, options, region):
                             stats_by_name[stat_name] /= ref_value
                         else:
                             stats_by_name[stat_name] = None
+                    else:
+                        # Nothing to norm against. TODO: maybe complain when
+                        # sample sets aren't all the same?
+                        stats_by_name[stat_name] = None
                         
         # Register this as a condition
         stats_by_mode["normalized"] = normed_stats_cache
