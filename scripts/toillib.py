@@ -34,6 +34,77 @@ except ImportError:
     have_azure = False
     pass
     
+    
+class BackoffError(RuntimeError):
+    """
+    Represents an error from running out of retries during exponential back-off.
+    """
+
+def backoff_times(retries, base_delay):
+    """
+    A generator that yields times for random exponential back-off. You have to
+    do the exception handling and sleeping yourself. Stops when the retries run
+    out.
+    
+    """
+    
+    # Don't wait at all before the first try
+    yield 0
+    
+    # What retry are we on?
+    try_number = 1
+    
+    # Make a delay that increases
+    delay = float(base_delay) * 2
+    
+    while try_number <= retries:
+        # Wait a random amount between 0 and 2^try_number * base_delay
+        yield random.uniform(base_delay, delay)
+        delay *= 2
+        try_number += 1
+        
+    # If we get here, we're stopping iteration without succeeding. The caller
+    # will probably raise an error.
+        
+def backoff(original_function, retries=6, base_delay=10):
+    """
+    We define a decorator that does randomized exponential back-off up to a
+    certain number of retries. Raises BackoffError if the operation doesn't
+    succeed after backing off for the specified number of retries (which may be
+    float("inf")).
+    
+    Unfortunately doesn't really work on generators.
+    """
+    
+    # Make a new version of the function
+    @functools.wraps(original_function)
+    def new_function(*args, **kwargs):
+        # Call backoff times, overriding parameters with stuff from kwargs        
+        for delay in backoff_times(retries=kwargs.get("retries", retries),
+            base_delay=kwargs.get("base_delay", base_delay)):
+            # Keep looping until it works or our iterator raises a
+            # BackoffError
+            if delay > 0:
+                # We have to wait before trying again
+                RealTimeLogger.get().error("Retry after {} seconds".format(
+                    delay))
+                time.sleep(delay)
+            try:
+                return original_function(*args, **kwargs)
+            except:
+                # Report the formatted underlying exception with traceback
+                RealTimeLogger.get().error("{} failed due to: {}".format(
+                    original_function.__name__,
+                    "".join(traceback.format_exception(*sys.exc_info()))))
+        
+        
+        # If we get here, the function we're calling never ran through before we
+        # ran out of backoff times. Give an error.
+        raise BackoffError("Ran out of retries calling {}".format(
+            original_function.__name__))
+    
+    return new_function
+    
 def de_defaultdict(defaultdict):
     """
     Replace defaultdicts with dicts in the given defaultdict.
@@ -739,76 +810,6 @@ class FileIOStore(IOStore):
         # Return the size in bytes of the backing file
         return os.stat(os.path.join(self.path_prefix, path)).st_size
 
-class BackoffError(RuntimeError):
-    """
-    Represents an error from running out of retries during exponential back-off.
-    """
-
-def backoff_times(retries, base_delay):
-    """
-    A generator that yields times for random exponential back-off. You have to
-    do the exception handling and sleeping yourself. Stops when the retries run
-    out.
-    
-    """
-    
-    # Don't wait at all before the first try
-    yield 0
-    
-    # What retry are we on?
-    try_number = 1
-    
-    # Make a delay that increases
-    delay = float(base_delay) * 2
-    
-    while try_number <= retries:
-        # Wait a random amount between 0 and 2^try_number * base_delay
-        yield random.uniform(base_delay, delay)
-        delay *= 2
-        try_number += 1
-        
-    # If we get here, we're stopping iteration without succeeding. The caller
-    # will probably raise an error.
-        
-def backoff(original_function, retries=6, base_delay=10):
-    """
-    We define a decorator that does randomized exponential back-off up to a
-    certain number of retries. Raises BackoffError if the operation doesn't
-    succeed after backing off for the specified number of retries (which may be
-    float("inf")).
-    
-    Unfortunately doesn't really work on generators.
-    """
-    
-    # Make a new version of the function
-    @functools.wraps(original_function)
-    def new_function(*args, **kwargs):
-        # Call backoff times, overriding parameters with stuff from kwargs        
-        for delay in backoff_times(retries=kwargs.get("retries", retries),
-            base_delay=kwargs.get("base_delay", base_delay)):
-            # Keep looping until it works or our iterator raises a
-            # BackoffError
-            if delay > 0:
-                # We have to wait before trying again
-                RealTimeLogger.get().error("Retry after {} seconds".format(
-                    delay))
-                time.sleep(delay)
-            try:
-                return original_function(*args, **kwargs)
-            except:
-                # Report the formatted underlying exception with traceback
-                RealTimeLogger.get().error("{} failed due to: {}".format(
-                    original_function.__name__,
-                    "".join(traceback.format_exception(*sys.exc_info()))))
-        
-        
-        # If we get here, the function we're calling never ran through before we
-        # ran out of backoff times. Give an error.
-        raise BackoffError("Ran out of retries calling {}".format(
-            original_function.__name__))
-    
-    return new_function
-            
 class AzureIOStore(IOStore):
     """
     A class that lets you get input from and send output to Azure Storage.
