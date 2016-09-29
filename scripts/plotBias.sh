@@ -2,7 +2,7 @@
 # Run after biasDetector.py.
 # Makes plots comparing the populations for each graph.
 
-set -e
+set -ex
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -83,7 +83,7 @@ do
             GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
             
             # Where should the plot go?
-            PLOT_PATH="${DISTRIBUTION_DIR}/${NORMALIZED}_bias_${REGION}_${GRAPH}.svg"
+            PLOT_PATH="${DISTRIBUTION_DIR}/${NORMALIZED}_bias_${REGION}_${GRAPH}.png"
             
             # Get the human readable graph name
             HR_GRAPH=${HR_NAMES["${GRAPH}"]}
@@ -92,7 +92,7 @@ do
             
             ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
                 --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
-                --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
+                --x_label "Population" --y_label "$(printf "${PORTION}\nmapped perfectly")" --save "${PLOT_PATH}" \
                 --x_sideways --hline_median EUR \
                 ${DEVIATIONS} \
                 "${PLOT_PARAMS[@]}"

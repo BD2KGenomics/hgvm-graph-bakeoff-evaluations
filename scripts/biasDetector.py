@@ -191,19 +191,26 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     stats_by_pop = collections.defaultdict(list)
     
     # This is the output TSV it should all land in, in <pop>\t<value> format
-    labeled_tsv_key = "bias/distributions/{}/{}.tsv".format(region, graph)
+    plot_tsv_key = "bias/distributions/{}/{}.tsv".format(region, graph)
     
-    # What name will it have locally for us?
-    local_filename = os.path.join(job.fileStore.getLocalTempDir(), "temp.tsv")
+    # What name will the plotting TSV have locally for us?
+    local_plot_filename = os.path.join(job.fileStore.getLocalTempDir(), "plot.tsv")
     
-    if out_store.exists(labeled_tsv_key) and not options.overwrite:
+    # And this is the one it should be cached in with sample names
+    # (<pop>\t<sample>\t<value>)
+    cache_tsv_key = "bias/cache/{}/{}.tsv".format(region, graph)
+    
+    # What name will the cache have locally for us?
+    local_cache_filename = os.path.join(job.fileStore.getLocalTempDir(), "cache.tsv")
+    
+    if out_store.exists(cache_tsv_key) and not options.overwrite:
         # Just read in from that TSV
         
         # Grab the cached results
-        out_store.read_input_file(labeled_tsv_key, local_filename)
+        out_store.read_input_file(cache_tsv_key, local_cache_filename)
         
         # Read all the pop, value pairs from the TSV
-        reader = tsv.TsvReader(open(local_filename))
+        reader = tsv.TsvReader(open(local_cache_filename))
         
         for pop, sample_name, stat in reader:
             # Collect all the values and put them in the right populations
@@ -257,17 +264,32 @@ def scan_graph(job, options, region, graph, pop_by_sample):
             stats_by_pop[pop_name] = [(sample_name, value)
                 for sample_name, value in sorted(stats_by_pop[pop_name])]
             
-        # Write all the pop, value pairs to the TSV
-        writer = tsv.TsvWriter(open(local_filename, "w"))
+        # Write all the pop, sample, value tripples to the cache TSV
+        cache_writer = tsv.TsvWriter(open(local_cache_filename, "w"))
         
         for pop, list_of_stats in stats_by_pop.iteritems():
             for sample_name, stat in list_of_stats:
-                # Save each sample for its population
-                writer.line(pop, sample_name, stat)
+                # Save each sample in the cache
+                cache_writer.line(pop, sample_name, stat)
                 
         # Close the file and save the results for the next run
-        writer.close()
-        out_store.write_output_file(local_filename, labeled_tsv_key)
+        cache_writer.close()
+        out_store.write_output_file(local_cache_filename, cache_tsv_key)
+       
+       
+    # Now we have the stats dict populated form individual stats files or the
+    # cache. Now we can make the un-normalized plot file.
+       
+    # Write all pop, value distribution entries to the for-plotting TSV
+    plot_writer = tsv.TsvWriter(open(local_plot_filename, "w")) 
+    
+    for pop, list_of_stats in stats_by_pop.iteritems():
+        for sample_name, stat in list_of_stats:
+            # Save each sample for its population
+            plot_writer.line(pop, stat)    
+    
+    plot_writer.close()
+    out_store.write_output_file(local_plot_filename, plot_tsv_key)
         
         
     return stats_by_pop
@@ -296,31 +318,28 @@ def save_region_stats(job, options, region, graph_stats):
             for pop_name in stats_by_pop.keys():
                 # Normalize each population
                 
-                # These two lists need to correspond
-                if len(stats_by_pop[pop_name])!= len(ref_stats[pop_name]):
-                    RealTimeLogger.get().critical("Sample count mismatch for "
-                        "{} {}: {} in {}, {} in ref".format(region, pop_name,
-                        len(stats_by_pop[pop_name]), graph,
-                        len(ref_stats[pop_name])))
-                    raise RuntimeError("Sample count mismatch")
-                    
-                # Find samples where the stat goes down versus ref and complain
-                # about it
-                for (ref_sample, ref_stat), (graph_sample, graph_stat) in \
-                    itertools.izip(stats_by_pop[pop_name], ref_stats[pop_name]):
-                    
-                    if ref_stat > graph_stat:
-                        RealTimeLogger.get().warning(
-                            "Ref for {} {} got {} but graph {} {} got "
-                            "only {}".format(region, ref_sample, ref_stat,
-                            graph, graph_sample, graph_stat))
+                # Make the ref stats into a dict by sample name
+                ref_stats_for_pop = dict(ref_stats[pop_name])
                 
-                # Zip the two stats lists together and do the subtraction, and
-                # replace the non-reference list.
-                stats_by_pop[pop_name] = [(this_name, this_stat - ref_stat) for 
-                    ((this_name, this_stat), (ref_name, ref_stat))
-                    in itertools.izip(stats_by_pop[pop_name],
-                    ref_stats[pop_name])]
+                # Make a list to hold normalized (sample, stat value) pairs
+                normalized = []
+                
+                # Go through the particular graph stats and normalize each
+                # sample when the ref stat exists for that sample
+                for this_sample, this_stat in stats_by_pop[pop_name]:
+                    # For every sample and its stat under this graph
+                    if ref_stats_for_pop.has_key(this_sample):
+                        # If the ref graph also has this sample for this stat
+                        
+                        # Normalize by subtraction and add it to the list
+                        normalized.append((this_sample,
+                            this_stat - ref_stats_for_pop[this_sample])) 
+
+                    # If the ref stat isn't there for the sample, discard the
+                    # sample
+                
+                # Replace the non-reference list
+                stats_by_pop[pop_name] = normalized
                     
             # Save the normalized values
             normed_tsv_key = "bias/normalized_distributions/{}/{}.tsv".format(
@@ -334,9 +353,9 @@ def save_region_stats(job, options, region, graph_stats):
             normed_writer = tsv.TsvWriter(normed_file)
             
             for pop_name, value_list in stats_by_pop.iteritems():
-                for value in value_list:
+                for sample_name, stat in value_list:
                     # Dump each normalized value with its population
-                    normed_writer.line(pop_name, value)
+                    normed_writer.line(pop_name, stat)
                     
             # Finish up our local temp file
             normed_writer.close()

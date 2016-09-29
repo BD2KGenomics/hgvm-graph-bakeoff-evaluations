@@ -283,15 +283,15 @@ do
 
         # Set Perfect/Unique limits by region
         if [ "${REGION^^}" == "MHC" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.6 --min_y 0.6"
+            PERFECT_UNIQUE_LIMITS="--min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.8"
         elif [ "${REGION^^}" == "BRCA1" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.45 --min_y 0.45"
+            PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "BRCA2" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.70 --min_y 0.70"
+            PERFECT_UNIQUE_LIMITS="--min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.8"
         elif [ "${REGION^^}" == "SMA" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.2 --min_y 0.2"
+            PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "LRC_KIR" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.4 --min_y 0.4"
+            PERFECT_UNIQUE_LIMITS=""
         else
             PERFECT_UNIQUE_LIMITS=""
         fi
@@ -302,8 +302,8 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
-            --max_x 1 --max_y 1 ${PERFECT_UNIQUE_LIMITS} \
-            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
+            ${PERFECT_UNIQUE_LIMITS} \
+            --sparse_ticks --sparse_axes --markers "o" \
             --annotate --no_legend \
             ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"
@@ -348,14 +348,15 @@ do
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
+    # Maybe just cut off K31 DBG for this plot?
     if [[ "${MODE}" == "absolute" ]]; then
         ./scripts/scatter.py "${OVERALL_PERFECT_UNIQUE_FILE}" \
             --save "${OVERALL_PERFECT_UNIQUE_PLOT}" \
             --title "$(printf "Perfect vs. Unique\nMapping (${MODE})")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
-            --max_x 1 --max_y 1  --min_x 0.4 --min_y 0.4 \
-            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
+            --min_x 0.55 --min_y 0.55 --max_x 0.8 --max_y 0.8 \
+            --sparse_ticks --sparse_axes --markers "o" \
             --annotate --no_legend \
             "${PLOT_PARAMS[@]}"
     fi
