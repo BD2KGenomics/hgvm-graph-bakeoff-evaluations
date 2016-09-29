@@ -271,7 +271,8 @@ def write_global_directory(file_store, path, cleanup=False, tee=None):
                     
             # Spit back the ID to use to retrieve it
             return file_id
-        
+
+@backoff        
 def read_global_directory(file_store, directory_id, path):
     """
     Reads a directory with the given tar file id from the global file store and
@@ -692,6 +693,9 @@ class FileIOStore(IOStore):
             
         # Rename the temp file to the right place, atomically
         os.rename(temp_path, real_output_path)
+        
+        # Give it ordinary, not-secret permissions
+        os.chmod(real_output_path, 0644)
         
     def exists(self, path):
         """
