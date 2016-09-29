@@ -360,7 +360,7 @@ def collate_region(job, options, region):
         writer = tsv.TsvWriter(open(local_filename, "w"))
         
         for graph, stats_by_sample in stats_cache.iteritems():
-            # For each graph and allt he stats for that graph
+            # For each graph and all the stats for that graph
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
                 for stat_name, stat_value in stats_by_name.iteritems():
@@ -384,7 +384,7 @@ def collate_region(job, options, region):
         # We want to normalize and the reference exists (i.e. not CENX)
         # Normalize every stat against the reference
         for graph, stats_by_sample in normed_stats_cache.iteritems():
-            # For each graph and allt he stats for that graph
+            # For each graph and all the stats for that graph
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
                 for stat_name in stats_by_name.keys():

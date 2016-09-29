@@ -42,22 +42,20 @@ HR_NAMES["vglr"]="VGLR"
 HR_NAMES["shifted1kg"]="Scrambled"
 HR_NAMES["snp1kg_kp"]="1KG KP"
 
-for MODE in normalized_distributions distributions
+for MODE in absolute normalized
 do
 
     # Are we absolute or normalized?
-    NORMALIZED="absolute"
+    NORMALIZED="Absolute"
 
     # Do we want portion (default) or absolute deviations
     DEVIATIONS=""
 
-    PORTION="Portion"
-    if [ "${MODE}" == "normalized_distributions" ]
+    if [ "${MODE}" == "normalized" ]
     then
-        PORTION="Difference in portion"
-        NORMALIZED="normalized"
         # No sense normalizing twice
         DEVIATIONS="--absolute_deviation"
+        NORMALIZED="Difference in"
     fi
 
     # Where are the bias files
@@ -77,25 +75,50 @@ do
             # Every TSV becomes a boxplot
             
             # Pull out the graph name
-            GRAPH=`basename ${GRAPH_TSV} | sed 's/\(.*\).tsv/\1/'` 
+            GRAPH=`basename ${GRAPH_TSV} | sed 's/.*\.\(.*\)\.tsv/\1/'`
             
-            # Ge tthe actual path to the graph TSV
+            # Pull out the stat
+            STAT=`basename ${GRAPH_TSV} | sed 's/\(.*\)\..*\.tsv/\1/'` 
+            
+            # Get the actual path to the graph TSV
             GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
             
             # Where should the plot go?
-            PLOT_PATH="${DISTRIBUTION_DIR}/${NORMALIZED}_bias_${REGION}_${GRAPH}.png"
+            PLOT_PATH="${DISTRIBUTION_DIR}/${MODE}_bias_${STAT}_${GRAPH}_${REGION}.png"
             
             # Get the human readable graph name
             HR_GRAPH=${HR_NAMES["${GRAPH}"]}
             
-            echo "Plotting ${HR_REGION} ${HR_GRAPH} (${GRAPH})"
+            echo "Plotting ${HR_REGION} ${HR_GRAPH} ${STAT} (${GRAPH})"
             
-            ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-                --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
-                --x_label "Population" --y_label "$(printf "${PORTION}\nmapped perfectly")" --save "${PLOT_PATH}" \
-                --x_sideways --hline_median EUR \
-                ${DEVIATIONS} \
-                "${PLOT_PARAMS[@]}"
+            if [[ "${STAT}" == "perfect" ]]; then
+            
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED} portion\nmapped perfectly")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+                    
+            elif [[ "${STAT}" == "substrate" ]]; then
+                
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Substitution rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED^} substitution rate")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+                    
+            elif [[ "${STAT}" == "indelrate" ]]; then
+                
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Indel rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED^} indel rate")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+            
+            fi
         
         done
 
