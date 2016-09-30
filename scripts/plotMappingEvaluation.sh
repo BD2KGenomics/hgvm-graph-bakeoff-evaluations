@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -221,15 +221,15 @@ do
             # Limit max Y for absolute substitution rates
             if [ "${REGION^^}" == "MHC" ]
             then
-                SUBSTRATE_LIMIT="--max 0.10"
+                SUBSTRATE_LIMIT="--max 0.01"
+            elif [ "${REGION^^}" == "BRCA2" ]
+            then
+                SUBSTRATE_LIMIT="--max 0.004"
             elif [ "${REGION^^}" == "CENX" ]
             then
                 SUBSTRATE_LIMIT=""
             else
-                SUBSTRATE_LIMIT="--max 0.02"
-                
-                # For supplement
-                SUBSTRATE_LIMIT="--max 0.10"
+                SUBSTRATE_LIMIT=""
             fi
         else
             # Set limits by region
@@ -250,6 +250,7 @@ do
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
             --range --sparse_ticks --sparse_axes \
+            --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
             
         if [ "${MODE}" == "absolute" ]
@@ -257,9 +258,12 @@ do
             # Limit max Y for absolute indel rates
             if [ "${REGION^^}" == "MHC" ]
             then
-                INDELRTE_LIMIT="--max 0.10"
+                INDELRATE_LIMIT="--max 0.0004"
+            elif [ "${REGION^^}" == "BRCA2" ]
+            then
+                INDELRATE_LIMIT="--max 0.0002"
             else
-                INDELRATE_LIMIT="--max 0.02"
+                INDELRATE_LIMIT=""
             fi
         else
             # Set limits by region
@@ -279,15 +283,17 @@ do
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
             --x_sideways --hline_median refonly --best_low \
             --range --sparse_ticks --sparse_axes ${INDELRATE_LIMIT} \
+            --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
+        # MHC and BRCA2 fit in --min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.
         if [ "${REGION^^}" == "MHC" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.8"
+            PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "BRCA1" ]; then
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "BRCA2" ]; then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.8"
+            PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "SMA" ]; then
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "LRC_KIR" ]; then
@@ -303,7 +309,7 @@ do
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
             ${PERFECT_UNIQUE_LIMITS} \
-            --sparse_ticks --sparse_axes --markers "o" \
+            --markers "o" \
             --annotate --no_legend \
             ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"

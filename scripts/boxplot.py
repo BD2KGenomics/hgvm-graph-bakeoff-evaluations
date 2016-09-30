@@ -90,6 +90,8 @@ def parse_args(args):
         help="use only bottom and left axes")
     parser.add_argument("--hline_ticks", action="store_true",
         help="draw only a few ticks, with one at the hline")
+    parser.add_argument("--scientific", action="store_true",
+        help="use scientific notation on the Y axis")
     parser.add_argument("--x_sideways", action="store_true",
         help="write X axis labels vertically")
     parser.add_argument("--min", type=float, default=None,
@@ -501,20 +503,25 @@ def main(args):
         # And log Y axis if desired.
         pyplot.yscale("log")
         
-    if options.sparse_ticks:
-        # Set up tickmarks to have only 2 per axis, at the ends
-        pyplot.gca().yaxis.set_major_locator(
-            matplotlib.ticker.FixedLocator(pyplot.ylim()))
-            
     if options.hline_ticks:
         # Set up tickmarks to a tick at any hlines, and some others
         
         y_min, y_max = pyplot.ylim()
         
-        # Do the ends, the middle, and the hline
+        # Put ticks at all hlines plus the start and end of the axis
+        tick_locations = hline_positions + [y_min, y_max]
+        
+        if not options.sparse_ticks:
+            # Add a middle tick too
+            tick_locations .append((y_min + y_max) / 2.0)
+        
+        # Apply the ticks
         pyplot.gca().yaxis.set_major_locator(
-            matplotlib.ticker.FixedLocator(hline_positions + [y_min, y_max, 
-            ((y_min + y_max) / 2.0)]))
+            matplotlib.ticker.FixedLocator(tick_locations))
+    elif options.sparse_ticks:
+        # Set up tickmarks to have only 2 per axis, at the ends
+        pyplot.gca().yaxis.set_major_locator(
+            matplotlib.ticker.FixedLocator(pyplot.ylim()))
             
     if options.sparse_axes:
         # Don't draw top or right axes
@@ -523,6 +530,11 @@ def main(args):
         # Or their tick marks
         pyplot.gca().yaxis.set_ticks_position("left")
         pyplot.gca().xaxis.set_ticks_position("bottom")
+        
+    if options.scientific:
+        # Enable scientific notation on the Y axis as per
+        # <http://stackoverflow.com/a/11579834/402891>
+        pyplot.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>

@@ -84,7 +84,7 @@ do
             GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
             
             # Where should the plot go?
-            PLOT_PATH="${DISTRIBUTION_DIR}/${MODE}_bias_${STAT}_${GRAPH}_${REGION}.png"
+            PLOT_PATH="${DISTRIBUTION_DIR}/${MODE}_bias_${STAT}_${GRAPH}-${REGION}.png"
             
             # Get the human readable graph name
             HR_GRAPH=${HR_NAMES["${GRAPH}"]}
@@ -105,7 +105,7 @@ do
                 ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
                     --title "$(printf "Substitution rate\nin ${HR_REGION} ${HR_GRAPH}")" \
                     --x_label "Population" --y_label "$(printf "${NORMALIZED^} substitution rate")" --save "${PLOT_PATH}" \
-                    --x_sideways --hline_median EUR \
+                    --x_sideways --hline_median EUR --best_low \
                     ${DEVIATIONS} \
                     "${PLOT_PARAMS[@]}"
                     
@@ -114,7 +114,7 @@ do
                 ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
                     --title "$(printf "Indel rate\nin ${HR_REGION} ${HR_GRAPH}")" \
                     --x_label "Population" --y_label "$(printf "${NORMALIZED^} indel rate")" --save "${PLOT_PATH}" \
-                    --x_sideways --hline_median EUR \
+                    --x_sideways --hline_median EUR --best_low \
                     ${DEVIATIONS} \
                     "${PLOT_PARAMS[@]}"
             
