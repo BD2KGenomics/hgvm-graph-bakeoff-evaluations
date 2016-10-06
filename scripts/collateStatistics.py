@@ -38,12 +38,12 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to find stats files in (under /stats)")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put collated plotting files in (under /plots)")
     parser.add_argument("--blacklist", action="append", default=[],
-        help="ignore the specified region:graph pairs")
+        help="ignore the specified regions, graphs, or region:graph pairs")
     parser.add_argument("--overwrite", action="store_true",
         help="replace cached per-sample statistics with recalculated ones")
     
@@ -63,11 +63,19 @@ def collate_all(job, options):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
+    # Holds a dict from region name to absolute stats by graph, sample, and stat
+    # name.
+    stats_by_region = {}
     
     for region in in_store.list_input_directory("stats"):
-        # Collate everything in the region
-        job.addChildJobFn(collate_region, options, region, cores=1, memory="1G",
-            disk="10G")
+        # Collate everything in the region, and capture the returned stats dict
+        # promise
+        stats_by_region[region] = job.addChildJobFn(collate_region, options,
+            region, cores=1, memory="1G", disk="10G").rv()
+    
+    # We also need to merge some overall stats across regions
+    job.addFollowOnJobFn(merge_overall, options, stats_by_region,
+        cores=1, memory="1G", disk="10G")
     
     
 # TODO: use this!        
@@ -141,7 +149,10 @@ def collate_region(job, options, region):
         for graph in in_store.list_input_directory("stats/{}".format(region)):
             # For each graph
         
-            if "{}:{}".format(region, graph) in options.blacklist:
+            if ("{}:{}".format(region, graph) in options.blacklist or 
+                region in options.blacklist or
+                graph in options.blacklist):
+                
                 # We don't want to process this region/graph pair.
                 RealTimeLogger.get().info("Skipping {} graph {}".format(region,
                     graph))
@@ -168,20 +179,26 @@ def collate_region(job, options, region):
                 # Compute the answers for this sample
                 
                 # How many reads are mapped well enough?
-                total_mapped_well = sum((stats["primary_mismatches"].get(str(x),
-                    0) for x in xrange(3)))
+                total_mapped_well = sum((
+                    stats["primary_matches_per_column"].get(x)
+                    for x in stats["primary_matches_per_column"].iterkeys()
+                    if float(x) >= 0.98))
                     
                 # How many reads are multimapped well enough?
-                total_multimapped = sum((stats["secondary_mismatches"].get(
-                    str(x), 0) for x in xrange(3)))
+                total_multimapped_well = sum((
+                    stats["secondary_matches_per_column"].get(x)
+                    for x in stats["secondary_matches_per_column"].iterkeys()
+                    if float(x) >= 0.98))
+                # How many reads multimapped at all?
+                total_multimapped_at_all = sum((
+                    stats["secondary_matches_per_column"].get(x)
+                    for x in stats["secondary_matches_per_column"].iterkeys()))
                     
                 # How many reads are perfect?
-                total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
-                    for x in xrange(1)))
-                    
-                # How many reads are mapped with <=1 error?
-                total_one_error = sum((stats["primary_mismatches"].get(str(x),
-                    0) for x in xrange(2)))
+                total_perfect = sum((
+                    stats["primary_matches_per_column"].get(x)
+                    for x in stats["primary_matches_per_column"].iterkeys()
+                    if float(x) == 1.0))
                     
                 # How many reads have no indels?
                 total_no_indels = sum((stats["primary_indels"].get(str(x), 0)
@@ -214,13 +231,29 @@ def collate_region(job, options, region):
                     (stats["primary_substitutions"].get(str(x), 0)
                     for x in xrange(1)))
                     
-                
+                # What's the total matches per column for primary mappings
+                total_matches_per_column = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_matches_per_column"].iteritems()))
                     
+                # What's the total score?
+                total_score = sum((count * float(weight)
+                    for weight, count in 
+                    stats["primary_scores"].iteritems()))
+                
                 # How many reads are there overall for this sample?
                 total_reads = stats["total_reads"]
                 
-                # How many reads are mapped at all for this sample (not just good
-                # enough)?
+                # If no reads got aligned, the sample is broken and we want to
+                # skip it (and make the user fix it).
+                if total_reads == 0:
+                    RealTimeLogger.get().warning(
+                        "No reads available for {} {} {}".format(
+                        region, graph, sample_name))
+                    continue
+                
+                # How many reads are mapped at all for this sample (not just
+                # good enough)?
                 total_mapped_at_all = stats["total_mapped"]
                 
                 # What was the runtime?
@@ -237,17 +270,27 @@ def collate_region(job, options, region):
                 # Get the dict we want to put the computed stats in
                 sample_stats = stats_cache[graph][sample_name]
                 
-                # What portion are single-mapped?
-                sample_stats["portion_single_mapped"] = (total_mapped_well - 
-                    total_multimapped) / float(total_reads)
+                # How many reads are mapped well, single-mapped well, and
+                # existing at all? We need these for computing an overall
+                # perfect vs unique plot.
+                sample_stats["perfect"] = total_perfect
+                sample_stats["single_mapped_well"] = (total_mapped_well -
+                    total_multimapped_well)
+                sample_stats["total_reads"] = total_reads
+                
+                # What portion have one good mapping?
+                sample_stats["portion_single_mapped_well"] = \
+                    ((total_mapped_well - total_multimapped_well) / 
+                    float(total_reads))
+                # What portion only have one mapping at all?
+                sample_stats["portion_single_mapped_at_all"] = \
+                    ((total_mapped_at_all - total_multimapped_at_all) / 
+                    float(total_reads))
                 # What portion are mapped well?
                 sample_stats["portion_mapped_well"] = (total_mapped_well /
                     float(total_reads))
                 # What portion are perfect?
                 sample_stats["portion_perfect"] = (total_perfect /
-                    float(total_reads))
-                # What portion are <=1 error?
-                sample_stats["portion_one_error"] = (total_one_error / 
                     float(total_reads))
                 # What portion are mapped at all?
                 sample_stats["portion_mapped_at_all"] = (total_mapped_at_all / 
@@ -266,6 +309,24 @@ def collate_region(job, options, region):
                 # And the portion with no substitutions
                 sample_stats["portion_no_substitutions"] = \
                     (total_no_substitutions / float(total_reads))
+                
+                if total_mapped_at_all > 0:
+                    # Some things we want to divide by the mapped reads
+                
+                    # What's the average matches per column for primary alignments
+                    # for reads that actually aligned?
+                    sample_stats["mean_matches_per_column"] = \
+                        (total_matches_per_column / float(total_mapped_at_all))
+                    # What's the average score for primary alignments of reads that
+                    # actually aligned?
+                    sample_stats["mean_score"] = \
+                        (total_score / float(total_mapped_at_all))
+                else:
+                    # If no reads actually mapped we can just put 0
+                    
+                    sample_stats["mean_matches_per_column"] = 0
+                    sample_stats["mean_score"] = 0
+                    
                 # What was the runtime?
                 sample_stats["runtime"] = runtime
                 
@@ -281,9 +342,9 @@ def collate_region(job, options, region):
                     # The aligned bases are the ones that aren't in indels or
                     # leading/trailing softclips.
                     
-                    # Calculate portion of aligned bases that are substitutions
-                    # (even if we're "substituting" the same sequence in).
-                    sample_stats["substitution_rate"] = (mismatch_bases /
+                    # Calculate portion of aligned bases that are substitutions.
+                    # Doesn't count indels at all.
+                    sample_stats["substitution_rate"] = (substitution_bases /
                         float(total_aligned))
                         
                     # Calculate indels per base
@@ -299,7 +360,7 @@ def collate_region(job, options, region):
         writer = tsv.TsvWriter(open(local_filename, "w"))
         
         for graph, stats_by_sample in stats_cache.iteritems():
-            # For each graph and allt he stats for that graph
+            # For each graph and all the stats for that graph
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
                 for stat_name, stat_value in stats_by_name.iteritems():
@@ -323,7 +384,7 @@ def collate_region(job, options, region):
         # We want to normalize and the reference exists (i.e. not CENX)
         # Normalize every stat against the reference
         for graph, stats_by_sample in normed_stats_cache.iteritems():
-            # For each graph and allt he stats for that graph
+            # For each graph and all the stats for that graph
             for sample, stats_by_name in stats_by_sample.iteritems():
                 # For each sample and all the stats for that sample
                 for stat_name in stats_by_name.keys():
@@ -339,6 +400,10 @@ def collate_region(job, options, region):
                             stats_by_name[stat_name] /= ref_value
                         else:
                             stats_by_name[stat_name] = None
+                    else:
+                        # Nothing to norm against. TODO: maybe complain when
+                        # sample sets aren't all the same?
+                        stats_by_name[stat_name] = None
                         
         # Register this as a condition
         stats_by_mode["normalized"] = normed_stats_cache
@@ -354,10 +419,10 @@ def collate_region(job, options, region):
             "portion_mapped_well": "plots/{}/mapping.{}.tsv".format(mode,
                 region),
             "portion_perfect": "plots/{}/perfect.{}.tsv".format(mode, region),
-            "portion_one_error": "plots/{}/oneerror.{}.tsv".format(mode,
-                region),
-            "portion_single_mapped": "plots/{}/singlemapping.{}.tsv".format(
-                mode, region),
+            "portion_single_mapped_well":
+                "plots/{}/singlemapping.{}.tsv".format(mode, region),
+            "portion_single_mapped_at_all":
+                "plots/{}/singlemappingatall.{}.tsv".format(mode, region),
             "portion_mapped_at_all": "plots/{}/anymapping.{}.tsv".format(mode,
                 region),
             "runtime": "plots/{}/runtime.{}.tsv".format(mode, region),
@@ -372,7 +437,10 @@ def collate_region(job, options, region):
             "substitution_rate": "plots/{}/substrate.{}.tsv".format(mode,
                 region),
             "indel_rate": "plots/{}/indelrate.{}.tsv".format(mode,
-                region)
+                region),
+            "mean_matches_per_column": "plots/{}/matches.{}.tsv".format(mode,
+                region),
+            "mean_score": "plots/{}/score.{}.tsv".format(mode, region)
         }
         
         # Make a local temp file for each (dict from stat name to file object
@@ -387,6 +455,10 @@ def collate_region(job, options, region):
                 # For each sample and all the stats for that sample
                 for stat_name, stat_value in stats_by_name.iteritems():
                     # For each stat
+                    
+                    if not stats_file_temps.has_key(stat_name):
+                        # Skip stats that have nowhere to go
+                        continue
                     
                     # Write graph and value to the file for the stat, for
                     # plotting
@@ -420,7 +492,7 @@ def collate_region(job, options, region):
                 
                 # Get the prefect and unique stats
                 perfect = stats_by_name["portion_perfect"]
-                unique = stats_by_name["portion_single_mapped"]
+                unique = stats_by_name["portion_single_mapped_well"]
                 
                 all_perfect.append(perfect)
                 all_unique.append(unique)
@@ -435,13 +507,94 @@ def collate_region(job, options, region):
         perfect_vs_unique.close()
            
         # Save the perfect vs unique data
-        # TODO: mean across samples so we don't plot several thousand points???             
         out_store.write_output_file(perfect_vs_unique.name,
                 "plots/{}/perfect_vs_unique.{}.tsv".format(mode, region))
         
     # Return the cached stats. TODO: break out actual collate and upload into
     # its own function that will also do normalization.
-    return stats_cache
+    # Make sure to use toillib to strip off the defaultdict lambdas
+    return de_defaultdict(stats_cache)
+    
+def merge_overall(job, options, stats_by_region):
+    """
+    Given stats by region, graph, sample, and stat name, produce the data files
+    needed for overall plots that aren't just concatenations of the individual
+    region plots.
+    """
+    
+    # Set up the IO stores.
+    in_store = IOStore.get(options.in_store)
+    out_store = IOStore.get(options.out_store)
+    
+    # Right now all we need to do is the perfect vs unique plot.
+    
+    # Make a file to write the points to plot to.
+    # perfect = precision = y, unique ~= recall = x
+    perfect_vs_unique = tempfile.NamedTemporaryFile(
+        dir=job.fileStore.getLocalTempDir(), delete=False)
+    
+    # For each sample in each graph, we're going to sum total reads, total
+    # perfect, and total unique across all regions. Then we're going to compute
+    # the perfect and unique values for all the samples, find the median in each
+    # dimension, and plot that point. TODO: do a cool cloud instead of a point.
+    
+    # Holds perfect read count by graph and sample
+    perfect_count = collections.defaultdict(collections.Counter)
+    # Holds unique read count by graph and sample
+    unique_count = collections.defaultdict(collections.Counter)
+    # Holds overall read count by graph and sample
+    read_count = collections.defaultdict(collections.Counter)
+    
+    # Keep a set of all observed graph names
+    graph_names = set()
+    
+    for region, stats_by_graph in stats_by_region.iteritems():
+        # For each region and its stats for the graphs
+        for graph, stats_by_sample in stats_by_graph.iteritems():
+            # For each graph and all the stats for that graph
+            
+            # We have a graph with this name
+            graph_names.add(graph)
+            
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                
+                # Add in perfect reads
+                perfect_count[graph][sample] += stats_by_name["perfect"]
+                # And (sufficiently) unbique reads
+                unique_count[graph][sample] += \
+                    stats_by_name["single_mapped_well"]
+                # And total reads
+                read_count[graph][sample] += stats_by_name["total_reads"]
+    
+    for graph in graph_names:           
+        # For every graph under consideration 
+        
+        # We'll fill this with perfect and unique portions for all the samples.
+        perfect_portions = []
+        unique_portions = []
+        
+        for sample in perfect_count[graph].iterkeys():
+            # Now calculate per-sample perfect and unique portions
+            perfect_portions.append(float(perfect_count[graph][sample]) /
+                read_count[graph][sample])
+            unique_portions.append(float(unique_count[graph][sample]) /
+                read_count[graph][sample])
+        
+        # Write them in x, y order
+        perfect_vs_unique.write("{}\t{}\t{}\n".format(graph,
+            numpy.median(unique_portions),
+            numpy.median(perfect_portions)))
+    
+    perfect_vs_unique.flush()            
+    os.fsync(perfect_vs_unique.fileno())
+    perfect_vs_unique.close()
+       
+    # Save the perfect vs unique data
+    # TODO: we don't support normalization for this overall plot
+    out_store.write_output_file(perfect_vs_unique.name,
+            "plots/absolute/perfect_vs_unique.ALL.tsv")
+    
     
 def main(args):
     """

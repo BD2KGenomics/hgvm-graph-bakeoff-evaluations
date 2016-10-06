@@ -69,7 +69,9 @@ def parse_args(args):
         help="recompute and overwrite existing stats files")
     parser.add_argument("--reindex", default=False, action="store_true",
         help="don't re-use existing indexed graphs")
-    parser.add_argument("--too_old", default=None, type=str,
+    parser.add_argument("--alignments_too_old", default=None, type=str,
+        help="recompute alignments older than this date")
+    parser.add_argument("--stats_too_old", default=None, type=str,
         help="recompute stats files older than this date")
     parser.add_argument("--index_mode", choices=["rocksdb", "gcsa-kmer",
         "gcsa-mem"], default="gcsa-mem",
@@ -78,6 +80,10 @@ def parse_args(args):
         help="use the pruned graph in the index")
     parser.add_argument("--include_primary", action="store_true",
         help="use the primary path in the index")
+    parser.add_argument("--serialize_downloads", action="store_true",
+        help="download and index graphs one at a time")
+    parser.add_argument("--min_gam_size", type=int, default=1024, 
+        help="minimum size of a legitimate GAM file to accept")
     
     
     # The command line arguments start with the program name, which we don't
@@ -152,6 +158,12 @@ def run_all_alignments(job, options):
     # Make sure we skip the header
     is_first = True
     
+    # We may want to run all the download-and-index jobs as follow-ons of this
+    # job, or we may want to run them in serial, so as to not overload the
+    # location we're downloading from. So each next download job is added as a
+    # follow on of this one.
+    download_predecessor_job = job
+    
     for line in options.server_list:
         if is_first:
             # This is the header, skip it.
@@ -174,12 +186,17 @@ def run_all_alignments(job, options):
         # Pull out the first 3 fields
         region, url, generator = parts[0:3]
         
-        # We cleverly just split the lines out to different nodes
-        job.addChildJobFn(run_region_alignments, options, bin_dir_id, region,
-            url, cores=16, memory="100G", disk="50G")
+        # We cleverly just split the lines out to different nodes.
+        download_successor_job = download_predecessor_job.addFollowOnJobFn(
+            run_region_alignments, options, bin_dir_id, region, url,
+            cores=16, memory="100G", disk="50G")
             
         # Say what we did
-        RealTimeLogger.get().info("Running child for {}".format(parts[1]))
+        RealTimeLogger.get().info("Adding downloader for {}".format(parts[1]))
+        
+        if options.serialize_downloads:
+            # The next download job needs to be a follow-on of this download job
+            download_predecessor_job = download_successor_job
         
 
 def run_region_alignments(job, options, bin_dir_id, region, url):
@@ -242,16 +259,60 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # See if every file is a stats file
         match = re.match("(.*)\.json$", filename)
     
-        if match and (options.too_old is None or mtime > options.too_old):
-            # We found a sample's stats file, and it's new enough.
-            completed_samples[match.group(1)] = mtime
+        if not match:
+            # Skip random extra files
+            continue
         
-        if match and (options.too_old is not None and mtime < options.too_old):
-            # Say we hit an mtime thing
-            RealTimeLogger.get().info("Need to re-run {} because "
-                "{} < {}".format(match.group(1), mtime.ctime(),
-                options.too_old.ctime()))
+        # Get the size of the corresponding GAM, if it exists
+        gam_size = out_store.get_size("{}/{}.gam".format(alignment_dir,
+            match.group(1)))
+        # And its mtime
+        gam_mtime = out_store.get_mtime("{}/{}.gam".format(alignment_dir,
+            match.group(1)))
+    
+        if (gam_size is None or
+            gam_size < options.min_gam_size or 
+            (options.alignments_too_old is not None and
+            gam_mtime < options.alignments_too_old)):
             
+            # Our GAM is too small or too old
+            if gam_size < options.min_gam_size:
+                RealTimeLogger.get().warning(
+                    "Need to re-run {} because GAM is too small ({})!".format(
+                    match.group(1), gam_size))
+            elif (options.alignments_too_old is not None and
+                gam_mtime < options.alignments_too_old):
+                
+                RealTimeLogger.get().warning(
+                    "Need to re-run {} because GAM is too old!".format(
+                    match.group(1)))
+            
+            else:
+                # Maybe GAM size was None or something?
+                RealTimeLogger.get().warning(
+                    "Need to re-run {}".format(
+                    match.group(1)))
+                
+            continue
+    
+        if options.stats_too_old is not None:
+            if mtime < options.stats_too_old:
+                # Say we hit an mtime thing
+                RealTimeLogger.get().info("Need to re-run {} because stats are "
+                "too old ({} < {})".format(match.group(1), mtime.ctime(),
+                    options.stats_too_old.ctime()))
+                
+                # Rerun the sample. Don't mark it complete
+                continue
+            else:
+                # This stats file was modified recently enough. Don't redo it
+                # Mark the sample as already complete        
+                completed_samples[match.group(1)] = mtime
+        else:
+            # If no too-old time is specified, mark samples that aren't broken
+            # for other reasons complete.
+            completed_samples[match.group(1)] = mtime
+                
     RealTimeLogger.get().info("Already have {}/{} completed samples for {} in "
         "{}".format(len(completed_samples), len(input_samples), basename,
         stats_dir))
@@ -279,6 +340,7 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Nothing to align to {}".format(basename))
         return
     
+    
     # Where will the indexed graph go in the output
     index_key = "indexes/{}-{}-{}/{}/{}.tar.gz".format(options.index_mode,
         options.kmer_size, options.edge_max, region, graph_name)
@@ -301,8 +363,21 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         RealTimeLogger.get().info("Index for {} retrieved "
             "successfully".format(basename))
         
+        # We already have the index, so we can move straight on to the actual
+        # running of samples, after this job ends. Don't make them children as
+        # other jobs may be waiting on this download to finish.
+        RealTimeLogger.get().info("Queueing alignment of {} samples to "
+        "{} {}".format(len(samples_to_run), graph_name, region))
+            
+        job.addFollowOnJobFn(recursively_run_samples, options, bin_dir_id, 
+            graph_name, region, index_dir_id, samples_to_run,
+            cores=1, memory="4G", disk="4G")
+                
+        RealTimeLogger.get().info("Done making children for {}".format(basename))
+        
     else:
-        # Download the graph, build the index, and store it in the output store
+        # Download the graph, put it in the file store, and queue up a job to
+        # index it and then queue up children.
     
         # Work out where the graph goes
         # it will be graph.vg in here
@@ -346,16 +421,41 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
                 # Make the real URL with the version
                 versioned_url = url + options.server_version
                 
+                # We'll download to this JSON file, and then run the rest of the
+                # pipeline
+                graph_json = "{}/graph.json".format(
+                    job.fileStore.getLocalTempDir())
+                
                 RealTimeLogger.get().info("Downloading {} to {}".format(
-                    versioned_url, graph_filename))
+                    versioned_url, graph_json))
+                
+                @backoff
+                def try_download(url, filename):
+                    """
+                    Try downloading the URL to the file with sg2vg. Annotated
+                    with randomized exponential backoff from toillib.
+                    """
+                    
+                    RealTimeLogger.get().info("Trying to download {}".format(
+                        url))
+                    
+                    handle = open(filename, 'w')
+                    subprocess.check_call(["{}sg2vg".format(bin_prefix),
+                        url, "-u"], stdout=handle)
+                    # We sometimes manage not to be able to read our children's
+                    # writes for some reason.
+                    time.sleep(10)
+                    handle.close()
                 
                 # Do the download
-                tasks.append(subprocess.Popen(["{}sg2vg".format(bin_prefix),
-                    versioned_url, "-u"], stdout=subprocess.PIPE))
+                try_download(versioned_url, graph_json)
+                
+                RealTimeLogger.get().info("Converting {} to {}".format(
+                    versioned_url, graph_filename))
                 
                 # Convert to vg
                 tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "view", "-Jv", "-"], stdin=tasks[-1].stdout,
+                    "view", "-Jv", "-"], stdin=open(graph_json),
                     stdout=subprocess.PIPE))
             
             # And cut nodes
@@ -377,196 +477,260 @@ def run_region_alignments(job, options, bin_dir_id, region, url):
         # for them to be on disk and readable.
         time.sleep(1)
         
+        # Put graph in file store
+        graph_id = job.fileStore.writeGlobalFile(graph_filename)   
         
+        # Queue an indexing follow-on
+        job.addFollowOnJobFn(index_region_and_run_samples, options, bin_dir_id,
+            region, url, graph_id, samples_to_run,
+            cores=16, memory="100G", disk="50G")
         
-        # Now run the indexer.
-        # TODO: support both indexing modes
-        RealTimeLogger.get().info("Indexing {}".format(graph_filename))
+def index_region_and_run_samples(job, options, bin_dir_id, region, url,
+    graph_id, samples_to_run):
+    """
+    For a region whose graph has already been downloaded, create and save the
+    index.
+    """
+    
+    RealTimeLogger.get().info("Indexing {} for {}".format(url, region))
+    
+    # Set up the IO stores each time, since we can't unpickle them on Azure for
+    # some reason.
+    sample_store = IOStore.get(options.sample_store)
+    out_store = IOStore.get(options.out_store)
+    
+    if bin_dir_id is not None:
+        # Download the binaries
+        bin_dir = "{}/bin".format(job.fileStore.getLocalTempDir())
+        read_global_directory(job.fileStore, bin_dir_id, bin_dir)
+        # We define a string we can just tack onto the binary name and get
+        # either the system or the downloaded version.
+        bin_prefix = bin_dir + "/"
+    else:
+        bin_prefix = ""
         
-        if options.index_mode == "rocksdb":
-            # Make the RocksDB index
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
-                str(options.kmer_size), "-e", str(options.edge_max),
-                "-t", str(job.cores), graph_filename, "-d",
-                graph_filename + ".index"])
-                
-        elif (options.index_mode == "gcsa-kmer" or
-            options.index_mode == "gcsa-mem"):
-            # We want a GCSA2/xg index. We have to prune the graph ourselves.
-            # See <https://github.com/vgteam/vg/issues/286>.
+    # Work out where the graph goes
+    # it will be graph.vg in here
+    # This whole directory will get tar-ed up as an index tarball
+    graph_dir = "{}/graph".format(job.fileStore.getLocalTempDir())
+    robust_makedirs(graph_dir)
+    
+    # Where will we keep the graph in that index tarball?"
+    graph_filename = "{}/graph.vg".format(graph_dir)
+    
+    # Parse the graph URL. It may be either an http(s) URL to a GA4GH server, or
+    # a direct file: URL to a vg graph.
+    url_parts = urlparse.urlparse(url, "file")
+    
+    # Either way, it has to include the graph base name, which we use to
+    # identify the graph, and which has to contain the region name (like brca2)
+    # and the graph type name (like cactus). For a server it's the last folder
+    # in the YURL, with a trailing slash, and for a file it's the name of the
+    # .vg file.
+    basename = re.match('.*/(.*)(/|\.vg)$', url_parts.path).group(1)
+        
+    # Get graph name (without region and its associated dash) from basename
+    graph_name = basename.replace("-{}".format(region), "").replace(
+        "{}-".format(region), "")
+    
+    # Download the graph
+    job.fileStore.readGlobalFile(graph_id, graph_filename)    
+        
+    # Now run the indexer.
+    # TODO: support both indexing modes
+    RealTimeLogger.get().info("Indexing {}".format(graph_filename))
+    
+    if options.index_mode == "rocksdb":
+        # Make the RocksDB index
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-s", "-k",
+            str(options.kmer_size), "-e", str(options.edge_max),
+            "-t", str(job.cores), graph_filename, "-d",
+            graph_filename + ".index"])
             
-            # What will we use as our temp combined graph file (containing only
-            # the bits of the graph we want to index, used for deduplication)?
-            to_index_filename = "{}/to_index.vg".format(
-                job.fileStore.getLocalTempDir())
+    elif (options.index_mode == "gcsa-kmer" or
+        options.index_mode == "gcsa-mem"):
+        # We want a GCSA2/xg index. We have to prune the graph ourselves.
+        # See <https://github.com/vgteam/vg/issues/286>.
+        
+        # What will we use as our temp combined graph file (containing only
+        # the bits of the graph we want to index, used for deduplication)?
+        to_index_filename = "{}/to_index.vg".format(
+            job.fileStore.getLocalTempDir())
+        
+        # Where will we save the kmers?
+        kmers_filename = "{}/index.graph".format(
+            job.fileStore.getLocalTempDir())
             
-            # Where will we save the kmers?
-            kmers_filename = "{}/index.graph".format(
-                job.fileStore.getLocalTempDir())
-                
-            with open(to_index_filename, "w") as to_index_file:
-                
-                if options.include_pruned:
-                
-                    RealTimeLogger.get().info("Pruning {} to {}".format(
-                        graph_filename, to_index_filename))
-                    
-                    # Prune out hard bits of the graph
-                    tasks = []
-                    
-                    # Prune out complex regions
-                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                        "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
-                        "-e", str(options.edge_max), graph_filename],
-                        stdout=subprocess.PIPE))
-                        
-                    # Throw out short disconnected chunks
-                    tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
-                        "-S", "-l", str(options.kmer_size * 2),
-                        "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                        stdout=to_index_file))
-                        
-                    # Did we make it through all the tasks OK?
-                    for task in tasks:
-                        if task.wait() != 0:
-                            raise RuntimeError("Pipeline step returned {}".format(
-                                task.returncode))
-                                
-                    time.sleep(1)
-                    
-                if options.include_primary:
-                
-                    # Then append in the primary path. Since we don't knoiw what
-                    # "it's called, we retain "ref" and all the 19", "6", etc paths
-                    # "from 1KG.
-                    
-                    RealTimeLogger.get().info(
-                        "Adding primary path to {}".format(to_index_filename))
-                    
-                    # See
-                    # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
-                    
-                    # Generate all the paths names we might have for primary paths.
-                    # It should be "ref" but some graphs don't listen
-                    ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
-                        [str(x) for x in xrange(1, 23)])
-                        
-                    ref_options = []
-                    for name in ref_names:
-                        # Put each in a -r option to retain the path
-                        ref_options.append("-r")
-                        ref_options.append(name)
-
-                    tasks = []
-
-                    # Retain only the specified paths (only one should really exist)
-                    tasks.append(subprocess.Popen(
-                        ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
-                        ["-t", str(job.cores), graph_filename], 
-                        stdout=to_index_file))
-                        
-                    # TODO: if we merged the primary path back on itself, it's
-                    # possible for it to braid with itself. Right now we just ignore
-                    # this and let those graphs take a super long time to index.
-                        
-                    # Wait for this second pipeline. We don't parallelize with the
-                    # first one so we don't need to use an extra cat step.
-                    for task in tasks:
-                        if task.wait() != 0:
-                            raise RuntimeError("Pipeline step returned {}".format(
-                                task.returncode))
-                             
-                    # Wait to make sure no weird file-not-being-full bugs happen
-                    # TODO: how do I wait on child process output?
-                    time.sleep(1)
-                
-            time.sleep(1)
-                
-            # Now we have the combined to-index graph in one vg file. We'll load
-            # it (which deduplicates nodes/edges) and then find kmers.
-                
-            # Save the problematic file
-            out_store.write_output_file(to_index_filename,
-                "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
-                options.kmer_size, options.edge_max, region, graph_name))
-                
-            with open(kmers_filename, "w") as kmers_file:
+        with open(to_index_filename, "w") as to_index_file:
             
+            if options.include_pruned:
+            
+                RealTimeLogger.get().info("Pruning {} to {}".format(
+                    graph_filename, to_index_filename))
+                
+                # Prune out hard bits of the graph
                 tasks = []
                 
-                RealTimeLogger.get().info("Finding kmers in {} to {}".format(
-                    to_index_filename, kmers_filename))
-                
-                # Deduplicate the graph
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "view", "-v", to_index_filename],
+                # Prune out complex regions
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-p", "-l", str(options.kmer_size), "-t", str(job.cores),
+                    "-e", str(options.edge_max), graph_filename],
                     stdout=subprocess.PIPE))
-                
-                # Make the GCSA2 kmers file
-                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
-                    "kmers", "-g", "-B", "-k", str(options.kmer_size),
-                    "-H", "1000000000", "-T", "1000000001",
+                    
+                # Throw out short disconnected chunks
+                tasks.append(subprocess.Popen(["{}vg".format(bin_prefix), "mod",
+                    "-S", "-l", str(options.kmer_size * 2),
                     "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
-                    stdout=kmers_file))
+                    stdout=to_index_file))
                     
                 # Did we make it through all the tasks OK?
-                task_number = 0
                 for task in tasks:
                     if task.wait() != 0:
-                        raise RuntimeError(
-                            "Pipeline step {} returned {}".format(
-                            task_number, task.returncode))
-                    task_number += 1
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
                             
+                time.sleep(1)
+                
+            if options.include_primary:
+            
+                # Then append in the primary path. Since we don't knoiw what
+                # "it's called, we retain "ref" and all the 19", "6", etc paths
+                # "from 1KG.
+                
+                RealTimeLogger.get().info(
+                    "Adding primary path to {}".format(to_index_filename))
+                
+                # See
+                # https://github.com/vgteam/vg/issues/318#issuecomment-215102199
+                
+                # Generate all the paths names we might have for primary paths.
+                # It should be "ref" but some graphs don't listen
+                ref_names = (["ref", "x", "X", "y", "Y", "m", "M"] +
+                    [str(x) for x in xrange(1, 23)])
+                    
+                ref_options = []
+                for name in ref_names:
+                    # Put each in a -r option to retain the path
+                    ref_options.append("-r")
+                    ref_options.append(name)
+
+                tasks = []
+
+                # Retain only the specified paths (only one should really exist)
+                tasks.append(subprocess.Popen(
+                    ["{}vg".format(bin_prefix), "mod", "-N"] + ref_options + 
+                    ["-t", str(job.cores), graph_filename], 
+                    stdout=to_index_file))
+                    
+                # TODO: if we merged the primary path back on itself, it's
+                # possible for it to braid with itself. Right now we just ignore
+                # this and let those graphs take a super long time to index.
+                    
+                # Wait for this second pipeline. We don't parallelize with the
+                # first one so we don't need to use an extra cat step.
+                for task in tasks:
+                    if task.wait() != 0:
+                        raise RuntimeError("Pipeline step returned {}".format(
+                            task.returncode))
+                         
                 # Wait to make sure no weird file-not-being-full bugs happen
                 # TODO: how do I wait on child process output?
                 time.sleep(1)
-                
-            time.sleep(1)
-                            
-            # Where do we put the GCSA2 index?
-            gcsa_filename = graph_filename + ".gcsa"
             
-            RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
-                    kmers_filename, gcsa_filename))
+        time.sleep(1)
             
-            # Make the gcsa2 index. Make sure to use 3 doubling steps to work
-            # around <https://github.com/vgteam/vg/issues/301>
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
-                str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
-                "-X", "3"])
-                
-            # Where do we put the XG index?
-            xg_filename = graph_filename + ".xg"
+        # Now we have the combined to-index graph in one vg file. We'll load
+        # it (which deduplicates nodes/edges) and then find kmers.
             
-            RealTimeLogger.get().info("XG-indexing {} to {}".format(
-                    graph_filename, xg_filename))
-                    
-            subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
-                str(job.cores), "-x", xg_filename, graph_filename])
+        # Save the intermediate vg file, in case we want to look at it
+        out_store.write_output_file(to_index_filename,
+            "debug/{}-{}-{}-{}-{}.vg".format(options.index_mode,
+            options.kmer_size, options.edge_max, region, graph_name))
+            
+        with open(kmers_filename, "w") as kmers_file:
         
-        else:
-            raise RuntimeError("Invalid indexing mode: " + options.index_mode)
+            tasks = []
             
-        # Define a file to keep the compressed index in, so we can send it to
-        # the output store.
-        index_dir_tgz = "{}/index.tar.gz".format(
-            job.fileStore.getLocalTempDir())
+            RealTimeLogger.get().info("Finding kmers in {} to {}".format(
+                to_index_filename, kmers_filename))
             
-        # Now save the indexed graph directory to the file store. It can be
-        # cleaned up since only our children use it.
-        RealTimeLogger.get().info("Compressing index of {}".format(
-            graph_filename))
-        index_dir_id = write_global_directory(job.fileStore, graph_dir,
-            cleanup=True, tee=index_dir_tgz)
+            # Deduplicate the graph
+            # Discard warnings about duplicate nodes or edges
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                "view", "-v", to_index_filename],
+                stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb')))
             
-        # Save it as output
-        RealTimeLogger.get().info("Uploading index of {}".format(
-            graph_filename))
-        out_store.write_output_file(index_dir_tgz, index_key)
-        RealTimeLogger.get().info("Index {} uploaded successfully".format(
-            index_key))
+            # Make the GCSA2 kmers file
+            tasks.append(subprocess.Popen(["{}vg".format(bin_prefix),
+                "kmers", "-g", "-B", "-k", str(options.kmer_size),
+                "-H", "1000000000", "-T", "1000000001",
+                "-t", str(job.cores), "-"], stdin=tasks[-1].stdout,
+                stdout=kmers_file))
+                
+            # Did we make it through all the tasks OK?
+            task_number = 0
+            for task in tasks:
+                if task.wait() != 0:
+                    raise RuntimeError(
+                        "Pipeline step {} returned {}".format(
+                        task_number, task.returncode))
+                task_number += 1
+                        
+            # Wait to make sure no weird file-not-being-full bugs happen
+            # TODO: how do I wait on child process output?
+            time.sleep(1)
             
+        time.sleep(1)
+                        
+        # Where do we put the GCSA2 index?
+        gcsa_filename = graph_filename + ".gcsa"
+        
+        RealTimeLogger.get().info("GCSA-indexing {} to {}".format(
+                kmers_filename, gcsa_filename))
+        
+        # Make the gcsa2 index. Make sure to use 3 doubling steps to work
+        # around <https://github.com/vgteam/vg/issues/301>
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+            str(job.cores), "-i", kmers_filename, "-g", gcsa_filename,
+            "-X", "3", "-Z", "2000"])
+            
+        # Where do we put the XG index?
+        xg_filename = graph_filename + ".xg"
+        
+        RealTimeLogger.get().info("XG-indexing {} to {}".format(
+                graph_filename, xg_filename))
+                
+        subprocess.check_call(["{}vg".format(bin_prefix), "index", "-t",
+            str(job.cores), "-x", xg_filename, graph_filename])
+    
+    else:
+        raise RuntimeError("Invalid indexing mode: " + options.index_mode)
+        
+    # Define a file to keep the compressed index in, so we can send it to
+    # the output store.
+    index_dir_tgz = "{}/index.tar.gz".format(
+        job.fileStore.getLocalTempDir())
+        
+    # Now save the indexed graph directory to the file store. It can be
+    # cleaned up since only our children use it.
+    RealTimeLogger.get().info("Compressing index of {}".format(
+        graph_filename))
+    index_dir_id = write_global_directory(job.fileStore, graph_dir,
+        cleanup=True, tee=index_dir_tgz)
+        
+    # Where will the indexed graph go in the output
+    index_key = "indexes/{}-{}-{}/{}/{}.tar.gz".format(options.index_mode,
+        options.kmer_size, options.edge_max, region, graph_name)
+        
+    # Save it as output
+    RealTimeLogger.get().info("Uploading index of {}".format(
+        graph_filename))
+    out_store.write_output_file(index_dir_tgz, index_key)
+    RealTimeLogger.get().info("Index {} uploaded successfully".format(
+        index_key))
+        
+        
+    # Now that we have the index, make the actual alignment children.        
     RealTimeLogger.get().info("Queueing alignment of {} samples to "
         "{} {}".format(len(samples_to_run), graph_name, region))
             
@@ -622,32 +786,42 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
         alignment_file_key = "{}/{}.gam".format(alignment_dir, sample)
         stats_file_key = "{}/{}.json".format(stats_dir, sample)
         
-        if (not options.overwrite and out_store.exists(alignment_file_key)):
-            # If the alignment exists and is OK, we can skip the alignment
-            
-            mtime = out_store.get_mtime(stats_file_key)
-            if mtime is None or mtime < options.too_old or options.restat:
-                # All we need to do for this sample is run stats
-                RealTimeLogger.get().info("Queueing stat recalculation"
-                    " of {} on {} {}".format(sample, graph_name, region))
-                
-                job.addFollowOnJobFn(run_stats, options, bin_dir_id,
-                    index_dir_id, alignment_file_key, stats_file_key,
-                    run_time=None, cores=2, memory="4G", disk="10G")
-                    
-            else:
-                # The stats are up to date and the alignment doesn't need
-                # rerunning. This shouldn't happen because this sample shouldn't
-                # be on the todo list. But it means we can just skip the sample.
-                RealTimeLogger.get().warning("SKIPPING sample "
-                    "{} on {} {}".format(sample, graph_name, region))
-                    
-        else:
+        # How big is the GAM file (or None if it's not made yet):
+        gam_size = out_store.get_size(alignment_file_key)
+        # And when was it made (or None if it's not made yet)?
+        gam_mtime = out_store.get_mtime(alignment_file_key)
         
-            # Otherwise we need to do an alignment, and then stats.
+        # And the same for the stats file. We don't care about its size though.
+        stats_mtime = out_store.get_mtime(stats_file_key)
+        
+        if (options.overwrite or
+            gam_mtime is None or
+            (options.alignments_too_old is not None and 
+            gam_mtime < options.alignments_too_old) or
+            gam_size < options.min_gam_size):
             
-            RealTimeLogger.get().info("Queueing alignment"
-                " of {} to {} {}".format(sample, graph_name, region))
+            # We're overwriting everything, or the GAM doesn't exist, or it's
+            # too old, or it's too small. We have to remake it.
+            
+            # We want to let the user know why
+            
+            if gam_mtime is None:
+                RealTimeLogger.get().info("Queueing undone alignment"
+                    " of {} to {} {}".format(sample, graph_name, region))
+            elif (options.alignments_too_old is not None and 
+                gam_mtime < options.alignments_too_old):
+                RealTimeLogger.get().info("Queueing too-old ({}<{}) alignment"
+                    " of {} to {} {}".format(gam_mtime.ctime(),
+                    options.alignments_too_old.ctime(), sample, graph_name,
+                    region))
+            elif gam_size < options.min_gam_size:
+                RealTimeLogger.get().info("Queueing too-small ({}) alignment"
+                    " of {} to {} {}".format(gam_size, sample, graph_name,
+                    region))
+            else:
+                RealTimeLogger.get().info("Queueing overwrite alignment"
+                    " of {} to {} {}".format(sample, graph_name, region))
+            
             
             # Go and bang that input fastq against the correct indexed graph.
             # Its output will go to the right place in the output store.
@@ -655,7 +829,30 @@ def recursively_run_samples(job, options, bin_dir_id, graph_name, region,
                 graph_name, region, index_dir_id, sample_fastq,
                 alignment_file_key, stats_file_key, 
                 cores=16, memory="100G", disk="50G")
+        
+        elif (options.restat or
+            stats_mtime is None or
+            (options.stats_too_old is not None and
+            stats_mtime < options.stats_too_old)):
             
+            # We can use the existing GAM, but the stats file doesn't exist, or
+            # is too old, or we're just re-doing them all.
+            
+            # All we need to do for this sample is run stats
+            RealTimeLogger.get().info("Queueing stat recalculation"
+                " of {} on {} {}".format(sample, graph_name, region))
+            
+            job.addFollowOnJobFn(run_stats, options, bin_dir_id,
+                index_dir_id, alignment_file_key, stats_file_key,
+                run_time=None, cores=2, memory="4G", disk="10G")
+                    
+        else:
+            # The stats are up to date and the alignment doesn't need
+            # rerunning. This shouldn't happen because this sample shouldn't
+            # be on the todo list. But it means we can just skip the sample.
+            RealTimeLogger.get().warning("SKIPPING sample "
+                "{} on {} {}".format(sample, graph_name, region))
+                    
     if len(samples_to_run_later) > 0:
         # We need to recurse and run more later.
         RealTimeLogger.get().debug("Postponing queueing {} samples".format(
@@ -764,7 +961,12 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
     
     # Also we need the sample fastq
     fastq_file = "{}/input.fq".format(job.fileStore.getLocalTempDir())
+    RealTimeLogger.get().info("Downloading FASTQ {} to {}".format(
+        sample_fastq_key, fastq_file))
     sample_store.read_input_file(sample_fastq_key, fastq_file)
+    
+    # The FASTQ really should not be empty
+    assert(os.stat(fastq_file).st_size > 0)
     
     # And a temp file for our aligner output
     output_file = "{}/output.gam".format(job.fileStore.getLocalTempDir())
@@ -776,7 +978,7 @@ def run_alignment(job, options, bin_dir_id, sample, graph_name, region,
         
         # Plan out what to run
         vg_parts = ["{}vg".format(bin_prefix), "map", "-f", fastq_file,
-            "-i", "-M2", "-W", "500", "-u", "0", "-U", "-t", str(job.cores), graph_file]
+            "-i", "-M2", "-W", "1000", "-u", "0", "-U", "-t", str(job.cores), graph_file]
             
         if options.index_mode == "rocksdb":
             vg_parts += ["-d", graph_file + ".index", "-n3", "-k",
@@ -912,14 +1114,16 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "aligned_lengths": collections.Counter(),
         "primary_scores": collections.Counter(),
         "primary_mapqs": collections.Counter(),
-        "primary_identities": collections.Counter(),
-        "primary_mismatches": collections.Counter(),
+        "primary_identities": collections.Counter(), # Deprecated; doesn't count deletions in this vg
+        "primary_mismatches": collections.Counter(), # Deprecated; doesn't count deletions
+        "primary_matches_per_column": collections.Counter(),
         "primary_indels": collections.Counter(),
         "primary_substitutions": collections.Counter(),
         "secondary_scores": collections.Counter(),
         "secondary_mapqs": collections.Counter(),
-        "secondary_identities": collections.Counter(),
-        "secondary_mismatches": collections.Counter(),
+        "secondary_identities": collections.Counter(), # Deprecated; doesn't count deletions in this vg
+        "secondary_mismatches": collections.Counter(), # Deprecated; doesn't count deletions
+        "secondary_matches_per_column": collections.Counter(),
         "secondary_indels": collections.Counter(),
         "secondary_substitutions": collections.Counter(),
         "run_time": run_time
@@ -930,6 +1134,29 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
     for line in read_alignment.stdout:
         # Parse the alignment JSON
         alignment = json.loads(line)
+        
+        if alignment.get("is_secondary", False):
+            # It's a multimapping.
+            
+            if (last_alignment is None or 
+                last_alignment.get("name") != alignment.get("name") or 
+                last_alignment.get("is_secondary", False)):
+            
+                # This is a secondary alignment without a corresponding primary
+                # alignment (which would have to be right before it in GAM
+                # format with up to 2 mappings per read)
+                raise RuntimeError("{} secondary alignment comes after "
+                    "alignment of {} instead of corresponding primary "
+                    "alignment\n".format(alignment.get("name"), 
+                    last_alignment.get("name") if last_alignment is not None 
+                    else "nothing"))
+                    
+            if alignment.get("path", {}) == last_alignment.get("path", {}):
+                # This secondary takes the same path as the primary, so we don't
+                # want to consider it as a separate alignment. It's just there
+                # to even things up for the secondary alignment of the other end
+                # of the read.
+                continue
         
         # How long is this read?
         length = len(alignment["sequence"])
@@ -958,6 +1185,9 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # read? How many bases are in the read and aligned?
             aligned_length = 0
             
+            # How many total columns are there in the alignment?
+            alignment_columns = 0
+            
             # What's the mapping quality? May not be defined on some reads.
             mapq = alignment.get("mapping_quality", 0.0)
             
@@ -978,10 +1208,11 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                     
                     if mapping.get("is_reverse", False):
                         # We start at the offset base on the reverse strand.
-
-                        # Add 1 to make the offset inclusive as an end poiint                        
+                        # This means we count from the end.
+                        # But if offset is 0 we take the whole thing.
                         ref_sequence = reverse_complement(
-                            ref_sequence[0:offset + 1])
+                            ref_sequence[0:-offset] if offset != 0
+                            else ref_sequence)
                     else:
                         # Just clip so we start at the specified offset
                         ref_sequence = ref_sequence[offset:]
@@ -1016,10 +1247,18 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                     reference_N_count = count_Ns(ref_sequence[
                         index_in_ref:index_in_ref + edit.get("from_length", 0)])
                         
+                    # Count up the columns, which is the max of the from and to
+                    # lengths, but discounting any columns where the reference
+                    # has an N.
+                    alignment_columns += max(edit.get("to_length", 0),
+                        edit.get("from_length", 0)) - reference_N_count
+                        
                     if edit.get("to_length", 0) == edit.get("from_length", 0):
                         # Add in the length of this edit if it's actually
-                        # aligned (not an indel or softclip)
-                        aligned_length += edit.get("to_length", 0)
+                        # aligned (not an indel or softclip).
+                        # Make sure not to count Ns in the reference.
+                        aligned_length += (edit.get("to_length", 0) -
+                            reference_N_count)
                         
                     if (not edit.has_key("sequence") and 
                         edit.get("to_length", 0) == edit.get("from_length", 0)):
@@ -1055,10 +1294,6 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                         substitutions += (edit.get("to_length", 0) -
                             reference_N_count)
                             
-                        # Pull those Ns out of the substitution rate denominator
-                        # as well.
-                        aligned_length -= reference_N_count
-                        
                     # We still count query Ns as "aligned" when not in indels
                         
                     # Advance in the reference sequence
@@ -1066,23 +1301,16 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
 
             # Calculate mismatches as what's not perfect matches
             mismatches = length - matches
+            
+            # Calculate matches per alignment column, which is a way better
+            # measure of alignment identity than vg's "identity" which also
+            # ignores deletions.
+            matches_per_column = (float(matches) / alignment_columns
+                if alignment_columns > 0 else 0)
                     
             if alignment.get("is_secondary", False):
                 # It's a multimapping. We can have max 1 per read, so it's a
                 # multimapped read.
-                
-                if (last_alignment is None or 
-                    last_alignment.get("name") != alignment.get("name") or 
-                    last_alignment.get("is_secondary", False)):
-                
-                    # This is a secondary alignment without a corresponding primary
-                    # alignment (which would have to be right before it given the
-                    # way vg dumps buffers
-                    raise RuntimeError("{} secondary alignment comes after "
-                        "alignment of {} instead of corresponding primary "
-                        "alignment\n".format(alignment.get("name"), 
-                        last_alignment.get("name") if last_alignment is not None 
-                        else "nothing"))
                 
                 # Log its stats as multimapped
                 stats["total_multimapped"] += 1
@@ -1092,6 +1320,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["secondary_substitutions"][substitutions] += 1
                 stats["secondary_mapqs"][mapq] += 1
                 stats["secondary_identities"][identity] += 1
+                stats["secondary_matches_per_column"][matches_per_column] += 1
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -1102,6 +1331,7 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["primary_substitutions"][substitutions] += 1
                 stats["primary_mapqs"][mapq] += 1
                 stats["primary_identities"][identity] += 1
+                stats["primary_matches_per_column"][matches_per_column] += 1
                 
                 # Record that a read of this length was mapped
                 stats["mapped_lengths"][length] += 1
@@ -1151,10 +1381,16 @@ def main(args):
     
     options = parse_args(args) # This holds the nicely-parsed options object
     
-    if options.too_old is not None:
+    if options.stats_too_old is not None:
         # Parse the too-old date
-        options.too_old = dateutil.parser.parse(options.too_old)
-        assert(options.too_old.tzinfo != None)
+        options.stats_too_old = dateutil.parser.parse(options.stats_too_old)
+        assert(options.stats_too_old.tzinfo != None)
+        
+    if options.alignments_too_old is not None:
+        # Parse the too-old date
+        options.alignments_too_old = \
+            dateutil.parser.parse(options.alignments_too_old)
+        assert(options.alignments_too_old.tzinfo != None)
     
     RealTimeLogger.start_master()
     

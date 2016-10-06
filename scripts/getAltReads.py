@@ -71,6 +71,8 @@ def parse_args(args):
         help="overwrite already downloaded samples")
     parser.add_argument("out_dir",
         help="output directory to create and fill with per-region BAM files")
+    parser.add_argument("--cwd", default=os.getcwd(),
+        help="set Toil job working directory")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -460,6 +462,9 @@ def downloadAllReads(job, options):
     
     """
     
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     # Initialize logging
     RealTimeLogger.set_master(options)
     
@@ -696,6 +701,9 @@ def downloadRegion(job, options, region_name, file_url, range_list,
     
     """
     
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
+    
     RealTimeLogger.set_master(options)
     
     # TODO: implement
@@ -729,6 +737,9 @@ def downloadRange(job, options, file_url, range_string):
     in the file store, and return its file ID.
     
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
     
     RealTimeLogger.set_master(options)
     
@@ -792,6 +803,9 @@ def concatAndSortBams(job, options, bam_ids, output_filename):
     <output_filename>.fq
     
     """
+    
+    # Move to the appropriate working directory from wherever Toil dropped us
+    os.chdir(options.cwd)
     
     RealTimeLogger.set_master(options)
     

@@ -38,14 +38,16 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to download from")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put things in")
     parser.add_argument("--pattern", default="*", 
         help="fnmatch-style pattern for file names to copy")
     parser.add_argument("--overwrite", default=False, action="store_true",
         help="overwrite existing files")
+    parser.add_argument("--check_size", default=False, action="store_true",
+        help="check sizes on existing files and replace if wrong")
     parser.add_argument("--batch_size", type=int, default=1000,
         help="number of files to copy in a batch")
     
@@ -141,9 +143,24 @@ def copy_batch(job, options, batch):
         try:
         
             if (not options.overwrite) and out_store.exists(filename):
-                # Skip existing file
-                RealTimeLogger.get().info("Skipped {}".format(filename))
-                return
+                # File exists. But make sure its size is correct.
+                
+                if not options.check_size:
+                    # Skip existing file. No need to check the length.
+                    RealTimeLogger.get().info("Skipped {}".format(filename))
+                    return
+                
+                out_size = out_store.get_size(filename)
+                in_size = in_store.get_size(filename)
+                if out_size != in_size:
+                    # Complain about size mismatch and copy
+                    RealTimeLogger.get().warning(
+                        "Redownloading {}! Size was {} and not {}!".format(
+                            filename, out_size, in_size))
+                else:
+                    # Skip existing file
+                    RealTimeLogger.get().info("Skipped {}".format(filename))
+                    return
             
             # Make a temp file
             (handle, path) = tempfile.mkstemp(dir=job.fileStore.getLocalTempDir())
