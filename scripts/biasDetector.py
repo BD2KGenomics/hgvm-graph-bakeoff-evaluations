@@ -51,6 +51,8 @@ def parse_args(args):
         help="output IOStore to put collated plotting files in (under /bias)")
     parser.add_argument("--blacklist", action="append", default=[],
         help="ignore the specified region:graph pairs")
+    parser.add_argument("--samples", type=argparse.FileType("r"),
+        help="limit to samples on this list, one per line")
     parser.add_argument("--index_url", 
         default=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/"
         "1000_genomes_project/1000genomes.sequence.index"), 
@@ -74,9 +76,11 @@ def tsv_reader_with_comments(lines):
     for line in lines:
         yield line.split("\t")
    
-def scan_all(job, options):
+def scan_all(job, options, sample_whitelist):
     """
     Scan all the regions and graphs for bias.
+    
+    Only looks at samples in the whitelist set, if the whitelist is not None.
     
     """
     
@@ -142,11 +146,13 @@ def scan_all(job, options):
     for region in in_store.list_input_directory("stats"):
         # Collate everything in the region
         job.addChildJobFn(scan_region, options, region, pop_by_sample,
-            cores=1, memory="1G", disk="10G")
+            sample_whitelist, cores=1, memory="1G", disk="10G")
     
-def scan_region(job, options, region, pop_by_sample):
+def scan_region(job, options, region, pop_by_sample, sample_whitelist):
     """
     Scan all the graphs in a region for bias.
+    
+    If sample_whitelist is not None, ignores samples not in that set.
     
     """
     
@@ -176,10 +182,24 @@ def scan_region(job, options, region, pop_by_sample):
         # Read all the pop, value pairs from the TSV
         reader = tsv.TsvReader(open(local_filename))
         
+        # Which samples are going to be skipped?
+        skipped_samples = set()
+        
         for graph, sample, stat, value in reader:
-            # Read in and place all the values
+            # Read every line from the cache and pull out what value for what
+            # stat it gives for what sample.
+            
+            if sample_whitelist is not None and sample not in sample_whitelist:
+                # Skip this sample that's not on the list
+                skipped_samples.add(sample)
+                continue
+        
+            # Populate our cache dict
             stats_cache[graph][sample][stat] = float(
                 value)
+                
+        RealTimeLogger.get().info("Skipped {} samples".format(
+            len(skipped_samples)))
             
     else:
         # Stats haven't been collated
@@ -278,10 +298,18 @@ def main(args):
     
     options = parse_args(args) # This holds the nicely-parsed options object
     
+    # Load the sample whitelist, if applicable. Holds a set if we have a
+    # whitelist, or None otherwise.
+    sample_whitelist = None
+    if options.samples is not None:
+        # Read all the samples from the file
+        sample_whitelist = set([line[0] for line in
+            tsv.TsvReader(options.samples)])
+    
     RealTimeLogger.start_master()
     
     # Make a root job
-    root_job = Job.wrapJobFn(scan_all, options,
+    root_job = Job.wrapJobFn(scan_all, options, sample_whitelist,
         cores=1, memory="1G", disk="1G")
     
     # Run it and see how many jobs fail

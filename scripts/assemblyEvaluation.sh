@@ -17,7 +17,7 @@ fi
 ABSOLUTE_INPUT_DIR="$(cd ${INPUT_DIR} && pwd)"
 LOCAL_INPUT_DIR="$(basename ${INPUT_DIR})"
 
-rm "${INPUT_DIR}"/extracted/*.vg || true
+rm -f "${INPUT_DIR}"/extracted/*.vg || true
 mkdir -p "${INPUT_DIR}/extracted"
 # Make sure the glob actually activates.
 ./scripts/extractGraphs.py "${INPUT_DIR}"/indexes/*/*/*.tar.gz "${INPUT_DIR}/extracted"

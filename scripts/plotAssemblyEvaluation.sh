@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Makes plots comparing the assembly realignment statistics in each region.
 
-set -ex
+set -eux
 
 # What plot filetype should we produce?
 PLOT_FILETYPE="png"
@@ -133,6 +133,14 @@ for GRAPH in empty snp1kg refonly shifted1kg freebayes platypus samtools; do
     ALL_TRUE_POSITIVES[$GRAPH]=0
 done
 
+# We also need to know the sizes of the regions in bp
+declare -A REGION_SIZES
+REGION_SIZES["brca1"]=81189
+REGION_SIZES["brca2"]=84989
+REGION_SIZES["lrc_kir"]=1058685
+REGION_SIZES["mhc"]=4970458
+REGION_SIZES["sma"]=2397625
+
 # Make plot directories
 mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/bp"  
 mkdir -p "${INPUT_DIR}/evals/${EVAL}/plots/count"
@@ -146,6 +154,7 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-insertions-${PARAM_SET}.ts
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv"
+true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-indels-${PARAM_SET}.tsv"
 
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv"
@@ -154,6 +163,10 @@ true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv"
 true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv"
+true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-indels-${PARAM_SET}.tsv"
+
+# Count up otoal length of all regions
+TOTAL_LENGTH=0
 
 # Regions with good assembly coverage:
 # brca1 brca2 lrc_kir mhc
@@ -164,6 +177,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-deletions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-indels-${PARAM_SET}.tsv"
     
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv"
@@ -172,7 +186,10 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
     true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
+    true > "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-indels-${PARAM_SET}.tsv"
 
+    # Add region length in to total
+    TOTAL_LENGTH=$((TOTAL_LENGTH + REGION_SIZES[$REGION]))
 
     for GRAPH in empty snp1kg refonly shifted1kg cactus prg freebayes platypus samtools; do
     
@@ -199,14 +216,26 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
             ALL_SUBSTITUTE_BASES[$GRAPH]=$((ALL_SUBSTITUTE_BASES[$GRAPH] + SUBSTITUTE_BASES))
             ALL_UNVISITED_BASES[$GRAPH]=$((ALL_UNVISITED_BASES[$GRAPH] + UNVISITED_BASES))
             
-            printf "${GRAPH}\t${INSERT_BASES}\n" \
+            # Normalize base counts by region size for plotting
+            INSERT_PORTION=$(echo "${INSERT_BASES} / ${REGION_SIZES[$REGION]}" | bc -l)
+            DELETE_PORTION=$(echo "${DELETE_BASES} / ${REGION_SIZES[$REGION]}" | bc -l)
+            SUBSTITUTE_PORTION=$(echo "${SUBSTITUTE_BASES} / ${REGION_SIZES[$REGION]}" | bc -l)
+            UNVISITED_PORTION=$(echo "${UNVISITED_BASES} / ${REGION_SIZES[$REGION]}" | bc -l)
+            
+            # Combine indels
+            INDEL_PORTION=$(echo "${INSERT_PORTION} + ${DELETE_PORTION}" | bc -l)
+            
+            printf "${GRAPH}\t${INSERT_PORTION}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${DELETE_BASES}\n" \
+            printf "${GRAPH}\t${DELETE_PORTION}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-deletions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${SUBSTITUTE_BASES}\n" \
+            printf "${GRAPH}\t${SUBSTITUTE_PORTION}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${UNVISITED_BASES}\n" \
+            printf "${GRAPH}\t${UNVISITED_PORTION}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
+                
+            printf "${GRAPH}\t${INDEL_PORTION}\n" \
+                >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-indels-${PARAM_SET}.tsv"
             
             # Now do by event count
             INSERT_COUNT=$(cat "${GRAPH_STATS}" | grep "Insertions" | sed -E 's/.* ([0-9]+) read events.*/\1/g')
@@ -219,16 +248,29 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
             ALL_SUBSTITUTE_COUNT[$GRAPH]=$((ALL_SUBSTITUTE_COUNT[$GRAPH] + SUBSTITUTE_COUNT))
             ALL_UNVISITED_COUNT[$GRAPH]=$((ALL_UNVISITED_COUNT[$GRAPH] + UNVISITED_COUNT))
             
-            printf "${GRAPH}\t${INSERT_COUNT}\n" \
+            # Normalize event counts by region size for plotting
+            INSERT_FREQUENCY=$(echo "${INSERT_COUNT} / ${REGION_SIZES[$REGION]}" | bc -l)
+            DELETE_FREQUENCY=$(echo "${DELETE_COUNT} / ${REGION_SIZES[$REGION]}" | bc -l)
+            SUBSTITUTE_FREQUENCY=$(echo "${SUBSTITUTE_COUNT} / ${REGION_SIZES[$REGION]}" | bc -l)
+            UNVISITED_FREQUENCY=$(echo "${UNVISITED_COUNT} / ${REGION_SIZES[$REGION]}" | bc -l)
+            
+            # Combine indels
+            INDEL_FREQUENCY=$(echo "${INSERT_FREQUENCY} + ${DELETE_FREQUENCY}" | bc -l)
+            
+            printf "${GRAPH}\t${INSERT_FREQUENCY}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${DELETE_COUNT}\n" \
+            printf "${GRAPH}\t${DELETE_FREQUENCY}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${SUBSTITUTE_COUNT}\n" \
+            printf "${GRAPH}\t${SUBSTITUTE_FREQUENCY}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-substitutions-${PARAM_SET}.tsv"
-            printf "${GRAPH}\t${UNVISITED_COUNT}\n" \
+            printf "${GRAPH}\t${UNVISITED_FREQUENCY}\n" \
                 >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv"
                 
-            # Get the length of the sample graph
+            printf "${GRAPH}\t${INDEL_FREQUENCY}\n" \
+                >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-indels-${PARAM_SET}.tsv"
+                
+            # Get the length of the sample graph. TODO: use this as the
+            # denominator instead for portions and rates of events?
             GRAPH_BASES=$(vg stats -l "${TEMP}/sample.vg" | cut -f2)
             
             # How many bases are in nodes visited twice?
@@ -249,7 +291,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
             # if there wasn't a way around them in the graph (i.e. if they were
             # called homozygous) they would be deletions/substitutions and not
             # just unvisited.
-            FALSE_POSITIVES=$((UNVISITED_BASES + DETETE_BASES + SUBSTITUTE_BASES))
+            FALSE_POSITIVES=$((UNVISITED_BASES + DELETE_BASES + SUBSTITUTE_BASES))
             # False negatives are insertions and substitutions: things we didn't
             # call as existing.
             FALSE_NEGATIVES=$((INSERT_BASES + SUBSTITUTE_BASES))
@@ -282,7 +324,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv" \
         --title "Inserted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Inserted bases in assembly re-alignment" \
+        --y_label "Inserted bases per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -290,7 +332,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-deletions-${PARAM_SET}.tsv" \
         --title "Deleted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Deleted bases in assembly re-alignment" \
+        --y_label "Deleted bases per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -298,17 +340,25 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-substitutions-${PARAM_SET}.tsv" \
         --title "Substituted bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Substituted bases in assembly re-alignment" \
+        --y_label "Substituted bases per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv" \
-        --title "Unvisited node length in sample ${REGION^^} (${PARAM_SET})" \
+        --title "Unvisited bases relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Length of unvisited called nodes" \
+        --y_label "Unvisited bases per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-indels-${PARAM_SET}.tsv" \
+        --title "Indel bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --x_label "Graph type" \
+        --y_label "Indel bases per region base" \
+        --x_sideways \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-indels-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/scatter.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv" \
@@ -331,7 +381,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv" \
         --title "Insertion events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Insertions in assembly re-alignment" \
+        --y_label "Insertions per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -339,7 +389,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv" \
         --title "Deletion events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Deletions in assembly re-alignment" \
+        --y_label "Deletions per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -347,7 +397,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-substitutions-${PARAM_SET}.tsv" \
         --title "Substitution events relative to sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Substitutions in assembly re-alignment" \
+        --y_label "Substitutions per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
@@ -355,33 +405,65 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv" \
         --title "Unvisited nodes in sample ${REGION^^} (${PARAM_SET})" \
         --x_label "Graph type" \
-        --y_label "Number of unvisited called nodes" \
+        --y_label "Unvisited nodes per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+        "${PLOT_PARAMS[@]}"
+        
+    ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-indels-${PARAM_SET}.tsv" \
+        --title "Indel events relative to sample ${REGION^^} (${PARAM_SET})" \
+        --x_label "Graph type" \
+        --y_label "Indels per region base" \
+        --x_sideways \
+        --save "${INPUT_DIR}/evals/${EVAL}/plots/count/${REGION}-indels-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
     
 done
 
 for GRAPH in "${!ALL_INSERT_BASES[@]}"; do
 
+    # Normalize base counts by total size for plotting
+    INSERT_PORTION=$(echo "${ALL_INSERT_BASES[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    DELETE_PORTION=$(echo "${ALL_DELETE_BASES[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    SUBSTITUTE_PORTION=$(echo "${ALL_SUBSTITUTE_BASES[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    UNVISITED_PORTION=$(echo "${ALL_UNVISITED_BASES[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    
+    # Combine indels
+    INDEL_PORTION=$(echo "${INSERT_PORTION} + ${DELETE_PORTION}" | bc -l)
+
     # Make overall stats files
-    printf "${GRAPH}\t${ALL_INSERT_BASES[$GRAPH]}\n" \
+    printf "${GRAPH}\t${INSERT_PORTION}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-insertions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_DELETE_BASES[$GRAPH]}\n" \
+    printf "${GRAPH}\t${DELETE_PORTION}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_SUBSTITUTE_BASES[$GRAPH]}\n" \
+    printf "${GRAPH}\t${SUBSTITUTE_PORTION}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_UNVISITED_BASES[$GRAPH]}\n" \
+    printf "${GRAPH}\t${UNVISITED_PORTION}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv"
         
-    printf "${GRAPH}\t${ALL_INSERT_COUNT[$GRAPH]}\n" \
+    printf "${GRAPH}\t${INDEL_PORTION}\n" \
+        >> "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-indels-${PARAM_SET}.tsv"
+        
+    # Normalize base counts by total size for plotting
+    INSERT_FREQUENCY=$(echo "${ALL_INSERT_COUNT[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    DELETE_FREQUENCY=$(echo "${ALL_DELETE_COUNT[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    SUBSTITUTE_FREQUENCY=$(echo "${ALL_SUBSTITUTE_COUNT[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    UNVISITED_FREQUENCY=$(echo "${ALL_UNVISITED_COUNT[$GRAPH]} / ${TOTAL_LENGTH}" | bc -l)
+    
+    # Combine indels
+    INDEL_FREQUENCY=$(echo "${INSERT_FREQUENCY} + ${DELETE_FREQUENCY}" | bc -l)
+    
+    printf "${GRAPH}\t${INSERT_FREQUENCY}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_DELETE_COUNT[$GRAPH]}\n" \
+    printf "${GRAPH}\t${DELETE_FREQUENCY}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_SUBSTITUTE_COUNT[$GRAPH]}\n" \
+    printf "${GRAPH}\t${SUBSTITUTE_FREQUENCY}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv"
-    printf "${GRAPH}\t${ALL_UNVISITED_COUNT[$GRAPH]}\n" \
+    printf "${GRAPH}\t${UNVISITED_FREQUENCY}\n" \
         >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv"
+        
+    printf "${GRAPH}\t${INDEL_FREQUENCY}\n" \
+        >> "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-indels-${PARAM_SET}.tsv"
         
     # Calculate precision and recall
     PRECISION=$(echo "${ALL_TRUE_POSITIVES[$GRAPH]} / ( ${ALL_TRUE_POSITIVES[$GRAPH]} + ${ALL_FALSE_POSITIVES[$GRAPH]} )" | bc -l)
@@ -404,7 +486,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-insertions-${PARAM_SET}.tsv" \
     --title "Inserted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Inserted bases in assembly re-alignment" \
+    --y_label "Inserted bases per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -412,7 +494,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv" \
     --title "Deleted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Deleted bases in assembly re-alignment" \
+    --y_label "Deleted bases per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -420,7 +502,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}.tsv" \
     --title "Substituted bases relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Substituted bases in assembly re-alignment" \
+    --y_label "Substituted bases per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -428,9 +510,17 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv" \
     --title "Unvisited node length in sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Length of unvisited called nodes" \
+    --y_label "Unvisited bases per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+    "${PLOT_PARAMS[@]}"
+    
+./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-indels-${PARAM_SET}.tsv" \
+    --title "Indle bases relative to sample overall (${PARAM_SET})" \
+    --x_label "Graph type" \
+    --y_label "Indel bases per region base" \
+    --x_sideways \
+    --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/ALL-indels-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
 # Plot total precision/recall
@@ -455,7 +545,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv" \
     --title "Insertion events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Insertions in assembly re-alignment" \
+    --y_label "Insertions per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-insertions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -463,7 +553,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv" \
     --title "Deletion events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Deletions in assembly re-alignment" \
+    --y_label "Deletions per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-deletions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -471,7 +561,7 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv" \
     --title "Substitution events relative to sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Substitutions in assembly re-alignment" \
+    --y_label "Substitutions per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-substitutions-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
@@ -479,9 +569,17 @@ done
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv" \
     --title "Unvisited nodes in sample overall (${PARAM_SET})" \
     --x_label "Graph type" \
-    --y_label "Number of unvisited called nodes" \
+    --y_label "Unvisited nodes per region base" \
     --x_sideways \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-unvisited-${PARAM_SET}.${PLOT_FILETYPE}" \
+    "${PLOT_PARAMS[@]}"
+    
+./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-indels-${PARAM_SET}.tsv" \
+    --title "Indel events relative to sample overall (${PARAM_SET})" \
+    --x_label "Graph type" \
+    --y_label "Indels per region base" \
+    --x_sideways \
+    --save "${INPUT_DIR}/evals/${EVAL}/plots/count/ALL-indels-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
     
         

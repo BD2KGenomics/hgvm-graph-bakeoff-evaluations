@@ -354,12 +354,12 @@ def main(args):
             if options.absolute_deviation:
                 # Use a difference
                 # Apply a +/- label to the best thing
-                category_labels[best_category] += "\n({:+.2f})".format(
+                category_labels[best_category] += "\n({:+.2g})".format(
                     best_deviation)
             else:
                 # Use a percentage
                 # Apply a +/-% label to the best thing
-                category_labels[best_category] += "\n({:+.2f}%)".format(
+                category_labels[best_category] += "\n({:+.2g}%)".format(
                     best_deviation)
                 
     # Now that we have our hlines, drop any hidden categories.

@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -104,11 +104,15 @@ do
     PORTION="Portion"
     SECONDS_WORD=" (seconds)"
     RATE="rate"
+    # If we want absolute changes (in portion mapped) on absolute plots, we can
+    # add --absolute_deviation here.
+    DEVIATION=""
     if [ "${MODE}" == "normalized" ]
     then
         PORTION="Relative portion"
         SECONDS_WORD=" (relative)"
         RATE=" relative rate"
+        DEVIATION=""
     fi
 
 
@@ -170,6 +174,7 @@ do
         ./scripts/boxplot.py "${MAPPING_FILE}" \
             --title "$(printf "Mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -177,20 +182,23 @@ do
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nperfectly mapped")" --save "${PERFECT_PLOT}" \
-            --x_sideways --hline_median refonly \
+            ${DEVIATION} \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
             --title "$(printf "Uniquely mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
-            --x_sideways --hline_median refonly \
+            ${DEVIATION} \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_AT_ALL_FILE}" \
             --title "$(printf "Uniquely mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_AT_ALL_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -198,6 +206,7 @@ do
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
             --title "$(printf "Mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -205,6 +214,7 @@ do
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Runtime per read${SECONDS_WORD}" --save "${RUNTIME_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --max_max 0.006 \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -212,6 +222,7 @@ do
         ./scripts/boxplot.py "${NOINDEL_FILE}" \
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -249,6 +260,7 @@ do
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
+            ${DEVIATION} \
             --range --sparse_ticks --sparse_axes \
             --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
@@ -281,6 +293,7 @@ do
         ./scripts/boxplot.py "${INDELRATE_FILE}" \
             --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly --best_low \
             --range --sparse_ticks --sparse_axes ${INDELRATE_LIMIT} \
             --medians_only --hline_ticks --scientific --line_width 3 \
@@ -329,6 +342,7 @@ do
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
         --title "$(printf "Mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
+        ${DEVIATION} \
         --x_sideways  --hline_median trivial \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
@@ -336,6 +350,7 @@ do
     ./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
         --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
+        ${DEVIATION} \
         --x_sideways --hline_median trivial \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
@@ -343,6 +358,7 @@ do
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_WELL_FILE}" \
         --title "$(printf "Uniquely mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
+        ${DEVIATION} \
         --x_sideways --hline_median refonly \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
@@ -350,6 +366,7 @@ do
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}" \
         --title "$(printf "Uniquely mapped (any number of matches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_AT_ALL_PLOT}" \
+        ${DEVIATION} \
         --x_sideways --hline_median refonly \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
