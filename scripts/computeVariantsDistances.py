@@ -112,7 +112,9 @@ def parse_args(args):
     parser.add_argument("--combine_samples", type=str, default=None,
                         help="comma-separated list of samples to combine into COMBINED sample")
     parser.add_argument("--combined_name", type=str, default="COMBINED",
-                        help="name of the combined sample to generate")                        
+                        help="name of the combined sample to generate")
+    parser.add_argument("--tp_baseline", action="store_true", default=False,
+                        help="use tp-baseline.vcf instead of tp.vcf from vcfeval output for precision and recall")
                             
     args = args[1:]
 
@@ -663,6 +665,7 @@ def generate_combined_vcfeval_sample(region, method, baseline_method, graphs, ba
     baseline = baselines[0]
     sample_baseline = options.tags[baseline][1]
     comb_samples = options.combine_samples.split(",")
+    tp_name = "tp-baseline" if options.tp_baseline is True else "tp"
 
     # we are iterating over every sample for a given method/region, checking if we want to combine
     # and remembering it's vcfeval output in in_vcfs
@@ -676,7 +679,7 @@ def generate_combined_vcfeval_sample(region, method, baseline_method, graphs, ba
             in_vcfeval_dir = comp_path_vcfeval(graph, baseline, options, sample_override=sample)
             results = (os.path.join(in_vcfeval_dir, "fn.vcf.gz"),
                        os.path.join(in_vcfeval_dir, "fp.vcf.gz"),
-                       os.path.join(in_vcfeval_dir, "tp.vcf.gz"))
+                       os.path.join(in_vcfeval_dir, "{}.vcf.gz".format(tp_name)))
             if all(os.path.exists(x) for x in results):
                 in_vcfs.append(results)
             else:
@@ -687,7 +690,7 @@ def generate_combined_vcfeval_sample(region, method, baseline_method, graphs, ba
     if len(in_vcfs) == len(comb_samples):
         out_vcfs = (os.path.join(out_vcfeval_dir, "fn.vcf"),
                     os.path.join(out_vcfeval_dir, "fp.vcf"),
-                    os.path.join(out_vcfeval_dir, "tp.vcf"))
+                    os.path.join(out_vcfeval_dir, "{}.vcf".format(tp_name)))
             
         if options.overwrite or not all(os.path.isfile(ov + ".gz") for ov in out_vcfs):
 
@@ -1109,8 +1112,8 @@ def preprocess_vcf(job, graph, options):
     if not options.gt and options.comp_type != "vcfeval":
         ig_opts += " | scripts/vcfSetGenotypes.py -"
     run("mv {} {} ; scripts/vcfsort {} {} | vcfuniq > {}".format(output_vcf, output_vcf + ".ig",
-                                                                 output_vcf + ".ig", ig_opts,
-                                                                 output_vcf), fail_hard=True)
+                                                                                   output_vcf + ".ig", ig_opts,
+                                                                                   output_vcf), fail_hard=True)
 
     # need compressed index for vcfeval
     run("bgzip {} -c > {}".format(output_vcf, output_vcf + ".gz"), fail_hard=True)
@@ -1200,10 +1203,11 @@ def compute_vcf_comparison(job, graph1, graph2, options):
             run("rtg vcfeval -b {}.gz -c {}.gz --all-records --ref-overlap --vcf-score-field QUAL -t {} {} -o {}".format(truth_vcf_path, query_vcf_path,
                                                                                                                          options.chrom_sdf_path, ve_opts,
                                                                                                                          out_path))
+            tp_name = "tp-baseline" if options.tp_baseline is True else "tp"
             # count up output
             fn_path = os.path.join(out_path, "fn.vcf.gz")
             fp_path = os.path.join(out_path, "fp.vcf.gz")
-            tp_path = os.path.join(out_path, "tp.vcf.gz")
+            tp_path = os.path.join(out_path, "{}.vcf.gz".format(tp_name))
 
             try:
                 fn_table = vcf_qual_stats(fn_path, options.clip, ignore_keywords = ["OverlapConflict"])
