@@ -3,6 +3,9 @@
 biasDetector.py: see if there is a population bias in mapping rates for each
 graph.
 
+Splits out certain statistics from collateStatistics.py by superpopulation, for
+plotting with plotBias.sh.
+
 """
 
 import argparse, sys, os, os.path, random, subprocess, shutil, itertools, glob
@@ -42,12 +45,14 @@ def parse_args(args):
     Job.Runner.addToilOptions(parser)
     
     # General options
-    parser.add_argument("in_store",
+    parser.add_argument("in_store", type=IOStore.absolute,
         help="input IOStore to find stats files in (under /stats)")
-    parser.add_argument("out_store",
+    parser.add_argument("out_store", type=IOStore.absolute,
         help="output IOStore to put collated plotting files in (under /bias)")
     parser.add_argument("--blacklist", action="append", default=[],
         help="ignore the specified region:graph pairs")
+    parser.add_argument("--samples", type=argparse.FileType("r"),
+        help="limit to samples on this list, one per line")
     parser.add_argument("--index_url", 
         default=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/"
         "1000_genomes_project/1000genomes.sequence.index"), 
@@ -56,8 +61,6 @@ def parse_args(args):
         default="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/"
         "20131219.populations.tsv",
         help="URL to index of superpopulation assignments")
-    parser.add_argument("--overwrite", action="store_true",
-        help="replace cached per-sample statistics with recalculated ones")
     
     # The command line arguments start with the program name, which we don't
     # want to treat as an argument for argparse. So we remove it.
@@ -73,9 +76,11 @@ def tsv_reader_with_comments(lines):
     for line in lines:
         yield line.split("\t")
    
-def scan_all(job, options):
+def scan_all(job, options, sample_whitelist):
     """
     Scan all the regions and graphs for bias.
+    
+    Only looks at samples in the whitelist set, if the whitelist is not None.
     
     """
     
@@ -141,45 +146,13 @@ def scan_all(job, options):
     for region in in_store.list_input_directory("stats"):
         # Collate everything in the region
         job.addChildJobFn(scan_region, options, region, pop_by_sample,
-            cores=1, memory="1G", disk="10G")
+            sample_whitelist, cores=1, memory="1G", disk="10G")
     
-def scan_region(job, options, region, pop_by_sample):
+def scan_region(job, options, region, pop_by_sample, sample_whitelist):
     """
     Scan all the graphs in a region for bias.
     
-    """
-    
-    # Set up the IO stores.
-    in_store = IOStore.get(options.in_store)
-    out_store = IOStore.get(options.out_store)
-    
-    # Will hold stats by population (promises) by graph name
-    graph_stats = {}
-    
-    for graph in in_store.list_input_directory("stats/{}".format(region)):
-        # For each
-        
-        if "{}:{}".format(region, graph) in options.blacklist:
-            # We don't want to process this region/graph pair.
-            RealTimeLogger.get().info("Skipping {} graph {}".format(region,
-                graph))
-            continue
-        
-        # Scan the graph and get its per-population stats
-        stats_for_graph = job.addChildJobFn(scan_graph, options, region, graph,
-            pop_by_sample, cores=1, memory="1G", disk="10G").rv()
-            
-        # Save the stats for the graph
-        graph_stats[graph] = stats_for_graph
-        
-    # When stats are all in, look at the, and save the results
-    job.addFollowOnJobFn(save_region_stats, options, region, graph_stats,
-        cores=1, memory="1G", disk="10G")
-        
-def scan_graph(job, options, region, graph, pop_by_sample):
-    """
-    Look at a given graph in a given region and return its mismatch portions by
-    population, sorted by sample name.
+    If sample_whitelist is not None, ignores samples not in that set.
     
     """
     
@@ -187,196 +160,131 @@ def scan_graph(job, options, region, graph, pop_by_sample):
     in_store = IOStore.get(options.in_store)
     out_store = IOStore.get(options.out_store)
     
-    # This holds lists of portion perfectly-mapped stat values by population
-    stats_by_pop = collections.defaultdict(list)
+    # This holds a dict from graph name, then sample name, then stat name to
+    # actual stat value.
+    stats_cache = collections.defaultdict(lambda: collections.defaultdict(dict))
     
-    # This is the output TSV it should all land in, in <pop>\t<value> format
-    labeled_tsv_key = "bias/distributions/{}/{}.tsv".format(region, graph)
+    # This is the cache file for this region, in
+    # <graph>\t<sample>\t<stat>\t<value> format
+    cache_tsv_key = "plots/cache/{}.tsv".format(region)
     
     # What name will it have locally for us?
     local_filename = os.path.join(job.fileStore.getLocalTempDir(), "temp.tsv")
     
-    if out_store.exists(labeled_tsv_key) and not options.overwrite:
+    if out_store.exists(cache_tsv_key):
         # Just read in from that TSV
         
+        RealTimeLogger.get().info("Loading cached region {}".format(region))
+        
         # Grab the cached results
-        out_store.read_input_file(labeled_tsv_key, local_filename)
+        out_store.read_input_file(cache_tsv_key, local_filename)
         
         # Read all the pop, value pairs from the TSV
         reader = tsv.TsvReader(open(local_filename))
         
-        for pop, stat in reader:
-            # Collect all the values and put them in the right populations
-            stats_by_pop[pop].append(float(stat))
+        # Which samples are going to be skipped?
+        skipped_samples = set()
         
+        for graph, sample, stat, value in reader:
+            # Read every line from the cache and pull out what value for what
+            # stat it gives for what sample.
+            
+            if sample_whitelist is not None and sample not in sample_whitelist:
+                # Skip this sample that's not on the list
+                skipped_samples.add(sample)
+                continue
+        
+            # Populate our cache dict
+            stats_cache[graph][sample][stat] = float(
+                value)
+                
+        RealTimeLogger.get().info("Skipped {} samples".format(
+            len(skipped_samples)))
+            
     else:
-        # Look in each sample file, compute the per-sample statistic, and save
-        # it to the tsv
-
-        RealTimeLogger.get().info("Processing samples for {} graph {}".format(
-            region, graph))
+        # Stats haven't been collated
+        raise RuntimeError(
+            "No graph stats for {}; run collateStatistics.py".format(region))
+            
+    # We want normalized and un-normalized versions of the stats cache
+    stats_by_mode = {"absolute": stats_cache}
     
-        for result in in_store.list_input_directory("stats/{}/{}".format(region,
-            graph)):
-            
-            # Pull sample name from filename
-            sample_name = re.match("(.*)\.json$", result).group(1)
+    if stats_cache.has_key("refonly"):
         
-            # Grab file
-            json_filename = os.path.join(job.fileStore.getLocalTempDir(),
-                "temp.json")
-            in_store.read_input_file("stats/{}/{}/{}".format(region, graph,
-                result), json_filename)
-            # Read the JSON
-            stats = json.load(open(json_filename))
-            
-            # How many reads are mapped perfectly?
-            total_perfect = sum((stats["primary_mismatches"].get(str(x), 0)
-                    for x in xrange(1)))
+        # Deep copy and normalize the stats cache
+        normed_stats_cache = copy.deepcopy(stats_cache)
+        
+        # We want to normalize and the reference exists (i.e. not CENX)
+        # Normalize every stat against the reference, by subtraction
+        for graph, stats_by_sample in normed_stats_cache.iteritems():
+            # For each graph and all the stats for that graph
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name in stats_by_name.keys():
                 
-            # How many reads are there overall for this sample?
-            total_reads = stats["total_reads"]
-            
-            # What portion are mapped perfectly?
-            portion_perfect = total_perfect / float(total_reads)
-            
-            # Add the sample to the distribution, with the name in for sorting
-            stats_by_pop[pop_by_sample[sample_name]].append((sample_name,
-                portion_perfect))
+                    if stats_cache["refonly"].has_key(sample):
                 
-        for pop_name in stats_by_pop.keys():
-            # Sort all the distributions by sample name, and throw out the
-            # sample names
-            stats_by_pop[pop_name] = [value for sample_name, value in
-                sorted(stats_by_pop[pop_name])]
-            
-        # Write all the pop, value pairs to the TSV
-        writer = tsv.TsvWriter(open(local_filename, "w"))
-        
-        for pop, list_of_stats in stats_by_pop.iteritems():
-            for stat in list_of_stats:
-                # Save each sample for its population
-                writer.line(pop, stat)
-                
-        # Close the file and save the results for the next run
-        writer.close()
-        out_store.write_output_file(local_filename, labeled_tsv_key)
-        
-        
-    return stats_by_pop
-    
-def save_region_stats(job, options, region, graph_stats):
-    """ 
-    Save the biases of the graphs for this region to the output IOStore.
-    
-    """
-    
-    # Set up the IO stores.
-    in_store = IOStore.get(options.in_store)
-    out_store = IOStore.get(options.out_store)
-    
-    # Now subtract refOnly out of everything as our normalization.
-    
-    if graph_stats.has_key("refonly"):
-        # Normalize stat against the refonly graph
-        
-        # Pull out the refonly stats dict, as a deep copy so we don't
-        # clobber it. Do it before we manage to normalize refonly itself.
-        ref_stats = copy.deepcopy(graph_stats["refonly"])
-        
-        for graph, stats_by_pop in graph_stats.iteritems():
-            
-            for pop_name in stats_by_pop.keys():
-                # Normalize each population
-                
-                # Thest teo lists need to correspond
-                assert(len(stats_by_pop[pop_name]) == len(ref_stats[pop_name]))
-                
-                # Zip the two stats lists together and do the division, and
-                # replace the non-reference list.
-                stats_by_pop[pop_name] = [this_stat - ref_stat for 
-                    (this_stat, ref_stat) in itertools.izip(
-                    stats_by_pop[pop_name], ref_stats[pop_name])]
-                    
-            # Save the normalized values
-            normed_tsv_key = "bias/normalized_distributions/{}/{}.tsv".format(
-                region, graph)
-        
-            # What name will it have locally for us?
-            normed_file = tempfile.NamedTemporaryFile(
-                dir=job.fileStore.getLocalTempDir(), delete=False)
-                
-            # Make a TSV writer
-            normed_writer = tsv.TsvWriter(normed_file)
-            
-            for pop_name, value_list in stats_by_pop.iteritems():
-                for value in value_list:
-                    # Dump each normalized value with its population
-                    normed_writer.line(pop_name, value)
-                    
-            # Finish up our local temp file
-            normed_writer.close()
-            
-            # Save it to the IOStore. TODO: write stream methods for this!
-            out_store.write_output_file(normed_file.name, normed_tsv_key)
+                        # Get the reference value
+                        ref_value = stats_cache["refonly"][sample][stat_name]
                         
-    else:
-        RealTimeLogger.get().warning("Can't normalize {}".format(region))
-        
-    # After normalization, do the statistical test
-    
-    # Grab file to save the overall bias levels for the region in
-    local_filename = os.path.join(job.fileStore.getLocalTempDir(),
-        "temp.tsv")
-        
-    # Get a writer to write to it
-    writer = tsv.TsvWriter(open(local_filename, "w"))
-    
-    for graph, stats_by_pop in graph_stats.iteritems():
-    
-        RealTimeLogger.get().info("Running statistics for {} graph {}".format(
-            region, graph))
-    
-        # Grab all the distributions to compare in a list
-        list_of_distributions = stats_by_pop.values()
-
-        RealTimeLogger.get().info("Have {} populations to compare".format(len(
-            list_of_distributions)))
-        
-        try:
+                        
+                        # Normalize by subtraction
+                        stats_by_name[stat_name] -= ref_value
+                        
+                    else:
+                        # Nothing to norm against. TODO: maybe complain when
+                        # sample sets aren't all the same?
+                        stats_by_name[stat_name] = None
+                        
+        # Register this as a condition
+        stats_by_mode["normalized"] = normed_stats_cache
             
-            # Now we have the data for each graph read in, so we can run stats.
-            # Test to see if there is a significant difference in medians among
-            # the populations.
-            h_statistic, p_value = scipy.stats.mstats.kruskalwallis(
-                *list_of_distributions)
+    
+    # Now save stats, parceling out by region and graph
+        
+    for mode, mode_stats_cache in stats_by_mode.iteritems():
+        for graph, stats_by_sample in mode_stats_cache.iteritems():
+            # We need some config
+            # Where should we route each stat to?
+            stat_file_keys = {
+                "substitution_rate": "bias/{}/{}/substrate.{}.tsv".format(mode,
+                    region, graph),
+                "indel_rate": "bias/{}/{}/indelrate.{}.tsv".format(mode,
+                    region, graph),
+                "portion_perfect": "bias/{}/{}/perfect.{}.tsv".format(mode,
+                    region, graph)
+            }
+        
+            # Make a local temp file for each (dict from stat name to file
+            # object with a .name).
+            stats_file_temps = {name: tempfile.NamedTemporaryFile(
+                dir=job.fileStore.getLocalTempDir(), delete=False) 
+                for name in stat_file_keys.iterkeys()}
                 
-        except ValueError:
-            # We couldn;'t run the test on these particular numbers.
-            h_statistic = None
-            p_value = None
+            for sample, stats_by_name in stats_by_sample.iteritems():
+                # For each sample and all the stats for that sample
+                for stat_name, stat_value in stats_by_name.iteritems():
+                    # For each stat
+                    
+                    if not stats_file_temps.has_key(stat_name):
+                        # Skip stats that have nowhere to go
+                        continue
+                    
+                    # Write graph and value to the file for the stat, for
+                    # plotting, naming it after the pop that the sample is in
+                    stats_file_temps[stat_name].write("{}\t{}\n".format(
+                        pop_by_sample[sample], stat_value))
             
-        # Since there probably is, quantify the degree of difference between
-        # populations. This is my own metric which may or may not be good.
+            for stat_name, stat_file in stats_file_temps.iteritems():
+                # Flush and close the temp file
+                stat_file.flush()
+                os.fsync(stat_file.fileno())
+                stat_file.close()
+                
+                # Upload the file
+                out_store.write_output_file(stat_file.name,
+                    stat_file_keys[stat_name])
         
-        # Get the median of each distribution
-        medians = [numpy.median(numpy.array(l)) for l in list_of_distributions]
-        
-        # Find the standard deviation and call it the bias level
-        bias_level = numpy.std(medians)
-    
-        # Write this stat to the TSV
-        writer.line(graph, h_statistic, p_value, bias_level)
-        
-    # Finish up the file
-    writer.close()
-    
-    RealTimeLogger.get().info("Uploading results for {} ".format(region))
-    
-    # Save it to the output store
-    out_store.write_output_file(local_filename, "bias/{}.tsv".format(region))
-            
-    
 def main(args):
     """
     Parses command line arguments and do the work of the program.
@@ -390,10 +298,18 @@ def main(args):
     
     options = parse_args(args) # This holds the nicely-parsed options object
     
+    # Load the sample whitelist, if applicable. Holds a set if we have a
+    # whitelist, or None otherwise.
+    sample_whitelist = None
+    if options.samples is not None:
+        # Read all the samples from the file
+        sample_whitelist = set([line[0] for line in
+            tsv.TsvReader(options.samples)])
+    
     RealTimeLogger.start_master()
     
     # Make a root job
-    root_job = Job.wrapJobFn(scan_all, options,
+    root_job = Job.wrapJobFn(scan_all, options, sample_whitelist,
         cores=1, memory="1G", disk="1G")
     
     # Run it and see how many jobs fail

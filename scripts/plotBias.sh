@@ -2,7 +2,7 @@
 # Run after biasDetector.py.
 # Makes plots comparing the populations for each graph.
 
-set -e
+set -ex
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -23,7 +23,8 @@ declare -A HR_NAMES
 
 HR_NAMES["snp1kg"]="1KG"
 HR_NAMES["snp1000g"]="1KG"
-HR_NAMES["haplo1kg"]="1KG Haplo"
+HR_NAMES["haplo1kg30"]="1KG Haplo 30"
+HR_NAMES["haplo1kg50"]="1KG Haplo"
 HR_NAMES["sbg"]="7BG"
 HR_NAMES["cactus"]="Cactus"
 HR_NAMES["camel"]="Camel"
@@ -38,18 +39,23 @@ HR_NAMES["refonly"]="Reference"
 HR_NAMES["simons"]="SGDP"
 HR_NAMES["trivial"]="Trivial"
 HR_NAMES["vglr"]="VGLR"
+HR_NAMES["shifted1kg"]="Scrambled"
+HR_NAMES["snp1kg_kp"]="1KG KP"
 
-for MODE in normalized_distributions distributions
+for MODE in absolute normalized
 do
 
     # Are we absolute or normalized?
-    NORMALIZED="absolute"
+    NORMALIZED="Absolute"
 
-    PORTION="Portion"
-    if [ "${MODE}" == "normalized_distributions" ]
+    # Do we want portion (default) or absolute deviations
+    DEVIATIONS=""
+
+    if [ "${MODE}" == "normalized" ]
     then
-        PORTION="Difference in portion"
-        NORMALIZED="normalized"
+        # No sense normalizing twice
+        DEVIATIONS="--absolute_deviation"
+        NORMALIZED="Difference in"
     fi
 
     # Where are the bias files
@@ -69,24 +75,50 @@ do
             # Every TSV becomes a boxplot
             
             # Pull out the graph name
-            GRAPH=`basename ${GRAPH_TSV} | sed 's/\(.*\).tsv/\1/'` 
+            GRAPH=`basename ${GRAPH_TSV} | sed 's/.*\.\(.*\)\.tsv/\1/'`
             
-            # Ge tthe actual path to the graph TSV
+            # Pull out the stat
+            STAT=`basename ${GRAPH_TSV} | sed 's/\(.*\)\..*\.tsv/\1/'` 
+            
+            # Get the actual path to the graph TSV
             GRAPH_TSV_PATH="${REGION_DIR}/${GRAPH_TSV}"
             
             # Where should the plot go?
-            PLOT_PATH="${DISTRIBUTION_DIR}/${NORMALIZED}_bias_${REGION}_${GRAPH}.svg"
+            PLOT_PATH="${DISTRIBUTION_DIR}/${MODE}_bias_${STAT}_${GRAPH}-${REGION}.png"
             
             # Get the human readable graph name
             HR_GRAPH=${HR_NAMES["${GRAPH}"]}
             
-            echo "Plotting ${HR_REGION} ${HR_GRAPH} (${GRAPH})"
+            echo "Plotting ${HR_REGION} ${HR_GRAPH} ${STAT} (${GRAPH})"
             
-            ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-                --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
-                --x_label "Population" --y_label "${PORTION} mapped" --save "${PLOT_PATH}" \
-                --x_sideways --hline_median EUR \
-                "${PLOT_PARAMS[@]}"
+            if [[ "${STAT}" == "perfect" ]]; then
+            
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED} portion\nmapped perfectly")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+                    
+            elif [[ "${STAT}" == "substrate" ]]; then
+                
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Substitution rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED^} substitution rate")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR --best_low \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+                    
+            elif [[ "${STAT}" == "indelrate" ]]; then
+                
+                ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
+                    --title "$(printf "Indel rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --x_label "Population" --y_label "$(printf "${NORMALIZED^} indel rate")" --save "${PLOT_PATH}" \
+                    --x_sideways --hline_median EUR --best_low \
+                    ${DEVIATIONS} \
+                    "${PLOT_PARAMS[@]}"
+            
+            fi
         
         done
 

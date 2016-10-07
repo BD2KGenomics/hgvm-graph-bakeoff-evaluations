@@ -5,7 +5,7 @@
 set -ex
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -102,13 +102,17 @@ do
     
     # We want to write different axis labels in different modes
     PORTION="Portion"
-    SECONDS=" (seconds)"
+    SECONDS_WORD=" (seconds)"
     RATE="rate"
+    # If we want absolute changes (in portion mapped) on absolute plots, we can
+    # add --absolute_deviation here.
+    DEVIATION=""
     if [ "${MODE}" == "normalized" ]
     then
         PORTION="Relative portion"
-        SECONDS=" (relative)"
+        SECONDS_WORD=" (relative)"
         RATE=" relative rate"
+        DEVIATION=""
     fi
 
 
@@ -121,10 +125,14 @@ do
     OVERALL_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.ALL.${PLOT_FILETYPE}"
     OVERALL_PERFECT_FILE="${PLOTS_DIR}/perfect.tsv"
     OVERALL_PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.ALL.${PLOT_FILETYPE}"
-    OVERALL_ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.tsv"
-    OVERALL_ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.ALL.${PLOT_FILETYPE}"
-    OVERALL_SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.tsv"
-    OVERALL_SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
+    OVERALL_SINGLE_MAPPING_WELL_FILE="${PLOTS_DIR}/singlemapping.tsv"
+    OVERALL_SINGLE_MAPPING_WELL_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.ALL.${PLOT_FILETYPE}"
+    OVERALL_SINGLE_MAPPING_AT_ALL_FILE="${PLOTS_DIR}/singlemappingatall.tsv"
+    OVERALL_SINGLE_MAPPING_AT_ALL_PLOT="${PLOTS_DIR}/${MODE}-singlemappingatall.ALL.${PLOT_FILETYPE}"
+    
+    # And for perfect vs unique
+    OVERALL_PERFECT_UNIQUE_FILE="${PLOTS_DIR}/perfect_vs_unique.ALL.tsv"
+    OVERALL_PERFECT_UNIQUE_PLOT="${PLOTS_DIR}/${MODE}-perfect_vs_unique.ALL.${PLOT_FILETYPE}"
 
     for REGION in `ls ${PLOTS_DIR}/mapping.*.tsv | xargs -n 1 basename | sed 's/mapping.\(.*\).tsv/\1/'`
     do
@@ -135,10 +143,10 @@ do
         MAPPING_PLOT="${PLOTS_DIR}/${MODE}-mapping.${REGION}.${PLOT_FILETYPE}"
         PERFECT_FILE="${PLOTS_DIR}/perfect.${REGION}.tsv"
         PERFECT_PLOT="${PLOTS_DIR}/${MODE}-perfect.${REGION}.${PLOT_FILETYPE}"
-        ONE_ERROR_FILE="${PLOTS_DIR}/oneerror.${REGION}.tsv"
-        ONE_ERROR_PLOT="${PLOTS_DIR}/${MODE}-oneerror.${REGION}.${PLOT_FILETYPE}"
-        SINGLE_MAPPING_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
-        SINGLE_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
+        SINGLE_MAPPING_WELL_FILE="${PLOTS_DIR}/singlemapping.${REGION}.tsv"
+        SINGLE_MAPPING_WELL_PLOT="${PLOTS_DIR}/${MODE}-singlemapping.${REGION}.${PLOT_FILETYPE}"
+        SINGLE_MAPPING_AT_ALL_FILE="${PLOTS_DIR}/singlemappingatall.${REGION}.tsv"
+        SINGLE_MAPPING_AT_ALL_PLOT="${PLOTS_DIR}/${MODE}-singlemappingatall.${REGION}.${PLOT_FILETYPE}"
         ANY_MAPPING_FILE="${PLOTS_DIR}/anymapping.${REGION}.tsv"
         ANY_MAPPING_PLOT="${PLOTS_DIR}/${MODE}-anymapping.${REGION}.${PLOT_FILETYPE}"
         RUNTIME_FILE="${PLOTS_DIR}/runtime.${REGION}.tsv"
@@ -164,8 +172,9 @@ do
         # overall files and make the plots.
         
         ./scripts/boxplot.py "${MAPPING_FILE}" \
-            --title "$(printf "Mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -173,42 +182,39 @@ do
         ./scripts/boxplot.py "${PERFECT_FILE}" \
             --title "$(printf "Perfectly mapped\nreads in ${HR_REGION}")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nperfectly mapped")" --save "${PERFECT_PLOT}" \
-            --x_sideways --hline_median refonly \
+            ${DEVIATION} \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
-        ./scripts/boxplot.py "${ONE_ERROR_FILE}" \
-            --title "$(printf "One-error (<=1 mismatch)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "${PORTION}" --save "${ONE_ERROR_PLOT}" \
-            --x_sideways --hline_median refonly \
+        ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
+            --title "$(printf "Uniquely mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
+            ${DEVIATION} \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
-        
-        if [ "${HR_REGION}" == "CENX" ]
-        then
-            # There's hardly any single mapping in CENX, so we need to go down all the way.
-            SINGLE_MAPPING_MIN=0
-        else
-            SINGLE_MAPPING_MIN=0.8
-        fi
             
-        ./scripts/boxplot.py "${SINGLE_MAPPING_FILE}" \
-            --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_PLOT}" \
-            --x_sideways --hline_median refonly --min_min "${SINGLE_MAPPING_MIN}" \
+        ./scripts/boxplot.py "${SINGLE_MAPPING_AT_ALL_FILE}" \
+            --title "$(printf "Uniquely mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_AT_ALL_PLOT}" \
+            ${DEVIATION} \
+            --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${ANY_MAPPING_FILE}" \
-            --title "$(printf "Mapped (any number of mismatches)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${RUNTIME_FILE}" \
             --title "$(printf "Per-read runtime\n in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "Runtime per read${SECONDS}" --save "${RUNTIME_PLOT}" \
+            --x_label "Graph" --y_label "Runtime per read${SECONDS_WORD}" --save "${RUNTIME_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --max_max 0.006 \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -216,6 +222,7 @@ do
         ./scripts/boxplot.py "${NOINDEL_FILE}" \
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
@@ -225,15 +232,15 @@ do
             # Limit max Y for absolute substitution rates
             if [ "${REGION^^}" == "MHC" ]
             then
-                SUBSTRATE_LIMIT="--max 0.10"
+                SUBSTRATE_LIMIT="--max 0.01"
+            elif [ "${REGION^^}" == "BRCA2" ]
+            then
+                SUBSTRATE_LIMIT="--max 0.004"
             elif [ "${REGION^^}" == "CENX" ]
             then
                 SUBSTRATE_LIMIT=""
             else
-                SUBSTRATE_LIMIT="--max 0.02"
-                
-                # For supplement
-                SUBSTRATE_LIMIT="--max 0.10"
+                SUBSTRATE_LIMIT=""
             fi
         else
             # Set limits by region
@@ -253,7 +260,9 @@ do
             --title "$(printf "Substitution rate\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
+            ${DEVIATION} \
             --range --sparse_ticks --sparse_axes \
+            --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
             
         if [ "${MODE}" == "absolute" ]
@@ -261,9 +270,12 @@ do
             # Limit max Y for absolute indel rates
             if [ "${REGION^^}" == "MHC" ]
             then
-                INDELRTE_LIMIT="--max 0.10"
+                INDELRATE_LIMIT="--max 0.0004"
+            elif [ "${REGION^^}" == "BRCA2" ]
+            then
+                INDELRATE_LIMIT="--max 0.0002"
             else
-                INDELRATE_LIMIT="--max 0.02"
+                INDELRATE_LIMIT=""
             fi
         else
             # Set limits by region
@@ -281,17 +293,24 @@ do
         ./scripts/boxplot.py "${INDELRATE_FILE}" \
             --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
+            ${DEVIATION} \
             --x_sideways --hline_median refonly --best_low \
             --range --sparse_ticks --sparse_axes ${INDELRATE_LIMIT} \
+            --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
-        if [ "${REGION^^}" == "BRCA2" ]
-        then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.915 --min_y 0.74 --max_x 0.930 --max_y 0.80"
-        elif [ "${REGION^^}" == "MHC" ]
-        then
-            PERFECT_UNIQUE_LIMITS="--min_x 0.75 --min_y 0.55 --max_x 0.9 --max_y 0.75"
+        # MHC and BRCA2 fit in --min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.
+        if [ "${REGION^^}" == "MHC" ]; then
+            PERFECT_UNIQUE_LIMITS=""
+        elif [ "${REGION^^}" == "BRCA1" ]; then
+            PERFECT_UNIQUE_LIMITS=""
+        elif [ "${REGION^^}" == "BRCA2" ]; then
+            PERFECT_UNIQUE_LIMITS=""
+        elif [ "${REGION^^}" == "SMA" ]; then
+            PERFECT_UNIQUE_LIMITS=""
+        elif [ "${REGION^^}" == "LRC_KIR" ]; then
+            PERFECT_UNIQUE_LIMITS=""
         else
             PERFECT_UNIQUE_LIMITS=""
         fi
@@ -302,7 +321,9 @@ do
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
             --x_label "Portion Uniquely Mapped" \
             --y_label "Portion Perfectly Mapped" \
-            --width 12 --height 9 --sparse_ticks --sparse_axes --markers "o" \
+            ${PERFECT_UNIQUE_LIMITS} \
+            --markers "o" \
+            --annotate --no_legend \
             ${PERFECT_UNIQUE_LIMITS} \
             "${PLOT_PARAMS[@]}"
             
@@ -312,13 +333,16 @@ do
     # Aggregate the overall files
     cat "${PLOTS_DIR}"/mapping.*.tsv > "${OVERALL_MAPPING_FILE}"
     cat "${PLOTS_DIR}"/perfect.*.tsv > "${OVERALL_PERFECT_FILE}"
-    cat "${PLOTS_DIR}"/oneerror.*.tsv > "${OVERALL_ONE_ERROR_FILE}"
-    cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_FILE}"
+    cat "${PLOTS_DIR}"/singlemapping.*.tsv > "${OVERALL_SINGLE_MAPPING_WELL_FILE}"
+    cat "${PLOTS_DIR}"/singlemappingatall.*.tsv > "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}"
+    # Perfect vs unique overall file is generated by the collator, since we
+    # don't want to weight each region equally.
 
     # Make the overall plots
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
-        --title "$(printf "Mapped (<=2 mismatches)\nreads (${MODE})")" \
+        --title "$(printf "Mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
+        ${DEVIATION} \
         --x_sideways  --hline_median trivial \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
@@ -326,23 +350,39 @@ do
     ./scripts/boxplot.py "${OVERALL_PERFECT_FILE}" \
         --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
+        ${DEVIATION} \
         --x_sideways --hline_median trivial \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
-    ./scripts/boxplot.py "${OVERALL_ONE_ERROR_FILE}" \
-        --title "$(printf "One-error (<=1 mismatch)\nreads (${MODE})")" \
-        --x_label "Graph" --y_label "Portion" --save "${OVERALL_ONE_ERROR_PLOT}" \
-        --x_sideways --hline_median trivial \
-        --range --sparse_ticks --sparse_axes \
-        "${PLOT_PARAMS[@]}"
-
-    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_FILE}" \
-        --title "$(printf "Uniquely mapped (<=2 mismatches)\nreads (${MODE})")" \
-        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_PLOT}" \
+    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_WELL_FILE}" \
+        --title "$(printf "Uniquely mapped (0.98 match)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
+        ${DEVIATION} \
         --x_sideways --hline_median refonly \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
+        
+    ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_AT_ALL_FILE}" \
+        --title "$(printf "Uniquely mapped (any number of matches)\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_AT_ALL_PLOT}" \
+        ${DEVIATION} \
+        --x_sideways --hline_median refonly \
+        --range --sparse_ticks --sparse_axes \
+        "${PLOT_PARAMS[@]}"
+        
+    # Maybe just cut off K31 DBG for this plot?
+    if [[ "${MODE}" == "absolute" ]]; then
+        ./scripts/scatter.py "${OVERALL_PERFECT_UNIQUE_FILE}" \
+            --save "${OVERALL_PERFECT_UNIQUE_PLOT}" \
+            --title "$(printf "Perfect vs. Unique\nMapping (${MODE})")" \
+            --x_label "Portion Uniquely Mapped" \
+            --y_label "Portion Perfectly Mapped" \
+            --min_x 0.55 --min_y 0.55 --max_x 0.8 --max_y 0.8 \
+            --sparse_ticks --sparse_axes --markers "o" \
+            --annotate --no_legend \
+            "${PLOT_PARAMS[@]}"
+    fi
         
 done
 

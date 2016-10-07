@@ -71,63 +71,8 @@ brca2	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg-brca2.vg	vg	GRCh38 ref + 100
 sma	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 mhc	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/snp1kg_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg30_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
 mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af001-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af001-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af001-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af001-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af001-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af010-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af010-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af010-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af010-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af010-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af100-brca1.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af100-brca2.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af100-sma.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af100-lrc_kir.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/haplo1kg50_af100-mhc.vg	vg	GRCh38 ref + 1000g VCFs	glenn.hickey@gmail.com	2016-07-12
-brca1	https://hgwdev.sdsc.edu/~anovak/graphs/platinum-brca1.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
-brca2	https://hgwdev.sdsc.edu/~anovak/graphs/platinum-brca2.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
-sma	https://hgwdev.sdsc.edu/~anovak/graphs/platinum-sma.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
-lrc_kir	https://hgwdev.sdsc.edu/~anovak/graphs/platinum-lrc_kir.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03
-mhc	https://hgwdev.sdsc.edu/~anovak/graphs/platinum-mhc.vg	vg	Platinum VCFs	glenn.hickey@gmail.com	2016-08-03

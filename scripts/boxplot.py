@@ -74,6 +74,8 @@ def parse_args(args):
     parser.add_argument("--best_low", dest="best_sense", default=1,
         action="store_const", const=-1,
         help="call out the lowest category as best, instead of the highest")
+    parser.add_argument("--absolute_deviation", action="store_true",
+        help="report absolute and not percentage changes")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
     parser.add_argument("--save",
@@ -88,6 +90,8 @@ def parse_args(args):
         help="use only bottom and left axes")
     parser.add_argument("--hline_ticks", action="store_true",
         help="draw only a few ticks, with one at the hline")
+    parser.add_argument("--scientific", action="store_true",
+        help="use scientific notation on the Y axis")
     parser.add_argument("--x_sideways", action="store_true",
         help="write X axis labels vertically")
     parser.add_argument("--min", type=float, default=None,
@@ -324,20 +328,39 @@ def main(args):
             
             other_median = numpy.median(categories[category])
             
-            portion = other_median / category_median
+            if options.absolute_deviation:
+                difference = other_median - category_median
+                
+                if best_deviation is None or (difference * options.best_sense > 
+                    best_deviation * options.best_sense):
+                    # We found the best thing
+                    best_category = i
+                    best_deviation = difference
+                
+            else:
+                # Use relative deviation from category_median to other_median
             
-            percent = (portion - 1) * 100
-            
-            if best_deviation is None or (percent * options.best_sense > 
-                best_deviation * options.best_sense):
-                # We found the best thing
-                best_category = i
-                best_deviation = percent
+                portion = other_median / category_median
+                
+                percent = (portion - 1) * 100
+                
+                if best_deviation is None or (percent * options.best_sense > 
+                    best_deviation * options.best_sense):
+                    # We found the best thing
+                    best_category = i
+                    best_deviation = percent
         
         if best_category is not None:
-            # Apply a +/-% label to the best thing
-            category_labels[best_category] += "\n({:+.2f}%)".format(
-                best_deviation)
+            if options.absolute_deviation:
+                # Use a difference
+                # Apply a +/- label to the best thing
+                category_labels[best_category] += "\n({:+.2g})".format(
+                    best_deviation)
+            else:
+                # Use a percentage
+                # Apply a +/-% label to the best thing
+                category_labels[best_category] += "\n({:+.2g}%)".format(
+                    best_deviation)
                 
     # Now that we have our hlines, drop any hidden categories.
     for i in xrange(len(category_order)):
@@ -480,20 +503,25 @@ def main(args):
         # And log Y axis if desired.
         pyplot.yscale("log")
         
-    if options.sparse_ticks:
-        # Set up tickmarks to have only 2 per axis, at the ends
-        pyplot.gca().yaxis.set_major_locator(
-            matplotlib.ticker.FixedLocator(pyplot.ylim()))
-            
     if options.hline_ticks:
         # Set up tickmarks to a tick at any hlines, and some others
         
         y_min, y_max = pyplot.ylim()
         
-        # Do the ends, the middle, and the hline
+        # Put ticks at all hlines plus the start and end of the axis
+        tick_locations = hline_positions + [y_min, y_max]
+        
+        if not options.sparse_ticks:
+            # Add a middle tick too
+            tick_locations .append((y_min + y_max) / 2.0)
+        
+        # Apply the ticks
         pyplot.gca().yaxis.set_major_locator(
-            matplotlib.ticker.FixedLocator(hline_positions + [y_min, y_max, 
-            ((y_min + y_max) / 2.0)]))
+            matplotlib.ticker.FixedLocator(tick_locations))
+    elif options.sparse_ticks:
+        # Set up tickmarks to have only 2 per axis, at the ends
+        pyplot.gca().yaxis.set_major_locator(
+            matplotlib.ticker.FixedLocator(pyplot.ylim()))
             
     if options.sparse_axes:
         # Don't draw top or right axes
@@ -502,6 +530,11 @@ def main(args):
         # Or their tick marks
         pyplot.gca().yaxis.set_ticks_position("left")
         pyplot.gca().xaxis.set_ticks_position("bottom")
+        
+    if options.scientific:
+        # Enable scientific notation on the Y axis as per
+        # <http://stackoverflow.com/a/11579834/402891>
+        pyplot.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
     
     # Make sure tick labels don't overlap. See
     # <http://stackoverflow.com/a/20599129/402891>

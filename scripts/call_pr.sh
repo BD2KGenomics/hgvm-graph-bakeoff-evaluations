@@ -34,10 +34,15 @@ GLOBIGNORE="*/mhc/camel*:camel*mhc*:${GLOBIGNORE}"
 GLOBIGNORE="*/lrc_kir/camel*:camel*lrc_kir*:${GLOBIGNORE}"
 # leave simons out for now as its hg19
 GLOBIGNORE="*simons*:${GLOBIGNORE}"
+# Drop all the extra 1kg variants
+GLOBIGNORE="*haplo1kg*_af*:${GLOBIGNORE}"
+GLOBIGNORE="*snp1kg*_af*:${GLOBIGNORE}"
+GLOBIGNORE="*snp1kg_kp*:${GLOBIGNORE}"
+GLOBIGNORE="*snp1kg_norm*:${GLOBIGNORE}"
+GLOBIGNORE="*snp1kg_plat*:${GLOBIGNORE}"
+# Expand globs
 GLOBIGNORE=$GLOBIGNORE
-# and trivial, since its same as refonly
-GLOBIGNORE="*trivial*:${GLOBIGNORE}"
-GLOBIGNORE=""
+GLOBIGNORE_CALL=$GLOBIGNORE
 
 # leave gatk3 out of comparison because it's misleading
 GLOBIGNORE_COMP="*gatk*:*simons*"
