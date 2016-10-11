@@ -199,7 +199,7 @@ do
             --title "$(printf "Uniquely mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_AT_ALL_PLOT}" \
             ${DEVIATION} \
-            --x_sideways --hline_median refonly \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
@@ -207,7 +207,7 @@ do
             --title "$(printf "Mapped (any number of matches)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${ANY_MAPPING_PLOT}" \
             ${DEVIATION} \
-            --x_sideways --hline_median refonly \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
             
@@ -223,36 +223,51 @@ do
             --title "$(printf "Mapped indel-free\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${NOINDEL_PLOT}" \
             ${DEVIATION} \
-            --x_sideways --hline_median refonly \
+            --x_sideways --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
-           
-        if [ "${MODE}" == "absolute" ]
-        then
-            # Limit max Y for absolute substitution rates
-            if [ "${REGION^^}" == "MHC" ]
+        
+        if [ "${MAIN_TEXT:-}" == "1"]; then
+            # In the main text we want some limits to cut off the invisible
+            # range lines.
+            if [ "${MODE}" == "absolute" ]
             then
-                SUBSTRATE_LIMIT="--max 0.01"
-            elif [ "${REGION^^}" == "BRCA2" ]
-            then
-                SUBSTRATE_LIMIT="--max 0.004"
-            elif [ "${REGION^^}" == "CENX" ]
-            then
-                SUBSTRATE_LIMIT=""
+                # Limit max Y for absolute substitution rates
+                if [ "${REGION^^}" == "BRCA1" ]
+                then
+                    SUBSTRATE_LIMIT="--max 0.006"
+                elif [ "${REGION^^}" == "BRCA2" ]
+                then
+                    SUBSTRATE_LIMIT="--max 0.004"
+                elif [ "${REGION^^}" == "MHC" ]
+                then
+                    SUBSTRATE_LIMIT="--max 0.008"
+                elif [ "${REGION^^}" == "SMA" ]
+                then
+                    SUBSTRATE_LIMIT="--max 0.005"
+                elif [ "${REGION^^}" == "LRC_KIR" ]
+                then
+                    SUBSTRATE_LIMIT="--max 0.008"
+                elif [ "${REGION^^}" == "CENX" ]
+                then
+                    SUBSTRATE_LIMIT=""
+                else
+                    SUBSTRATE_LIMIT=""
+                fi
             else
-                SUBSTRATE_LIMIT=""
+                # Set limits by region
+                if [ "${REGION^^}" == "BRCA2" ]
+                then
+                    SUBSTRATE_LIMIT="--max 1.5 --min 0.5"
+                elif [ "${REGION^^}" == "MHC" ]
+                then
+                    SUBSTRATE_LIMIT="--max 2 --min 0"
+                else
+                    SUBSTRATE_LIMIT="--max 2 --min 0"
+                fi
             fi
         else
-            # Set limits by region
-            if [ "${REGION^^}" == "BRCA2" ]
-            then
-                SUBSTRATE_LIMIT="--max 1.5 --min 0.5"
-            elif [ "${REGION^^}" == "MHC" ]
-            then
-                SUBSTRATE_LIMIT="--max 2 --min 0"
-            else
-                SUBSTRATE_LIMIT="--max 2 --min 0"
-            fi
+            SUBSTRATE_LIMIT=""
         fi
         
         
@@ -261,8 +276,9 @@ do
             --x_label "Graph" --y_label "Substitution ${RATE}" --save "${SUBSTRATE_PLOT}" \
             --x_sideways --hline_median refonly ${SUBSTRATE_LIMIT} --best_low \
             ${DEVIATION} \
+            --hline_median refonly --hline_ticks \
             --range --sparse_ticks --sparse_axes \
-            --medians_only --hline_ticks --scientific --line_width 3 \
+            --scientific \
             "${PLOT_PARAMS[@]}"
             
         if [ "${MODE}" == "absolute" ]
@@ -294,9 +310,8 @@ do
             --title "$(printf "Indels per base\nin ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "Indel ${RATE}" --save "${INDELRATE_PLOT}" \
             ${DEVIATION} \
-            --x_sideways --hline_median refonly --best_low \
+            --x_sideways --hline_median refonly --hline_ticks --best_low \
             --range --sparse_ticks --sparse_axes ${INDELRATE_LIMIT} \
-            --medians_only --hline_ticks --scientific --line_width 3 \
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
@@ -343,7 +358,7 @@ do
         --title "$(printf "Mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         ${DEVIATION} \
-        --x_sideways  --hline_median trivial \
+        --x_sideways  --hline_median refonly --hline_ticks \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
@@ -351,7 +366,7 @@ do
         --title "$(printf "Perfectly mapped\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion perfectly mapped" --save "${OVERALL_PERFECT_PLOT}" \
         ${DEVIATION} \
-        --x_sideways --hline_median trivial \
+        --x_sideways --hline_median refonly --hline_ticks \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
@@ -359,7 +374,7 @@ do
         --title "$(printf "Uniquely mapped (0.98 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
         ${DEVIATION} \
-        --x_sideways --hline_median refonly \
+        --x_sideways --hline_median refonly --hline_ticks \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         
@@ -367,7 +382,7 @@ do
         --title "$(printf "Uniquely mapped (any number of matches)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_AT_ALL_PLOT}" \
         ${DEVIATION} \
-        --x_sideways --hline_median refonly \
+        --x_sideways --hline_median refonly --hline_ticks \
         --range --sparse_ticks --sparse_axes \
         "${PLOT_PARAMS[@]}"
         

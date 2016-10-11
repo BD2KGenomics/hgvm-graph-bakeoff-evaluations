@@ -4,7 +4,7 @@
 set -eux
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="png"
+PLOT_FILETYPE="svg"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -365,7 +365,9 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         --title "Precision vs. Recall in ${REGION^^} ($PARAM_SET)" \
         --x_label "Recall" \
         --y_label "Precision" \
-        --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 --legend_overlay "lower right" \
+        --width 6 --height 6 \
+        --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 \
+        --no_legend --annotate \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
@@ -525,10 +527,12 @@ done
     
 # Plot total precision/recall
 ./scripts/scatter.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-ALL-${PARAM_SET}.tsv" \
-    --title "Precision vs. Recall overall ($PARAM_SET)" \
+    --title "Accuracy against PacBio assembly" \
     --x_label "Recall" \
     --y_label "Precision" \
-    --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 --legend_overlay "lower right" \
+    --width 6.5 --height 6 \
+    --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 \
+    --no_legend --annotate \
     --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-ALL-${PARAM_SET}.${PLOT_FILETYPE}" \
     "${PLOT_PARAMS[@]}"
 
