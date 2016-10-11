@@ -4,7 +4,7 @@
 set -eux
 
 # What plot filetype should we produce?
-PLOT_FILETYPE="svg"
+PLOT_FILETYPE="png"
 
 # Grab the input directory to look in
 INPUT_DIR=${1}
@@ -322,7 +322,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
     
     # Plot by bp
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-insertions-${PARAM_SET}.tsv" \
-        --title "Inserted bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Inserted bases relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Inserted bases per region base" \
         --x_sideways \
@@ -330,7 +330,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-deletions-${PARAM_SET}.tsv" \
-        --title "Deleted bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Deleted bases relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Deleted bases per region base" \
         --x_sideways \
@@ -338,7 +338,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-substitutions-${PARAM_SET}.tsv" \
-        --title "Substituted bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Substituted bases relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Substituted bases per region base" \
         --x_sideways \
@@ -346,7 +346,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-unvisited-${PARAM_SET}.tsv" \
-        --title "Unvisited bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Unvisited bases relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Unvisited bases per region base" \
         --x_sideways \
@@ -354,25 +354,31 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/${REGION}-indels-${PARAM_SET}.tsv" \
-        --title "Indel bases relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Indel bases relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Indel bases per region base" \
         --x_sideways \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/${REGION}-indels-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
+    if [[ "${REGION^^}" == "BRCA1" || "${REGION^^}" == "BRCA2" ]]; then
+        PR_BOUNDS="--max_x 1 --min_x 0.998 --max_y 1 --min_y 0.998"
+    else
+        PR_BOUNDS="--max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995"
+    fi
+        
     ./scripts/scatter.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/PR-${REGION}-${PARAM_SET}.tsv" \
-        --title "Precision vs. Recall in ${REGION^^} ($PARAM_SET)" \
+        --title "Precision vs. Recall in ${REGION^^}" \
         --x_label "Recall" \
         --y_label "Precision" \
         --width 6 --height 6 \
-        --max_x 1 --min_x 0.992 --max_y 1 --min_y 0.995 \
+        ${PR_BOUNDS} \
         --no_legend --annotate \
         --save "${INPUT_DIR}/evals/${EVAL}/plots/bp/PR-${REGION}-${PARAM_SET}.${PLOT_FILETYPE}" \
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-${REGION}-${PARAM_SET}.tsv" \
-        --title "F1 score in ${REGION^^} ($PARAM_SET)" \
+        --title "F1 score in ${REGION^^}" \
         --x_label "Graph" \
         --y_label "1 - F1" \
         --x_sideways \
@@ -381,7 +387,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         
     # Plot by event count
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-insertions-${PARAM_SET}.tsv" \
-        --title "Insertion events relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Insertion events relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Insertions per region base" \
         --x_sideways \
@@ -389,7 +395,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-deletions-${PARAM_SET}.tsv" \
-        --title "Deletion events relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Deletion events relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Deletions per region base" \
         --x_sideways \
@@ -397,7 +403,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-substitutions-${PARAM_SET}.tsv" \
-        --title "Substitution events relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Substitution events relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Substitutions per region base" \
         --x_sideways \
@@ -405,7 +411,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-unvisited-${PARAM_SET}.tsv" \
-        --title "Unvisited nodes in sample ${REGION^^} (${PARAM_SET})" \
+        --title "Unvisited nodes in sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Unvisited nodes per region base" \
         --x_sideways \
@@ -413,7 +419,7 @@ for REGION in  brca1 brca2 mhc lrc_kir; do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/${REGION}-indels-${PARAM_SET}.tsv" \
-        --title "Indel events relative to sample ${REGION^^} (${PARAM_SET})" \
+        --title "Indel events relative to sample ${REGION^^}" \
         --x_label "Graph type" \
         --y_label "Indels per region base" \
         --x_sideways \
@@ -486,7 +492,7 @@ done
 
 # Plot totals by bp
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-insertions-${PARAM_SET}.tsv" \
-    --title "Inserted bases relative to sample overall (${PARAM_SET})" \
+    --title "Inserted bases relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Inserted bases per region base" \
     --x_sideways \
@@ -494,7 +500,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-deletions-${PARAM_SET}.tsv" \
-    --title "Deleted bases relative to sample overall (${PARAM_SET})" \
+    --title "Deleted bases relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Deleted bases per region base" \
     --x_sideways \
@@ -502,7 +508,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-substitutions-${PARAM_SET}.tsv" \
-    --title "Substituted bases relative to sample overall (${PARAM_SET})" \
+    --title "Substituted bases relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Substituted bases per region base" \
     --x_sideways \
@@ -510,7 +516,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-unvisited-${PARAM_SET}.tsv" \
-    --title "Unvisited node length in sample overall (${PARAM_SET})" \
+    --title "Unvisited node length in sample overall" \
     --x_label "Graph type" \
     --y_label "Unvisited bases per region base" \
     --x_sideways \
@@ -518,7 +524,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/ALL-indels-${PARAM_SET}.tsv" \
-    --title "Indle bases relative to sample overall (${PARAM_SET})" \
+    --title "Indle bases relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Indel bases per region base" \
     --x_sideways \
@@ -538,7 +544,7 @@ done
 
 # Plot total F1
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/bp/stats/F1-ALL-${PARAM_SET}.tsv" \
-    --title "F1 score overall ($PARAM_SET)" \
+    --title "F1 score overall" \
     --x_label "Graph" \
     --y_label "1 - F1" \
     --x_sideways \
@@ -547,7 +553,7 @@ done
     
 # Plot totals by event count
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-insertions-${PARAM_SET}.tsv" \
-    --title "Insertion events relative to sample overall (${PARAM_SET})" \
+    --title "Insertion events relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Insertions per region base" \
     --x_sideways \
@@ -555,7 +561,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-deletions-${PARAM_SET}.tsv" \
-    --title "Deletion events relative to sample overall (${PARAM_SET})" \
+    --title "Deletion events relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Deletions per region base" \
     --x_sideways \
@@ -563,7 +569,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-substitutions-${PARAM_SET}.tsv" \
-    --title "Substitution events relative to sample overall (${PARAM_SET})" \
+    --title "Substitution events relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Substitutions per region base" \
     --x_sideways \
@@ -571,7 +577,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-unvisited-${PARAM_SET}.tsv" \
-    --title "Unvisited nodes in sample overall (${PARAM_SET})" \
+    --title "Unvisited nodes in sample overall" \
     --x_label "Graph type" \
     --y_label "Unvisited nodes per region base" \
     --x_sideways \
@@ -579,7 +585,7 @@ done
     "${PLOT_PARAMS[@]}"
     
 ./scripts/barchart.py "${INPUT_DIR}/evals/${EVAL}/plots/count/stats/ALL-indels-${PARAM_SET}.tsv" \
-    --title "Indel events relative to sample overall (${PARAM_SET})" \
+    --title "Indel events relative to sample overall" \
     --x_label "Graph type" \
     --y_label "Indels per region base" \
     --x_sideways \
