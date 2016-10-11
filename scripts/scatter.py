@@ -115,13 +115,15 @@ def parse_args(args):
     
     return parser.parse_args(args)
     
-def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
-    data_spring=0.02, data_dist = 0.2, target_spring=0.05, target_dist=0.15,
-    max_steps=1000, min_x = 0, min_y = 0, max_x = 1, max_y = 1):
+def physics_layout_labels(to_label, series, other_spring=0.06,
+    other_dist = 0.3, data_spring=0.02, data_dist = 0.2, target_spring=0.05,
+    target_dist=0.15, max_steps=1000, min_x = 0, min_y = 0, max_x = 1,
+    max_y = 1):
     """
-    Given a series dict of point values by series name, a list for x or y, and
-    then in a list by point number, return a similar dict with the best
-    locations for text to annotate those points.
+    Given a series dict of points to label by series name, then a list for x or
+    y, and then in a list by point number, and a similar structure of points to
+    avoid, return a similar dict with the best locations for text to annotate
+    those points.
     
     other_spring and other_dist control spring force for avoiding other points
     being laid out. data_spring and data_dist control spring force for avoiding
@@ -135,8 +137,9 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
     
     """
     
-    # Deep copy the whole thing so we can update in place to move things.
-    positions = copy.deepcopy(series)
+    # Deep copy the points to be labeled so we can update in place to move
+    # things.
+    positions = copy.deepcopy(to_label)
     
     # Keep forces that we accumulate into, organized the same way
     forces = collections.defaultdict(lambda: [[], []])
@@ -185,7 +188,7 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
         """
         Clear all forces to 0 in both dimensions
         """
-        for name, dimensions in series.iteritems():
+        for name, dimensions in positions.iteritems():
             for dimension, values in enumerate(dimensions):
                 forces[name][dimension] = [0.0] * len(values)
                 
@@ -293,8 +296,8 @@ def physics_layout_labels(series, other_spring=0.06, other_dist = 0.3,
                         y_force * y_height)
         
             # Get its offset from its data point and apply a toward force
-            target_x = series[point_series][0][point_index]
-            target_y = series[point_series][1][point_index]
+            target_x = to_label[point_series][0][point_index]
+            target_y = to_label[point_series][1][point_index]
             
             # What's the offset in each dimension
             x_offset = (target_x - point_x) / x_width
@@ -562,24 +565,39 @@ def main(args):
         min_y = pyplot.ylim()[0] + 0.1 * y_height
         max_y = pyplot.ylim()[1] - 0.1 * y_height
         
+        # Find the center point of each series and decide to label it
+        to_label = {}
+        for series_name, series_points in series.iteritems():
+            # For each series, how many points are in it?
+            series_length = len(series_points[0])
+            # What's the index of the middle point?
+            series_center = int(series_length/2)
+            
+            # Clip the series down to the central point and copy it over.
+            to_label[series_name] = [[series_points[0][series_center]],
+                [series_points[1][series_center]]]
+        
         # Pass the whole dict from name to list of x/y lists into the physics
         # layout within that box. We'll get a similar dict back with the best
         # label position for each point.
-        label_positions = physics_layout_labels(series,
+        label_positions = physics_layout_labels(to_label, series,
             min_x=min_x, max_x=max_x, min_y=min_y, max_y=max_y)
+        
+        # Reset series color iterator to the beginning
+        series_colors = itertools.cycle(colors)
         
         for series_name, series_color in itertools.izip(category_order,
             series_colors):
             
             # For each series
-            for i in xrange(len(series[series_name][0])):
-                # For each point in the series
+            for i in xrange(len(label_positions[series_name][0])):
+                # For each label position
         
                 # Label the point with an arrow in the correct color
                 # Make sure to center the text on the text position
                 pyplot.gca().annotate(category_names[series_name], 
-                    xy=(series[series_name][0][i],
-                    series[series_name][1][i]), 
+                    xy=(to_label[series_name][0][i],
+                    to_label[series_name][1][i]), 
                     xytext=(label_positions[series_name][0][i],
                     label_positions[series_name][1][i]),
                     color=series_color,
