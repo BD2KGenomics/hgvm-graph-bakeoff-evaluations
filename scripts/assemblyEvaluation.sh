@@ -132,6 +132,11 @@ for PARAM_SET in defray; do
                     elif [[ "${PARAM_SET}" == "defray" ]]; then
                         # Just like call but with an xg index and --defray-ends on the filter step.
                         
+                        if [[ ! -e "${VGFILE}" ]]; then
+                            # Skip this region for this graph because there's no graph
+                            continue
+                        fi
+                        
                         if [[ (! -e "${XGFILE}")  || ("${VGFILE}" -nt "${XGFILE}") ]]; then
                             # No XG file, or VG file is newer than it. Index.
                             vg index -x "${XGFILE}" "${VGFILE}"
