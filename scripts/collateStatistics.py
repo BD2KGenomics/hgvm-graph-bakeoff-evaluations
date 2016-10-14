@@ -182,13 +182,13 @@ def collate_region(job, options, region):
                 total_mapped_well = sum((
                     stats["primary_matches_per_column"].get(x)
                     for x in stats["primary_matches_per_column"].iterkeys()
-                    if float(x) >= 0.98))
+                    if float(x) >= 0.95))
                     
                 # How many reads are multimapped well enough?
                 total_multimapped_well = sum((
                     stats["secondary_matches_per_column"].get(x)
                     for x in stats["secondary_matches_per_column"].iterkeys()
-                    if float(x) >= 0.98))
+                    if float(x) >= 0.95))
                 # How many reads multimapped at all?
                 total_multimapped_at_all = sum((
                     stats["secondary_matches_per_column"].get(x)

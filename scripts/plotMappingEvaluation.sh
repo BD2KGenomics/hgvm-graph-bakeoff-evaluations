@@ -172,7 +172,7 @@ do
         # overall files and make the plots.
         
         ./scripts/boxplot.py "${MAPPING_FILE}" \
-            --title "$(printf "Mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Mapped (0.95 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "${PORTION} mapped" --save "${MAPPING_PLOT}" \
             ${DEVIATION} \
             --x_sideways --hline_median refonly \
@@ -188,7 +188,7 @@ do
             "${PLOT_PARAMS[@]}"
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
-            --title "$(printf "Uniquely mapped (0.98 match)\nreads in ${HR_REGION} (${MODE})")" \
+            --title "$(printf "Uniquely mapped (0.95 match)\nreads in ${HR_REGION} (${MODE})")" \
             --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
             ${DEVIATION} \
             --x_sideways --hline_median refonly --hline_ticks \
@@ -227,7 +227,7 @@ do
             --range --sparse_ticks --sparse_axes \
             "${PLOT_PARAMS[@]}"
         
-        if [ "${MAIN_TEXT:-}" == "1"]; then
+        if [ "${MAIN_TEXT:-0}" == "1"]; then
             # In the main text we want some limits to cut off the invisible
             # range lines.
             if [ "${MODE}" == "absolute" ]
@@ -315,18 +315,21 @@ do
             "${PLOT_PARAMS[@]}"
 
         # Set Perfect/Unique limits by region
-        # MHC and BRCA2 fit in --min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.
+        PERFECT_UNIQUE_LIMITS=""
         if [ "${REGION^^}" == "MHC" ]; then
+            #PERFECT_UNIQUE_LIMITS="--min_x 0.78 --min_y 0.6 --max_x 0.95 --max_y 0.75"
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "BRCA1" ]; then
+            #PERFECT_UNIQUE_LIMITS="--min_x 0.89 --min_y 0.6 --max_x 0.92 --max_y 0.75"
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "BRCA2" ]; then
+            #PERFECT_UNIQUE_LIMITS="--min_x 0.92 --min_y 0.73 --max_x 0.98 --max_y 0.81"
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "SMA" ]; then
+            #PERFECT_UNIQUE_LIMITS="--min_x 0.2 --min_y 0.7 --max_x 0.5 --max_y 0.8"
             PERFECT_UNIQUE_LIMITS=""
         elif [ "${REGION^^}" == "LRC_KIR" ]; then
-            PERFECT_UNIQUE_LIMITS=""
-        else
+            #PERFECT_UNIQUE_LIMITS="--min_x 0.5 --min_y 0.3 --max_x 0.9 --max_y 0.9"
             PERFECT_UNIQUE_LIMITS=""
         fi
 
@@ -355,7 +358,7 @@ do
 
     # Make the overall plots
     ./scripts/boxplot.py "${OVERALL_MAPPING_FILE}" \
-        --title "$(printf "Mapped (0.98 match)\nreads (${MODE})")" \
+        --title "$(printf "Mapped (0.95 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion mapped" --save "${OVERALL_MAPPING_PLOT}" \
         ${DEVIATION} \
         --x_sideways  --hline_median refonly --hline_ticks \
@@ -371,7 +374,7 @@ do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_WELL_FILE}" \
-        --title "$(printf "Uniquely mapped (0.98 match)\nreads (${MODE})")" \
+        --title "$(printf "Uniquely mapped (0.95 match)\nreads (${MODE})")" \
         --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
         ${DEVIATION} \
         --x_sideways --hline_median refonly --hline_ticks \
