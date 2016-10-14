@@ -194,6 +194,13 @@ def collate_region(job, options, region):
                     stats["secondary_matches_per_column"].get(x)
                     for x in stats["secondary_matches_per_column"].iterkeys()))
                     
+                # How many primary reads have MAPQs making them sufficiently
+                # unique?
+                total_unique = sum((
+                    stats["primary_mapqs"].get(x)
+                    for x in stats["primary_mapqs"].iterkeys()
+                    if float(x) >= 30))
+                    
                 # How many reads are perfect?
                 total_perfect = sum((
                     stats["primary_matches_per_column"].get(x)
@@ -286,6 +293,10 @@ def collate_region(job, options, region):
                 sample_stats["portion_single_mapped_at_all"] = \
                     ((total_mapped_at_all - total_multimapped_at_all) / 
                     float(total_reads))
+                # What portion of reads have a mapping that thinks it's unique
+                # by MAPQ?
+                sample_stats["portion_unique"] = \
+                    (total_unique / float(total_reads))
                 # What portion are mapped well?
                 sample_stats["portion_mapped_well"] = (total_mapped_well /
                     float(total_reads))
@@ -419,7 +430,7 @@ def collate_region(job, options, region):
             "portion_mapped_well": "plots/{}/mapping.{}.tsv".format(mode,
                 region),
             "portion_perfect": "plots/{}/perfect.{}.tsv".format(mode, region),
-            "portion_single_mapped_well":
+            "portion_unique":
                 "plots/{}/singlemapping.{}.tsv".format(mode, region),
             "portion_single_mapped_at_all":
                 "plots/{}/singlemappingatall.{}.tsv".format(mode, region),
@@ -492,7 +503,7 @@ def collate_region(job, options, region):
                 
                 # Get the prefect and unique stats
                 perfect = stats_by_name["portion_perfect"]
-                unique = stats_by_name["portion_single_mapped_well"]
+                unique = stats_by_name["portion_unique"]
                 
                 all_perfect.append(perfect)
                 all_unique.append(unique)
