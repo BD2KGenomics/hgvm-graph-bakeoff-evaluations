@@ -4,6 +4,9 @@ histogram: plot a histogram of a file of numbers. Numbers can be floats, one per
 line. Lines with two numbers are interpreted as pre-counted, with the number of
 repeats of the first being given by the second.
 
+Multiple instances of the same value in a category will be merged by adding
+weights.
+
 Re-uses sample code and documentation from 
 <http://users.soe.ucsc.edu/~karplus/bme205/f12/Scaffold.html>
 """
@@ -230,9 +233,10 @@ def main(args):
     # Make the figure with the appropriate size and DPI.
     pyplot.figure(figsize=(options.width, options.height), dpi=options.dpi)
     
-    # This will hold a dict of lists of data, weight pairs, by category or file
-    # name
-    all_data = collections.defaultdict(list)
+    # This will hold a dict of dicts from data value to weight, by category or
+    # file name. Later gets converted to a dict of lists of (value, weight)
+    # pairs, aggregated by value.
+    all_data = collections.defaultdict(lambda: collections.defaultdict(float))
     
     for data_filename in options.data:
         
@@ -243,26 +247,34 @@ def main(args):
             if len(parts) == 1:
                 # This is one instance of a value
                 
-                all_data[data_filename].append((float(parts[0]), 1))
+                all_data[data_filename][float(parts[0])] += 1.0
             elif len(parts) == 2:
                 if len(options.data) > 1:
-                    # This is multiple instances of a value
-                    all_data[data_filename].append((float(parts[0]),
-                        float(parts[1])))
+                    # This is multiple instances of a value, and we are doing
+                    # categories by filename.
+                    all_data[data_filename][float(parts[0])] += float(parts[1])
                 else:
-                    # This is category, instance data
-                    all_data[parts[0]].append((float(parts[1]), 1))
+                    try:
+                        value = float(parts[0])
+                        # If the first column is a number, this is value, weight
+                        # data.
+                        all_data[data_filename][value] += float(parts[1])
+                    except ValueError:
+                        # This is category, instance data, since first column
+                        # isn't a number.
+                        all_data[parts[0]][float(parts[1])] += 1.0
             elif len(parts) == 3:
                 # This is category, instance, weight data
-                all_data[parts[0]].append((float(parts[1]), float(parts[2])))
+                all_data[parts[0]][float(parts[1])] += float(parts[2])
             else:
                 raise Exception("Wrong number of fields on {} line {}".format(
                     data_filename, line_number + 1))
         
     for category in all_data.iterkeys():
-        # Strip NaNs and Infs and weight-0 entriues
+        # Strip NaNs and Infs and weight-0 entries, and convert to a dict of
+        # lists of tuples.
         all_data[category] = [(value, weight) for (value, weight)
-            in all_data[category] if 
+            in all_data[category].iteritems() if 
             value < float("+inf") and value > float("-inf") and weight > 0]
         
         
