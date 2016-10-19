@@ -101,7 +101,7 @@ def parse_args(args):
     parser.add_argument("--y_max", type=float, default=None,
         help="maximum count on plot")
     parser.add_argument("--cutoff", type=float, default=None,
-        help="note portion above and below a value")
+        help="note portion above and below a value, and draw a vertical line")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
     parser.add_argument("--categories", nargs="+", default=None,
@@ -428,7 +428,6 @@ def main(args):
                 all_bin_centers = bin_centers
                 all_bin_values = bin_values
                 
-                
             # Now we make a bunch of deries for each line, potentially. This
             # holds pairs of (centers, values) lists.
             series = []
@@ -484,8 +483,6 @@ def main(args):
                 # Just do one series
                 series.append((all_bin_centers, all_bin_values))
                 
-            # We should only label the first line or points call
-            labeled = False    
             for series_centers, series_values in series: 
                 # Plot every series
                 
@@ -518,6 +515,10 @@ def main(args):
                 cumulative=options.cumulative, log=options.log_counts,
                 weights=weights, alpha=0.5 if len(options.data) > 1 else 1.0,
                 label=label)
+                
+        if options.cutoff is not None:
+            # Put a vertical line at the cutoff.
+            pyplot.axvline(x=options.cutoff, color="r")
                 
             
     if len(options.redPortion) > 0:
