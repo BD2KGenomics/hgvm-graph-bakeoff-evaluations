@@ -338,29 +338,23 @@ def main(args):
         # For each set of data and weights that we want to plot, and the label
         # it needs (or None)...
             
-        # Apply the limits
-        if options.x_min is not None:
-            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
-        if options.x_max is not None:
-            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
-            
-        # Let's condense down by summing all weights for values
-        total_weight = collections.defaultdict(lambda: 0)
+        # We may want to normalize by total weight
         # We need a float here so we don't get int division later.
         total_weight_overall = float(0)
         
         for value, weight in itertools.izip(data, weights):
-            # Sum up the weights for each value
-            total_weight[value] += weight
-            # And overall
+            # Sum up the weights overall
             total_weight_overall += weight
-        
-        # Unpack the data and summed weights
-        data, weights = zip(*total_weight.items())
         
         if options.normalize and total_weight_overall > 0:
             # Normalize all the weight to 1.0 total weight.
             weights = [w / total_weight_overall for w in weights]
+            
+        # Apply the limits after normalization
+        if options.x_min is not None:
+            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
+        if options.x_max is not None:
+            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
            
         # Work out how many samples there are
         samples = intify(sum(weights))
