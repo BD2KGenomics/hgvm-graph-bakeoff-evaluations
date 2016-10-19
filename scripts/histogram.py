@@ -356,7 +356,7 @@ def main(args):
         if options.x_max is not None:
             data, weights = filter2(lambda x: x <= options.x_max, data, weights)
            
-        # Work out how many samples there are
+        # Work out how many samples there are left within the chart area
         samples = intify(sum(weights))
             
         if options.stats:
