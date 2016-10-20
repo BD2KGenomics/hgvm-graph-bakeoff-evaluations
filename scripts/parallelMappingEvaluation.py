@@ -1408,6 +1408,12 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             # Record that an unmapped read has this length
             stats["unmapped_lengths"][length] += 1
             
+            matches_per_column = None
+            
+        else:
+            # It has no score and is secondary somehow?
+            matches_per_column = None
+            
         # Save the alignment for checking for wayward secondaries
         last_alignment = alignment
         last_matches_per_column = matches_per_column
