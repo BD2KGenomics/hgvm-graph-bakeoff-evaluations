@@ -1109,6 +1109,8 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "total_reads": 0,
         "total_mapped": 0,
         "total_multimapped": 0,
+        "total_secondary_visible": 0,
+        "total_sufficiently_unique": 0,
         "mapped_lengths": collections.Counter(),
         "unmapped_lengths": collections.Counter(),
         "aligned_lengths": collections.Counter(),
@@ -1126,10 +1128,14 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
         "secondary_matches_per_column": collections.Counter(),
         "secondary_indels": collections.Counter(),
         "secondary_substitutions": collections.Counter(),
+        "primary_advantage": collections.Counter(),
         "run_time": run_time
     }
         
+    # We need to track the last alignment
     last_alignment = None
+    # And its matches per column, if it's a primary
+    last_matches_per_column = None
         
     for line in read_alignment.stdout:
         # Parse the alignment JSON
@@ -1156,7 +1162,17 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 # want to consider it as a separate alignment. It's just there
                 # to even things up for the secondary alignment of the other end
                 # of the read.
+                
+                # Save the alignment for checking for wayward secondaries
+                last_alignment = alignment
+                
+                # This was a secondary, so this field is not important
+                last_matches_per_column = None
+                
+                # Don't process it any more, and don't record any score
+                # advantage at all for its primary alignment.
                 continue
+            
         
         # How long is this read?
         length = len(alignment["sequence"])
@@ -1321,6 +1337,23 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 stats["secondary_mapqs"][mapq] += 1
                 stats["secondary_identities"][identity] += 1
                 stats["secondary_matches_per_column"][matches_per_column] += 1
+                
+                # We know we have a primary in last_alignment, so we can
+                # calculate a score advantage for the primary.
+                score_advantage = (last_alignment.get("score", 0) -
+                    alignment.get("score", 0))
+                stats["primary_advantage"][score_advantage] += 1
+                
+                # We saw a secondary alignment
+                stats["total_secondary_visible"] += 1
+                
+                if (last_matches_per_column >= 0.95 and
+                    matches_per_column < 0.85):
+                    # If the last alignment was sufficiently good, and this
+                    # secondary is sufficiently bad, then the last alignment is
+                    # sufficiently unique.
+                    stats["total_sufficiently_unique"] += 1
+                
             else:
                 # Log its stats as primary. We'll get exactly one of these per
                 # read with any mappings.
@@ -1342,6 +1375,29 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
                 # We won't see an unaligned primary alignment for this read, so
                 # count the read
                 stats["total_reads"] += 1
+                
+                if (last_alignment is not None and
+                    not last_alignment.get("is_secondary", False) and
+                    last_alignment.has_key("score")):
+                    # This is a primary alignment, and it comes after another
+                    # primary alignment. That other primary alignment has no
+                    # secondary at all (not even a duplicate of itself), but it
+                    # was aligned (nonzero score), so we need to pretend it had
+                    # a secondary of score 0, and an advantage over that
+                    # secondary equal to its score.
+                    
+                    stats["primary_advantage"][
+                        last_alignment.get("score", 0)] += 1
+                    
+                    # We could have seen a secondary for that alignment, but we
+                    # didn't.
+                    stats["total_secondary_visible"] += 1
+                    
+                    if last_matches_per_column >= 0.95:
+                        # If the last alignment was sufficiently good, given
+                        # that it had no secondary at all, it is sufficiently
+                        # unique.
+                        stats["total_sufficiently_unique"] += 1
         
         elif not alignment.get("is_secondary", False):
             # We have an unmapped primary "alignment"
@@ -1354,6 +1410,29 @@ def run_stats(job, options, bin_dir_id, index_dir_id, alignment_file_key,
             
         # Save the alignment for checking for wayward secondaries
         last_alignment = alignment
+        last_matches_per_column = matches_per_column
+    
+    # Now do the last alignment overall, if it was a primary.
+    if (last_alignment is not None and
+        not last_alignment.get("is_secondary", False) and
+        last_alignment.has_key("score")):
+        # The last alignment is primary. That primary alignment has no secondary
+        # at all (not even a duplicate of itself), but it was aligned (nonzero
+        # score), so we need to pretend it had a secondary of score 0, and an
+        # advantage over that secondary equal to its score.
+        
+        stats["primary_advantage"][
+            last_alignment.get("score", 0)] += 1
+        
+        # We could have seen a secondary for that alignment, but we
+        # didn't.
+        stats["total_secondary_visible"] += 1
+        
+        if last_matches_per_column >= 0.95:
+            # If the last alignment was sufficiently good, given
+            # that it had no secondary at all, it is sufficiently
+            # unique.
+            stats["total_sufficiently_unique"] += 1
                 
     with open(stats_file, "w") as stats_handle:
         # Save the stats as JSON
