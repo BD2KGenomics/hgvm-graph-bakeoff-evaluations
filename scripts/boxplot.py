@@ -354,12 +354,12 @@ def main(args):
             if options.absolute_deviation:
                 # Use a difference
                 # Apply a +/- label to the best thing
-                category_labels[best_category] += "\n({:+.2g})".format(
+                category_labels[best_category] += "\n({:+.4g})".format(
                     best_deviation)
             else:
                 # Use a percentage
                 # Apply a +/-% label to the best thing
-                category_labels[best_category] += "\n({:+.2g}%)".format(
+                category_labels[best_category] += "\n({:+.4g}%)".format(
                     best_deviation)
                 
     # Now that we have our hlines, drop any hidden categories.
@@ -509,7 +509,29 @@ def main(args):
         y_min, y_max = pyplot.ylim()
         
         # Put ticks at all hlines plus the start and end of the axis
-        tick_locations = hline_positions + [y_min, y_max]
+        tick_locations = list(hline_positions)
+        
+        # Is there an hline too close to the min to label the min?
+        min_too_close = False
+        # Is there an hline too close to the max to label the max?
+        max_too_close = False
+        for pos in hline_positions:
+            if abs(pos - y_min) < (y_max - y_min) / 10.0:
+                # This hline is within 10% of the axis of the min. Don't label
+                # the min.
+                min_too_close = True
+            if abs(pos - y_max) < (y_max - y_min) / 10.0:
+                # This hline is within 10% of the axis of the max. Don't label
+                # the max.
+                max_too_close = True
+                
+        if not min_too_close:
+            # Label the min if no hline was too close
+            tick_locations.append(y_min)
+            
+        if not max_too_close:
+            # Label the max if no hline was too close
+            tick_locations.append(y_max)
         
         if not options.sparse_ticks:
             # Add a middle tick too

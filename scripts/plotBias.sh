@@ -47,6 +47,7 @@ do
 
     # Are we absolute or normalized?
     NORMALIZED="Absolute"
+    TRAILER=""
 
     # Do we want portion (default) or absolute deviations
     DEVIATIONS=""
@@ -56,6 +57,7 @@ do
         # No sense normalizing twice
         DEVIATIONS="--absolute_deviation"
         NORMALIZED="Difference in"
+        TRAILER=" vs. Primary"
     fi
 
     # Where are the bias files
@@ -94,27 +96,27 @@ do
             if [[ "${STAT}" == "perfect" ]]; then
             
                 ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-                    --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}")" \
+                    --title "$(printf "Perfectly mapped\nreads in ${HR_REGION} ${HR_GRAPH}${TRAILER}")" \
                     --x_label "Population" --y_label "$(printf "${NORMALIZED} portion\nmapped perfectly")" --save "${PLOT_PATH}" \
-                    --x_sideways --hline_median EUR \
+                    --x_sideways \
                     ${DEVIATIONS} \
                     "${PLOT_PARAMS[@]}"
                     
             elif [[ "${STAT}" == "substrate" ]]; then
                 
                 ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-                    --title "$(printf "Substitution rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --title "$(printf "Substitution rate\nin ${HR_REGION} ${HR_GRAPH}${TRAILER}")" \
                     --x_label "Population" --y_label "$(printf "${NORMALIZED^} substitution rate")" --save "${PLOT_PATH}" \
-                    --x_sideways --hline_median EUR --best_low \
+                    --x_sideways --best_low \
                     ${DEVIATIONS} \
                     "${PLOT_PARAMS[@]}"
                     
             elif [[ "${STAT}" == "indelrate" ]]; then
                 
                 ./scripts/boxplot.py "${GRAPH_TSV_PATH}" \
-                    --title "$(printf "Indel rate\nin ${HR_REGION} ${HR_GRAPH}")" \
+                    --title "$(printf "Indel rate\nin ${HR_REGION} ${HR_GRAPH}${TRAILER}")" \
                     --x_label "Population" --y_label "$(printf "${NORMALIZED^} indel rate")" --save "${PLOT_PATH}" \
-                    --x_sideways --hline_median EUR --best_low \
+                    --x_sideways --best_low \
                     ${DEVIATIONS} \
                     "${PLOT_PARAMS[@]}"
             

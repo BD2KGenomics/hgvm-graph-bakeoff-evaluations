@@ -4,6 +4,9 @@ histogram: plot a histogram of a file of numbers. Numbers can be floats, one per
 line. Lines with two numbers are interpreted as pre-counted, with the number of
 repeats of the first being given by the second.
 
+Multiple instances of the same value in a category will be merged by adding
+weights.
+
 Re-uses sample code and documentation from 
 <http://users.soe.ucsc.edu/~karplus/bme205/f12/Scaffold.html>
 """
@@ -98,7 +101,7 @@ def parse_args(args):
     parser.add_argument("--y_max", type=float, default=None,
         help="maximum count on plot")
     parser.add_argument("--cutoff", type=float, default=None,
-        help="note portion above and below a value")
+        help="note portion above and below a value, and draw a vertical line")
     parser.add_argument("--font_size", type=int, default=12,
         help="the font size for text")
     parser.add_argument("--categories", nargs="+", default=None,
@@ -230,9 +233,10 @@ def main(args):
     # Make the figure with the appropriate size and DPI.
     pyplot.figure(figsize=(options.width, options.height), dpi=options.dpi)
     
-    # This will hold a dict of lists of data, weight pairs, by category or file
-    # name
-    all_data = collections.defaultdict(list)
+    # This will hold a dict of dicts from data value to weight, by category or
+    # file name. Later gets converted to a dict of lists of (value, weight)
+    # pairs, aggregated by value.
+    all_data = collections.defaultdict(lambda: collections.defaultdict(float))
     
     for data_filename in options.data:
         
@@ -243,26 +247,34 @@ def main(args):
             if len(parts) == 1:
                 # This is one instance of a value
                 
-                all_data[data_filename].append((float(parts[0]), 1))
+                all_data[data_filename][float(parts[0])] += 1.0
             elif len(parts) == 2:
                 if len(options.data) > 1:
-                    # This is multiple instances of a value
-                    all_data[data_filename].append((float(parts[0]),
-                        float(parts[1])))
+                    # This is multiple instances of a value, and we are doing
+                    # categories by filename.
+                    all_data[data_filename][float(parts[0])] += float(parts[1])
                 else:
-                    # This is category, instance data
-                    all_data[parts[0]].append((float(parts[1]), 1))
+                    try:
+                        value = float(parts[0])
+                        # If the first column is a number, this is value, weight
+                        # data.
+                        all_data[data_filename][value] += float(parts[1])
+                    except ValueError:
+                        # This is category, instance data, since first column
+                        # isn't a number.
+                        all_data[parts[0]][float(parts[1])] += 1.0
             elif len(parts) == 3:
                 # This is category, instance, weight data
-                all_data[parts[0]].append((float(parts[1]), float(parts[2])))
+                all_data[parts[0]][float(parts[1])] += float(parts[2])
             else:
                 raise Exception("Wrong number of fields on {} line {}".format(
                     data_filename, line_number + 1))
         
     for category in all_data.iterkeys():
-        # Strip NaNs and Infs and weight-0 entriues
+        # Strip NaNs and Infs and weight-0 entries, and convert to a dict of
+        # lists of tuples.
         all_data[category] = [(value, weight) for (value, weight)
-            in all_data[category] if 
+            in all_data[category].iteritems() if 
             value < float("+inf") and value > float("-inf") and weight > 0]
         
         
@@ -326,31 +338,25 @@ def main(args):
         # For each set of data and weights that we want to plot, and the label
         # it needs (or None)...
             
-        # Apply the limits
-        if options.x_min is not None:
-            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
-        if options.x_max is not None:
-            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
-            
-        # Let's condense down by summing all weights for values
-        total_weight = collections.defaultdict(lambda: 0)
+        # We may want to normalize by total weight
         # We need a float here so we don't get int division later.
         total_weight_overall = float(0)
         
         for value, weight in itertools.izip(data, weights):
-            # Sum up the weights for each value
-            total_weight[value] += weight
-            # And overall
+            # Sum up the weights overall
             total_weight_overall += weight
-        
-        # Unpack the data and summed weights
-        data, weights = zip(*total_weight.items())
         
         if options.normalize and total_weight_overall > 0:
             # Normalize all the weight to 1.0 total weight.
             weights = [w / total_weight_overall for w in weights]
+            
+        # Apply the limits after normalization
+        if options.x_min is not None:
+            data, weights = filter2(lambda x: x >= options.x_min, data, weights)
+        if options.x_max is not None:
+            data, weights = filter2(lambda x: x <= options.x_max, data, weights)
            
-        # Work out how many samples there are
+        # Work out how many samples there are left within the chart area
         samples = intify(sum(weights))
             
         if options.stats:
@@ -416,7 +422,6 @@ def main(args):
                 all_bin_centers = bin_centers
                 all_bin_values = bin_values
                 
-                
             # Now we make a bunch of deries for each line, potentially. This
             # holds pairs of (centers, values) lists.
             series = []
@@ -472,8 +477,6 @@ def main(args):
                 # Just do one series
                 series.append((all_bin_centers, all_bin_values))
                 
-            # We should only label the first line or points call
-            labeled = False    
             for series_centers, series_values in series: 
                 # Plot every series
                 
@@ -506,6 +509,10 @@ def main(args):
                 cumulative=options.cumulative, log=options.log_counts,
                 weights=weights, alpha=0.5 if len(options.data) > 1 else 1.0,
                 label=label)
+                
+        if options.cutoff is not None:
+            # Put a vertical line at the cutoff.
+            pyplot.axvline(x=options.cutoff, color="r")
                 
             
     if len(options.redPortion) > 0:
