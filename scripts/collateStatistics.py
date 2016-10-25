@@ -263,6 +263,12 @@ def collate_region(job, options, region):
                 # good enough)?
                 total_mapped_at_all = stats["total_mapped"]
                 
+                # How many reads do we know are sufficiently unique?
+                observed_unique = stats.get("total_sufficiently_unique", 0)
+                
+                # How many could we have seen if they were sufficiently unique?
+                observable = stats.get("total_secondary_visible", 0)
+                
                 # What was the runtime?
                 runtime = stats.get("run_time", None)
                 if runtime is None:
@@ -296,7 +302,7 @@ def collate_region(job, options, region):
                 # What portion of reads have a mapping that thinks it's unique
                 # by MAPQ?
                 sample_stats["portion_unique"] = \
-                    (total_unique / float(total_reads))
+                    (observed_unique / float(observable))
                 # What portion are mapped well?
                 sample_stats["portion_mapped_well"] = (total_mapped_well /
                     float(total_reads))

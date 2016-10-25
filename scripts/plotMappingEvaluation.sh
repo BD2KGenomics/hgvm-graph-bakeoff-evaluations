@@ -193,9 +193,9 @@ do
             if [ "${REGION^^}" == "MHC" ]; then
                 UNIQUE_LIMITS="--min 0.7"
             elif [ "${REGION^^}" == "BRCA1" ]; then
-                UNIQUE_LIMITS="--min 0.9"
+                UNIQUE_LIMITS="--min 0.8"
             elif [ "${REGION^^}" == "BRCA2" ]; then
-                UNIQUE_LIMITS="--min 0.9"
+                UNIQUE_LIMITS="--min 0.89"
             elif [ "${REGION^^}" == "SMA" ]; then
                 UNIQUE_LIMITS=""
             elif [ "${REGION^^}" == "LRC_KIR" ]; then
@@ -204,8 +204,8 @@ do
         fi
             
         ./scripts/boxplot.py "${SINGLE_MAPPING_WELL_FILE}" \
-            --title "$(printf "Uniquely mapped (MAPQ>=30)\nreads in ${HR_REGION} (${MODE})")" \
-            --x_label "Graph" --y_label "$(printf "${PORTION}\nuniquely mapped")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
+            --title "$(printf "Uniquely mapped well\nreads in ${HR_REGION} (${MODE})")" \
+            --x_label "Graph" --y_label "$(printf "${PORTION} uniquely\nmapped well")" --save "${SINGLE_MAPPING_WELL_PLOT}" \
             ${DEVIATION} \
             --x_sideways --hline_median refonly --hline_ticks \
             ${UNIQUE_LIMITS} \
@@ -335,7 +335,7 @@ do
         scripts/scatter.py "${PERFECT_UNIQUE_FILE}" \
             --save "${PERFECT_UNIQUE_PLOT}" \
             --title "$(printf "Perfect vs. Unique\nMapping in ${REGION^^}")" \
-            --x_label "Portion Uniquely Mapped" \
+            --x_label "Portion Uniquely Mapped Well" \
             --y_label "Portion Perfectly Mapped" \
             --markers "o" \
             --annotate --no_legend \
@@ -371,8 +371,8 @@ do
         "${PLOT_PARAMS[@]}"
         
     ./scripts/boxplot.py "${OVERALL_SINGLE_MAPPING_WELL_FILE}" \
-        --title "$(printf "Uniquely mapped (MAPQ>=30)\nreads (${MODE})")" \
-        --x_label "Graph" --y_label "Portion uniquely mapped" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
+        --title "$(printf "Uniquely mapped well\nreads (${MODE})")" \
+        --x_label "Graph" --y_label "Portion uniquely mapped well" --save "${OVERALL_SINGLE_MAPPING_WELL_PLOT}" \
         ${DEVIATION} \
         --x_sideways --hline_median refonly --hline_ticks \
         --range --sparse_ticks --sparse_axes \
@@ -391,7 +391,7 @@ do
         ./scripts/scatter.py "${OVERALL_PERFECT_UNIQUE_FILE}" \
             --save "${OVERALL_PERFECT_UNIQUE_PLOT}" \
             --title "$(printf "Perfect vs. Unique\nMapping (${MODE})")" \
-            --x_label "Portion Uniquely Mapped" \
+            --x_label "Portion Uniquely Mapped Well" \
             --y_label "Portion Perfectly Mapped" \
             --min_x 0.55 --min_y 0.55 --max_x 0.8 --max_y 0.8 \
             --sparse_ticks --sparse_axes --markers "o" \
