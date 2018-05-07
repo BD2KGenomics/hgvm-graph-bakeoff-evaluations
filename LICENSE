@@ -1,3 +1,5 @@
+Most code in this repository is under the following license:
+
 The MIT License (MIT)
 
 Copyright (c) 2015 BD2K Center for Translational Genomics
@@ -21,5 +23,5 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 NOTE: Some files in this repository are included under other licenses. For
-example, the sile `scripts/vcfsort.pl` is licensed under the GNU GPL v3.
+example, the file `scripts/vcfsort.pl` is licensed under the GNU GPL v3.
 
