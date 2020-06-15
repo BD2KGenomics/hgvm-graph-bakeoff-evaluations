@@ -1024,6 +1024,13 @@ class AzureIOStore(IOStore):
         
         while True:
         
+            try:
+                # Make the container
+                self.connection.create_container(self.container_name)
+            except azure.WindowsAzureConflictError:
+                # The container probably already exists
+                pass
+            
             # Get the results from Azure.
             result = self.connection.list_blobs(self.container_name, 
                 prefix=self.name_prefix + path, marker=marker)
